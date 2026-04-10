@@ -1,0 +1,145 @@
+{
+  "info": {
+    "name": "JINA-CONNECT WebSocket API",
+    "description": "WebSocket API testing collection for team inbox real-time messaging",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "localhost:8001",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "{{jwt_token}}",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Get JWT Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"your_username\",\n  \"password\": \"your_password\"\n}"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/token/",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["token", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('jwt_token', response.access);",
+                  "    console.log('JWT Token saved to collection variable');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WebSocket Documentation",
+      "item": [
+        {
+          "name": "WebSocket API Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://{{base_url}}/team-inbox/websocket/info/?tenant_id={{tenant_id}}",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["team-inbox", "websocket", "info", ""],
+              "query": [
+                {
+                  "key": "tenant_id",
+                  "value": "{{tenant_id}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "REST API Endpoints",
+      "item": [
+        {
+          "name": "List Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://{{base_url}}/team-inbox/api/messages/",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["team-inbox", "api", "messages", ""]
+            }
+          }
+        },
+        {
+          "name": "Create Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": {\n    \"text\": \"Hello from REST API!\"\n  },\n  \"platform\": \"WHATSAPP\",\n  \"direction\": \"OUTGOING\",\n  \"author\": \"USER\"\n}"
+            },
+            "url": {
+              "raw": "http://{{base_url}}/team-inbox/api/messages/",
+              "protocol": "http",
+              "host": ["{{base_url}}"],
+              "path": ["team-inbox", "api", "messages", ""]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

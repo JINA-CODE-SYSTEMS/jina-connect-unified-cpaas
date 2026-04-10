@@ -1,0 +1,84 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:chat_flow_chatflow_changelist' %}">Chat Flows</a>
+    &rsaquo; <a href="{% url 'admin:chat_flow_chatflow_change' flow.pk %}">{{ flow.name|default:flow.pk }}</a>
+    &rsaquo; Start Test Session
+  </div>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:640px;">
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-bottom:24px;">
+    <h2 style="margin:0 0 8px;">🧪 Start Test Session</h2>
+    <p style="margin:0;color:#374151;">
+      Attach a contact to <strong>{{ flow.name|default:"this flow" }}</strong> to test it.
+      The system will create a new session starting at node
+      <code style="background:#e0e7ff;padding:2px 6px;border-radius:4px;">{{ start_node_label }}</code>
+      and send the first template message to the contact via WhatsApp.
+    </p>
+  </div>
+
+  {% if not flow.is_active %}
+  <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:16px;">
+    ⚠️ <strong>This flow is currently inactive.</strong> The session will be created but
+    the flow won't respond to incoming messages until you activate it.
+  </div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+
+    <fieldset style="border:1px solid #d1d5db;border-radius:8px;padding:20px;">
+      <legend style="font-weight:700;padding:0 8px;">Session Details</legend>
+
+      {% for field in form %}
+      <div style="margin-bottom:16px;">
+        <label for="{{ field.id_for_label }}" style="display:block;font-weight:600;margin-bottom:4px;">
+          {{ field.label }}
+        </label>
+        {{ field }}
+        {% if field.help_text %}
+        <p style="margin:4px 0 0;color:#6b7280;font-size:12px;">{{ field.help_text }}</p>
+        {% endif %}
+        {% if field.errors %}
+        <ul style="color:#dc2626;margin:4px 0 0;font-size:13px;">
+          {% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </fieldset>
+
+    <div style="margin-top:20px;display:flex;gap:12px;">
+      <button type="submit" style="
+        padding:10px 28px;background:#7c3aed;color:#fff;border:none;
+        border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;
+      ">
+        🚀 Start Session
+      </button>
+      <a href="{% url 'admin:chat_flow_chatflow_change' flow.pk %}" style="
+        padding:10px 28px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;
+        border-radius:6px;font-weight:600;font-size:14px;text-decoration:none;
+      ">
+        Cancel
+      </a>
+    </div>
+  </form>
+
+  <div style="margin-top:32px;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+    <h3 style="margin:0 0 8px;font-size:14px;color:#475569;">💡 What happens next?</h3>
+    <ol style="margin:0;padding-left:20px;color:#64748b;font-size:13px;line-height:1.7;">
+      <li>A <strong>UserChatFlowSession</strong> is created for the contact</li>
+      <li>The flow's <strong>start template</strong> is sent to the contact via WhatsApp</li>
+      <li>The contact can reply with button clicks to navigate through the flow</li>
+      <li>Track the session progress in the <a href="{% url 'admin:chat_flow_userchatflowsession_changelist' %}">Sessions admin</a></li>
+    </ol>
+  </div>
+</div>
+{% endblock %}

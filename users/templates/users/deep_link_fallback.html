@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{{ action_title }} - Jina Connect</title>
+    
+    <!-- Open Graph Meta Tags for better link previews -->
+    <meta property="og:title" content="{{ action_title }} - Jina Connect">
+    <meta property="og:description" content="{{ action_description }}">
+    <meta property="og:type" content="website">
+    
+    <!-- iOS Smart App Banner -->
+    <meta name="apple-itunes-app" content="app-id=123456789, app-argument={{ custom_scheme }}">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.35);
+            animation: slideUp 0.5s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .logo-text {
+            font-size: 32px;
+        }
+        
+        h1 {
+            color: #1a1a2e;
+            margin-bottom: 12px;
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+        
+        .description {
+            color: #64748b;
+            margin-bottom: 32px;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 24px;
+        }
+        
+        .status-badge.valid {
+            background: #ecfdf5;
+            color: #059669;
+        }
+        
+        .status-badge.invalid {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+        
+        .status-icon {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px 24px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 12px;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+        }
+        
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+        
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 28px 0;
+            color: #94a3b8;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e2e8f0;
+        }
+        
+        .divider::before {
+            margin-right: 16px;
+        }
+        
+        .divider::after {
+            margin-left: 16px;
+        }
+        
+        .store-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        .store-btn {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 10px;
+            background: #1a1a2e;
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .store-btn:hover {
+            background: #2d2d44;
+            transform: translateY(-2px);
+        }
+        
+        .store-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .store-btn-text {
+            text-align: left;
+            line-height: 1.2;
+        }
+        
+        .store-btn-label {
+            font-size: 9px;
+            opacity: 0.8;
+            display: block;
+        }
+        
+        .store-btn-name {
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .footer {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid #e2e8f0;
+            color: #94a3b8;
+            font-size: 12px;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ffffff40;
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .btn.loading .loading-spinner {
+            display: inline-block;
+        }
+        
+        .btn.loading .btn-text {
+            opacity: 0.7;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 480px) {
+            .container {
+                padding: 32px 24px;
+                border-radius: 16px;
+            }
+            
+            h1 {
+                font-size: 22px;
+            }
+            
+            .store-buttons {
+                flex-direction: column;
+            }
+            
+            .store-btn {
+                justify-content: center;
+            }
+        }
+        
+        /* Error state */
+        .error-container {
+            display: none;
+        }
+        
+        .error-container.show {
+            display: block;
+        }
+        
+        .error-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            background: #fef2f2;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .error-icon svg {
+            width: 32px;
+            height: 32px;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Logo -->
+        <div class="logo">
+            <span class="logo-text">JC</span>
+        </div>
+        
+        <!-- Title -->
+        <h1>{{ action_title }}</h1>
+        
+        <!-- Description -->
+        <p class="description">{{ action_description }}</p>
+        
+        <!-- Token Status Badge -->
+        {% if token_valid %}
+        <div class="status-badge valid">
+            <svg class="status-icon" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+            Link is valid
+        </div>
+        {% else %}
+        <div class="status-badge invalid">
+            <svg class="status-icon" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+            Link may be expired or already used
+        </div>
+        {% endif %}
+        
+        <!-- Primary Action Button -->
+        <a href="{{ web_action_url }}" class="btn btn-primary" id="web-action-btn">
+            <span class="loading-spinner"></span>
+            <span class="btn-text">{{ action_button_text }} on Web</span>
+        </a>
+        
+        <!-- Open in App Button (for custom URL scheme fallback) -->
+        <a href="{{ custom_scheme }}" class="btn btn-secondary" id="app-action-btn">
+            Open in Jina Connect App
+        </a>
+        
+        <!-- Divider -->
+        <div class="divider">Get the app</div>
+        
+        <!-- App Store Buttons -->
+        <div class="store-buttons">
+            <!-- iOS App Store -->
+            <a href="{{ ios_app_store_url }}" class="store-btn" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+                <div class="store-btn-text">
+                    <span class="store-btn-label">Download on the</span>
+                    <span class="store-btn-name">App Store</span>
+                </div>
+            </a>
+            
+            <!-- Google Play Store -->
+            <a href="{{ android_play_store_url }}" class="store-btn" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.53,12.9 20.18,13.18L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z"/>
+                </svg>
+                <div class="store-btn-text">
+                    <span class="store-btn-label">Get it on</span>
+                    <span class="store-btn-name">Google Play</span>
+                </div>
+            </a>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p>&copy; {% now "Y" %} Jina Connect. All rights reserved.</p>
+            <p style="margin-top: 8px;">
+                <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            // Configuration
+            var action = '{{ action }}';
+            var token = '{{ token }}';
+            var customScheme = '{{ custom_scheme }}';
+            var webActionUrl = '{{ web_action_url }}';
+            
+            // Try to detect if user is on mobile
+            var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+            var isAndroid = /Android/i.test(navigator.userAgent);
+            
+            // If on mobile, try to open the app first
+            if (isMobile) {
+                var appOpened = false;
+                var start = Date.now();
+                
+                // Set a timeout to detect if app didn't open
+                var timeout = setTimeout(function() {
+                    if (!appOpened && Date.now() - start < 3000) {
+                        // App probably not installed, stay on this page
+                        console.log('App may not be installed');
+                    }
+                }, 2500);
+                
+                // Listen for page visibility change (indicates app opened)
+                document.addEventListener('visibilitychange', function() {
+                    if (document.hidden) {
+                        appOpened = true;
+                        clearTimeout(timeout);
+                    }
+                });
+                
+                // Try to open the app via custom scheme
+                // Using an iframe is more reliable on iOS
+                if (isIOS) {
+                    var iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.src = customScheme;
+                    document.body.appendChild(iframe);
+                    
+                    setTimeout(function() {
+                        document.body.removeChild(iframe);
+                    }, 2000);
+                } else {
+                    // For Android, try direct navigation
+                    window.location.href = customScheme;
+                }
+            }
+            
+            // Handle app button click
+            var appBtn = document.getElementById('app-action-btn');
+            if (appBtn) {
+                appBtn.addEventListener('click', function(e) {
+                    // On desktop, show a message
+                    if (!isMobile) {
+                        e.preventDefault();
+                        alert('Please open this link on your mobile device to use the app.');
+                    }
+                });
+            }
+            
+            // Add loading state to web action button
+            var webBtn = document.getElementById('web-action-btn');
+            if (webBtn) {
+                webBtn.addEventListener('click', function() {
+                    this.classList.add('loading');
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

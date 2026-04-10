@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Inbox WebSocket API Tester</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+        .panel {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .panel-header {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            font-weight: bold;
+            border-bottom: 1px solid #ddd;
+        }
+        .panel-body {
+            padding: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #333;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .message {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .message.sent {
+            background: #e3f2fd;
+            border-color: #90caf9;
+        }
+        .message.received {
+            background: #f3e5f5;
+            border-color: #ce93d8;
+        }
+        .message.error {
+            background: #ffebee;
+            border-color: #ef9a9a;
+        }
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .example-messages {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px;
+            margin-top: 16px;
+        }
+        .example-messages h4 {
+            margin: 0 0 12px 0;
+            color: #495057;
+        }
+        .example-messages pre {
+            background: white;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            font-size: 12px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+        .auth-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 16px;
+        }
+        .auth-section strong {
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Team Inbox WebSocket API Tester</h1>
+            <p>Test and interact with WebSocket endpoints in real-time</p>
+        </div>
+        
+        <div class="content">
+            <!-- Connection Panel -->
+            <div class="panel">
+                <div class="panel-header">🔌 WebSocket Connection</div>
+                <div class="panel-body">
+                    <div class="auth-section">
+                        <strong>⚠️ Authentication Required:</strong><br>
+                        Get JWT token from: <code>/token/</code><br>
+                        <small>POST with username/password to get access token</small>
+                    </div>
+                    
+                    <div id="connectionStatus" class="status disconnected">
+                        🔴 Disconnected
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="websocketUrl">WebSocket URL:</label>
+                        <input type="text" id="websocketUrl" 
+                               value="{{ websocket_base_url }}ws/team-inbox/1/" 
+                               placeholder="ws://localhost:8001/ws/team-inbox/1/">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="jwtToken">JWT Token:</label>
+                        <textarea id="jwtToken" rows="3" 
+                                  placeholder="Paste your JWT token here (get from /token/ endpoint)"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="tenantId">Tenant ID:</label>
+                        <input type="number" id="tenantId" value="1" placeholder="1">
+                    </div>
+                    
+                    <button id="connectBtn" onclick="connectWebSocket()">Connect</button>
+                    <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>Disconnect</button>
+                </div>
+            </div>
+            
+            <!-- Message Panel -->
+            <div class="panel">
+                <div class="panel-header">💬 Send Messages</div>
+                <div class="panel-body">
+                    <div class="quick-actions">
+                        <button onclick="sendQuickMessage('get_chat_list')">Get Chat List</button>
+                        <button onclick="sendQuickMessage('get_timeline')">Get Timeline</button>
+                        <button onclick="sendQuickMessage('mark_as_read')">Mark as Read</button>
+                        <button onclick="sendQuickMessage('typing_indicator')">Typing</button>
+                        <button onclick="sendQuickMessage('client_info')">Client Info</button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="messageType">Message Type:</label>
+                        <select id="messageType" onchange="updateMessageTemplate()">
+                            <option value="get_chat_list">get_chat_list</option>
+                            <option value="get_timeline">get_timeline</option>
+                            <option value="mark_as_read">mark_as_read</option>
+                            <option value="mark_as_read_contact">mark_as_read (by contact)</option>
+                            <option value="typing_indicator">typing_indicator</option>
+                            <option value="typing_indicator_bot">typing_indicator (bot)</option>
+                            <option value="client_info">client_info</option>
+                            <option value="custom">Custom JSON</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="messagePayload">Message Payload:</label>
+                        <textarea id="messagePayload" rows="6"></textarea>
+                    </div>
+                    
+                    <button onclick="sendMessage()" id="sendBtn" disabled>Send Message</button>
+                    <button onclick="clearMessages()">Clear Log</button>
+                    
+                    <div class="example-messages">
+                        <h4>📚 Message Examples:</h4>
+                        <div style="font-size: 12px;">
+                            <strong>Get Chat List:</strong>
+                            <pre>{"type": "get_chat_list", "limit": 50, "offset": 0, "search": ""}</pre>
+                            
+                            <strong>Get Timeline:</strong>
+                            <pre>{"type": "get_timeline", "contact_id": 1, "limit": 50, "offset": 0}</pre>
+                            
+                            <strong>Mark as Read:</strong>
+                            <pre>{"type": "mark_as_read", "contact_id": 1}</pre>
+                            
+                            <strong>Typing Indicator:</strong>
+                            <pre>{"type": "typing_indicator", "contact_id": 1, "is_typing": true}</pre>
+                            
+                            <strong>Message Status Update (Server → Client):</strong>
+                            <pre>{
+  "type": "message_status_update",
+  "id": 123,
+  "message_id": 456,
+  "outgoing_message_id": 789,
+  "status": "DELIVERED",
+  "sent_at": "2024-01-15T10:30:00Z",
+  "delivered_at": "2024-01-15T10:30:05Z",
+  "read_at": null,
+  "failed_at": null
+}</pre>
+                            <small><em>⬆️ This is a server-sent event. You'll receive this when an outgoing message status changes (PENDING → SENT → DELIVERED → READ or FAILED).</em></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Message Log -->
+        <div style="margin: 20px;">
+            <div class="panel">
+                <div class="panel-header">📜 Message Log</div>
+                <div class="panel-body">
+                    <div id="messageLog" style="max-height: 500px; overflow-y: auto;">
+                        <div class="message">Ready to connect... Get JWT token from <strong>/token/</strong> endpoint first.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let websocket = null;
+        let messageCount = 0;
+
+        // Message templates based on WEBSOCKET_API.md
+        const templates = {
+            get_chat_list: {
+                type: "get_chat_list",
+                limit: 50,
+                offset: 0,
+                search: ""
+            },
+            get_timeline: {
+                type: "get_timeline",
+                contact_id: 1,
+                limit: 50,
+                offset: 0
+            },
+            mark_as_read: {
+                type: "mark_as_read",
+                message_ids: [1, 2, 3]
+            },
+            mark_as_read_contact: {
+                type: "mark_as_read",
+                contact_id: 1
+            },
+            typing_indicator: {
+                type: "typing_indicator",
+                contact_id: 1,
+                is_typing: true,
+                actor_type: "USER"
+            },
+            typing_indicator_bot: {
+                type: "typing_indicator",
+                contact_id: 1,
+                is_typing: true,
+                actor_type: "BOT",
+                bot_id: 1,
+                bot_name: "Sales Bot"
+            },
+            client_info: {
+                type: "client_info",
+                client_type: "web"
+            }
+        };
+
+        function updateMessageTemplate() {
+            const type = document.getElementById('messageType').value;
+            const payload = document.getElementById('messagePayload');
+            
+            if (type === 'custom') {
+                payload.value = '{\n  "type": "custom_message",\n  "data": {}\n}';
+            } else {
+                payload.value = JSON.stringify(templates[type], null, 2);
+            }
+        }
+
+        function connectWebSocket() {
+            const url = document.getElementById('websocketUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+            const tenantId = document.getElementById('tenantId').value;
+            
+            if (!token) {
+                addMessage('❌ JWT token is required', 'error');
+                return;
+            }
+            
+            // Update URL with tenant ID and token
+            const wsUrl = url.replace(/\/\d+\//, `/${tenantId}/`) + `?token=${encodeURIComponent(token)}`;
+            
+            updateStatus('connecting', '🟡 Connecting...');
+            addMessage(`📡 Connecting to: ${wsUrl}`, 'sent');
+            
+            try {
+                websocket = new WebSocket(wsUrl);
+                
+                websocket.onopen = function(event) {
+                    updateStatus('connected', '🟢 Connected');
+                    addMessage('✅ WebSocket connected successfully!', 'received');
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                };
+                
+                websocket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    
+                    // Special handling for message status updates
+                    if (data.type === 'message_status_update') {
+                        const statusEmoji = {
+                            'PENDING': '⏳',
+                            'SENT': '📤',
+                            'DELIVERED': '✅',
+                            'READ': '👁️',
+                            'FAILED': '❌'
+                        };
+                        const emoji = statusEmoji[data.status] || '📩';
+                        addMessage(
+                            `${emoji} <strong>Message Status Update</strong><br>` +
+                            `Message ID: ${data.message_id || 'N/A'}<br>` +
+                            `Outgoing ID: ${data.outgoing_message_id || 'N/A'}<br>` +
+                            `Status: <strong>${data.status}</strong><br>` +
+                            `Sent: ${data.sent_at || '-'}<br>` +
+                            `Delivered: ${data.delivered_at || '-'}<br>` +
+                            `Read: ${data.read_at || '-'}<br>` +
+                            `Failed: ${data.failed_at || '-'}`,
+                            'received'
+                        );
+                    } else {
+                        addMessage(`📥 Received: ${JSON.stringify(data, null, 2)}`, 'received');
+                    }
+                };
+                
+                websocket.onclose = function(event) {
+                    updateStatus('disconnected', '🔴 Disconnected');
+                    addMessage(`🔌 Connection closed. Code: ${event.code}`, 'error');
+                    document.getElementById('sendBtn').disabled = true;
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                };
+                
+                websocket.onerror = function(error) {
+                    addMessage(`❌ WebSocket error: ${error.message || 'Connection failed'}`, 'error');
+                    updateStatus('disconnected', '🔴 Connection Failed');
+                };
+                
+            } catch (error) {
+                addMessage(`❌ Failed to create WebSocket: ${error.message}`, 'error');
+                updateStatus('disconnected', '🔴 Connection Failed');
+            }
+        }
+
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+        }
+
+        function sendMessage() {
+            if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                addMessage('❌ WebSocket is not connected', 'error');
+                return;
+            }
+            
+            const payload = document.getElementById('messagePayload').value;
+            
+            try {
+                const message = JSON.parse(payload);
+                websocket.send(JSON.stringify(message));
+                addMessage(`📤 Sent: ${JSON.stringify(message, null, 2)}`, 'sent');
+            } catch (error) {
+                addMessage(`❌ Invalid JSON: ${error.message}`, 'error');
+            }
+        }
+
+        function sendQuickMessage(type) {
+            document.getElementById('messageType').value = type;
+            updateMessageTemplate();
+            
+            setTimeout(() => {
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                    sendMessage();
+                } else {
+                    addMessage('❌ Please connect first', 'error');
+                }
+            }, 100);
+        }
+
+        function updateStatus(type, text) {
+            const status = document.getElementById('connectionStatus');
+            status.className = `status ${type}`;
+            status.textContent = text;
+        }
+
+        function addMessage(text, type = 'info') {
+            const log = document.getElementById('messageLog');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerHTML = `<small>[${new Date().toLocaleTimeString()}]</small><br>${text.replace(/\n/g, '<br>')}`;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+            messageCount++;
+        }
+
+        function clearMessages() {
+            document.getElementById('messageLog').innerHTML = '';
+            messageCount = 0;
+            addMessage('Message log cleared', 'info');
+        }
+
+        // Initialize with default template
+        updateMessageTemplate();
+
+        // Auto-focus token field if empty
+        window.onload = function() {
+            const tokenField = document.getElementById('jwtToken');
+            if (!tokenField.value.trim()) {
+                tokenField.focus();
+            }
+        };
+    </script>
+</body>
+</html>
