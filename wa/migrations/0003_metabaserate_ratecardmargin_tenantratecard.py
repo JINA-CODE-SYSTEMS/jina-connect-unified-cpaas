@@ -5,86 +5,219 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more'),
-        ('wa', '0002_add_number_to_watemplate'),
+        ("tenants", "0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more"),
+        ("wa", "0002_add_number_to_watemplate"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='MetaBaseRate',
+            name="MetaBaseRate",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('destination_country', models.CharField(db_index=True, help_text='ISO 3166-1 alpha-2 country code (e.g. IN, US, BR)', max_length=2)),
-                ('message_type', models.CharField(choices=[('MARKETING', 'Marketing'), ('UTILITY', 'Utility'), ('AUTHENTICATION', 'Authentication')], db_index=True, max_length=20)),
-                ('rate', models.DecimalField(decimal_places=6, help_text='Meta base rate in USD', max_digits=12)),
-                ('effective_from', models.DateField(help_text='Start of the Meta pricing window (monthly)')),
-                ('effective_to', models.DateField(blank=True, help_text='End of the pricing window. NULL = currently active.', null=True)),
-                ('is_current', models.BooleanField(db_index=True, default=True, help_text='Whether this is the active rate for this country/type combo')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "destination_country",
+                    models.CharField(
+                        db_index=True, help_text="ISO 3166-1 alpha-2 country code (e.g. IN, US, BR)", max_length=2
+                    ),
+                ),
+                (
+                    "message_type",
+                    models.CharField(
+                        choices=[
+                            ("MARKETING", "Marketing"),
+                            ("UTILITY", "Utility"),
+                            ("AUTHENTICATION", "Authentication"),
+                        ],
+                        db_index=True,
+                        max_length=20,
+                    ),
+                ),
+                ("rate", models.DecimalField(decimal_places=6, help_text="Meta base rate in USD", max_digits=12)),
+                ("effective_from", models.DateField(help_text="Start of the Meta pricing window (monthly)")),
+                (
+                    "effective_to",
+                    models.DateField(
+                        blank=True, help_text="End of the pricing window. NULL = currently active.", null=True
+                    ),
+                ),
+                (
+                    "is_current",
+                    models.BooleanField(
+                        db_index=True,
+                        default=True,
+                        help_text="Whether this is the active rate for this country/type combo",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Meta Base Rate',
-                'verbose_name_plural': 'Meta Base Rates',
-                'ordering': ['destination_country', 'message_type', '-effective_from'],
-                'indexes': [models.Index(fields=['destination_country', 'message_type', 'is_current'], name='idx_meta_rate_current_lookup')],
-                'constraints': [models.UniqueConstraint(fields=('destination_country', 'message_type', 'effective_from'), name='uq_meta_rate_country_type_effective')],
+                "verbose_name": "Meta Base Rate",
+                "verbose_name_plural": "Meta Base Rates",
+                "ordering": ["destination_country", "message_type", "-effective_from"],
+                "indexes": [
+                    models.Index(
+                        fields=["destination_country", "message_type", "is_current"],
+                        name="idx_meta_rate_current_lookup",
+                    )
+                ],
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("destination_country", "message_type", "effective_from"),
+                        name="uq_meta_rate_country_type_effective",
+                    )
+                ],
             },
         ),
         migrations.CreateModel(
-            name='RateCardMargin',
+            name="RateCardMargin",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('destination_country', models.CharField(blank=True, help_text='NULL = applies to all countries', max_length=2, null=True)),
-                ('message_type', models.CharField(blank=True, choices=[('MARKETING', 'Marketing'), ('UTILITY', 'Utility'), ('AUTHENTICATION', 'Authentication')], help_text='NULL = applies to all message types', max_length=20, null=True)),
-                ('margin_percent', models.DecimalField(decimal_places=2, help_text='Margin percentage applied on top of (base_rate × FX). e.g. 15.00 = 15%', max_digits=6)),
-                ('tenant', models.ForeignKey(blank=True, help_text='NULL = applies globally', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='rate_card_margins', to='tenants.tenant')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "destination_country",
+                    models.CharField(blank=True, help_text="NULL = applies to all countries", max_length=2, null=True),
+                ),
+                (
+                    "message_type",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("MARKETING", "Marketing"),
+                            ("UTILITY", "Utility"),
+                            ("AUTHENTICATION", "Authentication"),
+                        ],
+                        help_text="NULL = applies to all message types",
+                        max_length=20,
+                        null=True,
+                    ),
+                ),
+                (
+                    "margin_percent",
+                    models.DecimalField(
+                        decimal_places=2,
+                        help_text="Margin percentage applied on top of (base_rate × FX). e.g. 15.00 = 15%",
+                        max_digits=6,
+                    ),
+                ),
+                (
+                    "tenant",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="NULL = applies globally",
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="rate_card_margins",
+                        to="tenants.tenant",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Rate Card Margin',
-                'verbose_name_plural': 'Rate Card Margins',
-                'ordering': ['tenant', 'destination_country', 'message_type'],
-                'constraints': [models.UniqueConstraint(fields=('tenant', 'destination_country', 'message_type'), name='uq_margin_tenant_country_type')],
+                "verbose_name": "Rate Card Margin",
+                "verbose_name_plural": "Rate Card Margins",
+                "ordering": ["tenant", "destination_country", "message_type"],
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("tenant", "destination_country", "message_type"), name="uq_margin_tenant_country_type"
+                    )
+                ],
             },
         ),
         migrations.CreateModel(
-            name='TenantRateCard',
+            name="TenantRateCard",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('destination_country', models.CharField(db_index=True, help_text='ISO 3166-1 alpha-2 country code', max_length=2)),
-                ('message_type', models.CharField(choices=[('MARKETING', 'Marketing'), ('UTILITY', 'Utility'), ('AUTHENTICATION', 'Authentication')], db_index=True, max_length=20)),
-                ('meta_base_rate', models.DecimalField(decimal_places=6, help_text='Meta base rate in USD at generation time', max_digits=12)),
-                ('fx_rate', models.DecimalField(decimal_places=6, help_text='USD → wallet-currency exchange rate used', max_digits=12)),
-                ('margin_percent', models.DecimalField(decimal_places=2, help_text='Margin % applied', max_digits=6)),
-                ('reference_rate', models.DecimalField(decimal_places=6, help_text='Final rate shown to tenant (wallet currency)', max_digits=12)),
-                ('wallet_currency', models.CharField(default='USD', help_text='Tenant wallet currency code (ISO 4217)', max_length=3)),
-                ('effective_from', models.DateField(help_text='Start of the rate period (monthly)')),
-                ('last_updated_at', models.DateTimeField(auto_now=True, help_text='When this row was last recomputed')),
-                ('previous_rate', models.DecimalField(blank=True, decimal_places=6, help_text='Previous period reference_rate for change detection', max_digits=12, null=True)),
-                ('is_custom', models.BooleanField(default=False, help_text='True if this rate was manually set, bypassing formula')),
-                ('tenant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='rate_cards', to='tenants.tenant')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "destination_country",
+                    models.CharField(db_index=True, help_text="ISO 3166-1 alpha-2 country code", max_length=2),
+                ),
+                (
+                    "message_type",
+                    models.CharField(
+                        choices=[
+                            ("MARKETING", "Marketing"),
+                            ("UTILITY", "Utility"),
+                            ("AUTHENTICATION", "Authentication"),
+                        ],
+                        db_index=True,
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "meta_base_rate",
+                    models.DecimalField(
+                        decimal_places=6, help_text="Meta base rate in USD at generation time", max_digits=12
+                    ),
+                ),
+                (
+                    "fx_rate",
+                    models.DecimalField(
+                        decimal_places=6, help_text="USD → wallet-currency exchange rate used", max_digits=12
+                    ),
+                ),
+                ("margin_percent", models.DecimalField(decimal_places=2, help_text="Margin % applied", max_digits=6)),
+                (
+                    "reference_rate",
+                    models.DecimalField(
+                        decimal_places=6, help_text="Final rate shown to tenant (wallet currency)", max_digits=12
+                    ),
+                ),
+                (
+                    "wallet_currency",
+                    models.CharField(default="USD", help_text="Tenant wallet currency code (ISO 4217)", max_length=3),
+                ),
+                ("effective_from", models.DateField(help_text="Start of the rate period (monthly)")),
+                ("last_updated_at", models.DateTimeField(auto_now=True, help_text="When this row was last recomputed")),
+                (
+                    "previous_rate",
+                    models.DecimalField(
+                        blank=True,
+                        decimal_places=6,
+                        help_text="Previous period reference_rate for change detection",
+                        max_digits=12,
+                        null=True,
+                    ),
+                ),
+                (
+                    "is_custom",
+                    models.BooleanField(
+                        default=False, help_text="True if this rate was manually set, bypassing formula"
+                    ),
+                ),
+                (
+                    "tenant",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name="rate_cards", to="tenants.tenant"
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Tenant Rate Card',
-                'verbose_name_plural': 'Tenant Rate Cards',
-                'ordering': ['tenant', 'destination_country', 'message_type'],
-                'indexes': [models.Index(fields=['tenant', 'effective_from'], name='idx_rate_card_tenant_period'), models.Index(fields=['tenant', 'destination_country', 'message_type'], name='idx_rate_card_lookup')],
-                'constraints': [models.UniqueConstraint(fields=('tenant', 'destination_country', 'message_type', 'effective_from'), name='uq_tenant_rate_card_entry')],
+                "verbose_name": "Tenant Rate Card",
+                "verbose_name_plural": "Tenant Rate Cards",
+                "ordering": ["tenant", "destination_country", "message_type"],
+                "indexes": [
+                    models.Index(fields=["tenant", "effective_from"], name="idx_rate_card_tenant_period"),
+                    models.Index(fields=["tenant", "destination_country", "message_type"], name="idx_rate_card_lookup"),
+                ],
+                "constraints": [
+                    models.UniqueConstraint(
+                        fields=("tenant", "destination_country", "message_type", "effective_from"),
+                        name="uq_tenant_rate_card_entry",
+                    )
+                ],
             },
         ),
     ]

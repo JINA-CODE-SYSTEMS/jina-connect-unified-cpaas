@@ -15,8 +15,11 @@ User = get_user_model()
 
 def _make_user(username, email, mobile, **kwargs):
     return User.objects.create_user(
-        username=username, email=email, mobile=mobile,
-        password="testpass123", **kwargs,
+        username=username,
+        email=email,
+        mobile=mobile,
+        password="testpass123",
+        **kwargs,
     )
 
 
@@ -34,10 +37,16 @@ class MarkAsReadTestBase(TestCase):
         cls.agent = _make_user("read_agent", "read_agent@t.com", "+910000011112")
 
         TenantUser.objects.create(
-            user=cls.owner, tenant=cls.tenant, role=cls.owner_role, is_active=True,
+            user=cls.owner,
+            tenant=cls.tenant,
+            role=cls.owner_role,
+            is_active=True,
         )
         TenantUser.objects.create(
-            user=cls.agent, tenant=cls.tenant, role=cls.agent_role, is_active=True,
+            user=cls.agent,
+            tenant=cls.tenant,
+            role=cls.agent_role,
+            is_active=True,
         )
 
     def _client(self, user):
@@ -65,9 +74,7 @@ class SingleMarkAsReadTests(MarkAsReadTestBase):
         msg = self._create_message()
         self.assertFalse(msg.is_read)
 
-        resp = self._client(self.owner).post(
-            f"/team-inbox/api/messages/{msg.pk}/mark_as_read/"
-        )
+        resp = self._client(self.owner).post(f"/team-inbox/api/messages/{msg.pk}/mark_as_read/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["status"], "Message marked as read")
 
@@ -79,32 +86,24 @@ class SingleMarkAsReadTests(MarkAsReadTestBase):
     def test_already_read_returns_already_status(self):
         """Already-read message returns 'already read' without re-updating."""
         msg = self._create_message(is_read=True)
-        resp = self._client(self.owner).post(
-            f"/team-inbox/api/messages/{msg.pk}/mark_as_read/"
-        )
+        resp = self._client(self.owner).post(f"/team-inbox/api/messages/{msg.pk}/mark_as_read/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["status"], "Message already read")
 
     def test_outgoing_message_rejected(self):
         """Outgoing messages cannot be marked as read → 400."""
         msg = self._create_message(direction="OUTGOING")
-        resp = self._client(self.owner).post(
-            f"/team-inbox/api/messages/{msg.pk}/mark_as_read/"
-        )
+        resp = self._client(self.owner).post(f"/team-inbox/api/messages/{msg.pk}/mark_as_read/")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("incoming", resp.data["status"].lower())
 
     def test_nonexistent_message_returns_404(self):
-        resp = self._client(self.owner).post(
-            "/team-inbox/api/messages/999999/mark_as_read/"
-        )
+        resp = self._client(self.owner).post("/team-inbox/api/messages/999999/mark_as_read/")
         self.assertEqual(resp.status_code, 404)
 
     def test_unauthenticated_returns_401(self):
         msg = self._create_message()
-        resp = APIClient().post(
-            f"/team-inbox/api/messages/{msg.pk}/mark_as_read/"
-        )
+        resp = APIClient().post(f"/team-inbox/api/messages/{msg.pk}/mark_as_read/")
         self.assertEqual(resp.status_code, 401)
 
 

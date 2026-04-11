@@ -1,18 +1,16 @@
 from django.apps import apps
+
 # Register your models here.
 from django.contrib import admin, messages
-from wa.models import (SubscriptionStatus, WASubscription, WATemplate,
-                       WAWebhookEvent, WebhookEventType)
+
+from wa.models import SubscriptionStatus, WASubscription, WATemplate, WAWebhookEvent, WebhookEventType
 
 # ── WATemplate Admin ─────────────────────────────────────────────────────
 
+
 @admin.register(WATemplate)
 class WATemplateAdmin(admin.ModelAdmin):
-    list_display = [
-        f.name
-        for f in WATemplate._meta.fields
-        if f.name not in ("description", "vertical")
-    ]
+    list_display = [f.name for f in WATemplate._meta.fields if f.name not in ("description", "vertical")]
     list_filter = ("status", "category", "template_type", "wa_app")
     search_fields = ("element_name", "meta_template_id", "bsp_template_id")
     readonly_fields = ("meta_template_id", "bsp_template_id")
@@ -20,12 +18,19 @@ class WATemplateAdmin(admin.ModelAdmin):
 
 # ── WASubscription Admin ─────────────────────────────────────────────────
 
+
 @admin.register(WASubscription)
 class WASubscriptionAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "wa_app", "webhook_url", "status",
-        "bsp_subscription_id", "error_message", "last_event_at",
-        "is_active", "created_at",
+        "id",
+        "wa_app",
+        "webhook_url",
+        "status",
+        "bsp_subscription_id",
+        "error_message",
+        "last_event_at",
+        "is_active",
+        "created_at",
     )
     list_filter = ("status", "is_active", "wa_app")
     search_fields = ("webhook_url", "bsp_subscription_id")
@@ -43,9 +48,6 @@ class WASubscriptionAdmin(admin.ModelAdmin):
 
         This is the admin equivalent of the /refresh/ API endpoint.
         """
-        from django.conf import settings as django_settings
-        from wa.adapters import get_bsp_adapter
-        from wa.models import WAApp
 
         # Collect unique wa_apps from selected subscriptions
         wa_app_ids = set(queryset.values_list("wa_app_id", flat=True))
@@ -54,6 +56,7 @@ class WASubscriptionAdmin(admin.ModelAdmin):
     def _do_refresh_for_apps(self, request, wa_app_ids):
         """Shared logic: purge + re-create subscriptions for given app IDs."""
         from django.conf import settings as django_settings
+
         from wa.adapters import get_bsp_adapter
         from wa.models import WAApp
 
@@ -76,8 +79,7 @@ class WASubscriptionAdmin(admin.ModelAdmin):
             if not purge_result.success:
                 self.message_user(
                     request,
-                    f"❌ App {wa_app.pk} (tenant {wa_app.tenant_id}): "
-                    f"purge failed — {purge_result.error_message}",
+                    f"❌ App {wa_app.pk} (tenant {wa_app.tenant_id}): purge failed — {purge_result.error_message}",
                     messages.ERROR,
                 )
                 fail_count += 1
@@ -123,8 +125,7 @@ class WASubscriptionAdmin(admin.ModelAdmin):
                 sub.save(update_fields=["status", "error_message"])
                 self.message_user(
                     request,
-                    f"❌ App {wa_app.pk} (tenant {wa_app.tenant_id}): "
-                    f"exception — {exc}",
+                    f"❌ App {wa_app.pk} (tenant {wa_app.tenant_id}): exception — {exc}",
                     messages.ERROR,
                 )
                 fail_count += 1
@@ -132,19 +133,25 @@ class WASubscriptionAdmin(admin.ModelAdmin):
         if success_count:
             self.message_user(
                 request,
-                f"Done: {success_count} app(s) refreshed successfully, "
-                f"{fail_count} failed.",
+                f"Done: {success_count} app(s) refreshed successfully, {fail_count} failed.",
                 messages.SUCCESS if fail_count == 0 else messages.WARNING,
             )
 
 
 # ── WAWebhookEvent Admin ──────────────────────────────────────────────────
 
+
 @admin.register(WAWebhookEvent)
 class WAWebhookEventAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "wa_app", "event_type", "bsp", "is_processed",
-        "retry_count", "error_message_short", "created_at",
+        "id",
+        "wa_app",
+        "event_type",
+        "bsp",
+        "is_processed",
+        "retry_count",
+        "error_message_short",
+        "created_at",
     )
     list_filter = ("event_type", "bsp", "is_processed", "wa_app")
     search_fields = ("id", "error_message")
@@ -199,7 +206,7 @@ class WAWebhookEventAdmin(admin.ModelAdmin):
 app_models = apps.get_app_config("wa").get_models()
 
 for model in app_models:
-    
+
     class GenericAdmin(admin.ModelAdmin):
         list_display = [field.name for field in model._meta.fields]
 

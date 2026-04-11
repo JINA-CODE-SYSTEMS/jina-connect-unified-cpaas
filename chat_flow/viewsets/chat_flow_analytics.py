@@ -11,15 +11,14 @@ Provides read-only analytics endpoints for chat flow performance:
 
 import logging
 
-from django.db.models import Avg, Case, Count, F, Q, Value, When
+from django.db.models import Avg, Count, F
 from django.db.models.functions import Extract
-from django.utils import timezone
 from rest_framework import serializers as drf_serializers
-from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
+
 from tenants.permission_classes import TenantRolePermission
 
 from ..models import ChatFlow, ChatFlowEdge, ChatFlowNode, UserChatFlowSession
@@ -41,6 +40,7 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
     GET /analytics/button-clicks/?flow_id=<id>
     GET /analytics/active-sessions/?flow_id=<id>   (flow_id optional)
     """
+
     serializer_class = drf_serializers.Serializer  # placeholder for schema generation
 
     permission_classes = [IsAuthenticated, TenantRolePermission]
@@ -58,16 +58,12 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
         """Return a tenant-scoped ChatFlow instance or raise a 400."""
         flow_id = request.query_params.get("flow_id")
         if not flow_id:
-            raise drf_serializers.ValidationError(
-                {"flow_id": "This query parameter is required."}
-            )
+            raise drf_serializers.ValidationError({"flow_id": "This query parameter is required."})
         tenant = self._get_tenant(request)
         try:
             return ChatFlow.objects.get(pk=flow_id, tenant=tenant)
         except ChatFlow.DoesNotExist:
-            raise drf_serializers.ValidationError(
-                {"flow_id": "Chat flow not found."}
-            )
+            raise drf_serializers.ValidationError({"flow_id": "Chat flow not found."})
 
     def _sessions_qs(self, flow, request):
         """Base queryset for sessions of *flow* within optional date range."""
@@ -150,21 +146,13 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
         dropped = sessions.filter(is_active=False, is_complete=False)
         total_dropped = dropped.count()
 
-        node_stats = (
-            dropped.values("current_node_id")
-            .annotate(drop_off_count=Count("id"))
-            .order_by("-drop_off_count")
-        )
+        node_stats = dropped.values("current_node_id").annotate(drop_off_count=Count("id")).order_by("-drop_off_count")
 
         nodes = [
             {
                 "node_id": row["current_node_id"],
                 "drop_off_count": row["drop_off_count"],
-                "drop_off_pct": round(
-                    (row["drop_off_count"] / total_dropped) * 100, 2
-                )
-                if total_dropped
-                else 0.0,
+                "drop_off_pct": round((row["drop_off_count"] / total_dropped) * 100, 2) if total_dropped else 0.0,
             }
             for row in node_stats
         ]
@@ -204,24 +192,16 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
         finished = sessions.filter(ended_at__isnull=False)
 
         # Overall average
-        avg_all = finished.aggregate(
-            avg_secs=Avg(
-                Extract(F("ended_at") - F("started_at"), "epoch")
-            )
-        )["avg_secs"]
+        avg_all = finished.aggregate(avg_secs=Avg(Extract(F("ended_at") - F("started_at"), "epoch")))["avg_secs"]
 
         # Completed sessions average
         avg_completed = finished.filter(is_complete=True).aggregate(
-            avg_secs=Avg(
-                Extract(F("ended_at") - F("started_at"), "epoch")
-            )
+            avg_secs=Avg(Extract(F("ended_at") - F("started_at"), "epoch"))
         )["avg_secs"]
 
         # Abandoned sessions average
         avg_abandoned = finished.filter(is_complete=False).aggregate(
-            avg_secs=Avg(
-                Extract(F("ended_at") - F("started_at"), "epoch")
-            )
+            avg_secs=Avg(Extract(F("ended_at") - F("started_at"), "epoch"))
         )["avg_secs"]
 
         return Response(
@@ -229,12 +209,8 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
                 "flow_id": flow.pk,
                 "finished_sessions": finished.count(),
                 "avg_duration_seconds": round(avg_all, 2) if avg_all else 0.0,
-                "avg_duration_completed_seconds": (
-                    round(avg_completed, 2) if avg_completed else 0.0
-                ),
-                "avg_duration_abandoned_seconds": (
-                    round(avg_abandoned, 2) if avg_abandoned else 0.0
-                ),
+                "avg_duration_completed_seconds": (round(avg_completed, 2) if avg_completed else 0.0),
+                "avg_duration_abandoned_seconds": (round(avg_abandoned, 2) if avg_abandoned else 0.0),
             }
         )
 
@@ -277,9 +253,7 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
         flow = self._get_flow_or_400(request)
         sessions = self._sessions_qs(flow, request)
 
-        edges = ChatFlowEdge.objects.filter(flow=flow).select_related(
-            "source_node", "target_node"
-        )
+        edges = ChatFlowEdge.objects.filter(flow=flow).select_related("source_node", "target_node")
 
         # Collect all node_ids a session has ever been at.
         # Sessions that *passed through* a node ended up beyond it,
@@ -290,9 +264,7 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
         # For the MVP, we count sessions that reached each target_node_id.
         target_node_ids = [e.target_node.node_id for e in edges]
         reached_counts = (
-            sessions.filter(current_node_id__in=target_node_ids)
-            .values("current_node_id")
-            .annotate(cnt=Count("id"))
+            sessions.filter(current_node_id__in=target_node_ids).values("current_node_id").annotate(cnt=Count("id"))
         )
         reached_map = {r["current_node_id"]: r["cnt"] for r in reached_counts}
 
@@ -322,11 +294,7 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
 
         # Calculate percentages
         for btn in buttons:
-            btn["click_pct"] = (
-                round((btn["click_count"] / total_clicks) * 100, 2)
-                if total_clicks
-                else 0.0
-            )
+            btn["click_pct"] = round((btn["click_count"] / total_clicks) * 100, 2) if total_clicks else 0.0
 
         buttons.sort(key=lambda b: b["click_count"], reverse=True)
 
@@ -378,11 +346,7 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
 
         # Tenant-wide breakdown
         total = base_qs.count()
-        by_flow = (
-            base_qs.values("flow_id", "flow__name")
-            .annotate(active=Count("id"))
-            .order_by("-active")
-        )
+        by_flow = base_qs.values("flow_id", "flow__name").annotate(active=Count("id")).order_by("-active")
 
         return Response(
             {
@@ -404,12 +368,6 @@ class ChatFlowAnalyticsViewSet(GenericViewSet):
     @staticmethod
     def _terminal_node_ids(flow):
         """Return node_ids that have no outgoing edges (end nodes)."""
-        nodes_with_outgoing = set(
-            ChatFlowEdge.objects.filter(flow=flow)
-            .values_list("source_node__node_id", flat=True)
-        )
-        all_node_ids = set(
-            ChatFlowNode.objects.filter(flow=flow)
-            .values_list("node_id", flat=True)
-        )
+        nodes_with_outgoing = set(ChatFlowEdge.objects.filter(flow=flow).values_list("source_node__node_id", flat=True))
+        all_node_ids = set(ChatFlowNode.objects.filter(flow=flow).values_list("node_id", flat=True))
         return all_node_ids - nodes_with_outgoing

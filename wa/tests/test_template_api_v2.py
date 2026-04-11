@@ -23,12 +23,10 @@ REQUIRES:
     - Test creates its own tenant, user, and wa_app in setUp()
 """
 
-import json
 import uuid
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -36,12 +34,14 @@ from rest_framework.test import APIClient
 # HELPER: Test data factory
 # =============================================================================
 
+
 def create_test_tenant_and_user(username="testuser", password="TestPass123!"):
     """
     Create a test Tenant, User, and TenantUser association.
     Returns (tenant, user, token).
     """
     from django.contrib.auth import get_user_model
+
     from tenants.models import Tenant, TenantUser
 
     User = get_user_model()
@@ -63,15 +63,20 @@ def create_test_tenant_and_user(username="testuser", password="TestPass123!"):
     )
 
     from tenants.models import TenantRole
+
     owner_role = TenantRole.objects.get(tenant=tenant, slug="owner")
     TenantUser.objects.create(tenant=tenant, user=user, role=owner_role)
 
     # Get JWT token
     client = APIClient()
-    response = client.post("/token/", {
-        "username": user.username,
-        "password": password,
-    }, format="json")
+    response = client.post(
+        "/token/",
+        {
+            "username": user.username,
+            "password": password,
+        },
+        format="json",
+    )
 
     token = response.data.get("access") if response.status_code == 200 else None
     return tenant, user, token
@@ -229,6 +234,7 @@ SAMPLE_COUPON_CODE_PAYLOAD = {
 # TEST: Template CRUD Operations
 # =============================================================================
 
+
 class TemplateTestBase(TestCase):
     """
     Base test class that sets up tenant, user, WAApp, and authenticated client.
@@ -251,6 +257,7 @@ class TemplateTestBase(TestCase):
         # The mock adapter's submit_template does nothing — the template
         # stays as DRAFT / needs_sync=True (DB state from serializer.save).
         from wa.adapters.base import AdapterResult
+
         self._mock_adapter = MagicMock()
         self._mock_adapter.submit_template.return_value = AdapterResult(
             success=True, provider="mock", data={"mock": True}
@@ -382,20 +389,27 @@ class TestTemplateCreateValidation(TemplateTestBase):
 
     def test_missing_required_fields(self):
         """❌ Missing wa_app should fail."""
-        resp = self.client.post(self.list_url, {
-            "element_name": "missing_fields_" + uuid.uuid4().hex[:8],
-            "content": "Hello",
-        }, format="json")
+        resp = self.client.post(
+            self.list_url,
+            {
+                "element_name": "missing_fields_" + uuid.uuid4().hex[:8],
+                "content": "Hello",
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_empty_content_allowed(self):
         """✅ Content can be blank (some templates are header-only)."""
         resp = self.create_template(content="", header="Header Only Template")
         # This should succeed or fail based on your business rules
-        self.assertIn(resp.status_code, [
-            status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST,
-        ])
+        self.assertIn(
+            resp.status_code,
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_400_BAD_REQUEST,
+            ],
+        )
 
 
 class TestTemplateList(TemplateTestBase):
@@ -493,9 +507,13 @@ class TestTemplateUpdate(TemplateTestBase):
         create_resp = self.create_template()
         pk = create_resp.data["id"]
 
-        resp = self.client.patch(self.detail_url(pk), {
-            "content": "Updated body text with {{name}}!",
-        }, format="json")
+        resp = self.client.patch(
+            self.detail_url(pk),
+            {
+                "content": "Updated body text with {{name}}!",
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         self.assertIn("Updated body text", resp.data["content"])
         self.assertTrue(resp.data["needs_sync"])
@@ -505,9 +523,13 @@ class TestTemplateUpdate(TemplateTestBase):
         create_resp = self.create_template()
         pk = create_resp.data["id"]
 
-        resp = self.client.patch(self.detail_url(pk), {
-            "footer": "New footer text",
-        }, format="json")
+        resp = self.client.patch(
+            self.detail_url(pk),
+            {
+                "footer": "New footer text",
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data["footer"], "New footer text")
 
@@ -516,25 +538,34 @@ class TestTemplateUpdate(TemplateTestBase):
         create_resp = self.create_template()
         pk = create_resp.data["id"]
 
-        resp = self.client.patch(self.detail_url(pk), {
-            "buttons": [
-                {"type": "QUICK_REPLY", "text": "Updated Button"},
-            ],
-        }, format="json")
+        resp = self.client.patch(
+            self.detail_url(pk),
+            {
+                "buttons": [
+                    {"type": "QUICK_REPLY", "text": "Updated Button"},
+                ],
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertTrue(resp.data["needs_sync"])
 
     def test_update_nonexistent_returns_404(self):
         """❌ PATCH on non-existent template returns 404."""
-        resp = self.client.patch(self.detail_url(uuid.uuid4()), {
-            "content": "x",
-        }, format="json")
+        resp = self.client.patch(
+            self.detail_url(uuid.uuid4()),
+            {
+                "content": "x",
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
 
 # =============================================================================
 # TEST: Template Actions (sync, preview, meta-payload, categories, etc.)
 # =============================================================================
+
 
 class TestTemplateSync(TemplateTestBase):
     """Tests for POST /wa/v2/templates/{id}/sync/"""
@@ -553,6 +584,7 @@ class TestTemplateSync(TemplateTestBase):
     def test_sync_returns_502_on_adapter_failure(self):
         """\u274c Sync returns 502 when BSP adapter reports failure."""
         from wa.adapters.base import AdapterResult
+
         self._mock_adapter.submit_template.return_value = AdapterResult(
             success=False, provider="mock", error_message="BSP rejected"
         )
@@ -574,9 +606,13 @@ class TestTemplatePreview(TemplateTestBase):
         )
         pk = create_resp.data["id"]
 
-        resp = self.client.post(self.action_url(pk, "preview"), {
-            "params": {"name": "John", "code": "ABC123"},
-        }, format="json")
+        resp = self.client.post(
+            self.action_url(pk, "preview"),
+            {
+                "params": {"name": "John", "code": "ABC123"},
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertIn("John", resp.data["body"])
         self.assertIn("ABC123", resp.data["body"])
@@ -626,9 +662,7 @@ class TestTemplateMetaPayload(TemplateTestBase):
         resp = self.client.get(self.action_url(pk, "meta-payload"))
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
-        body_component = next(
-            c for c in resp.data["components"] if c["type"] == "BODY"
-        )
+        body_component = next(c for c in resp.data["components"] if c["type"] == "BODY")
         # Should have numbered placeholders
         self.assertIn("{{1}}", body_component["text"])
         self.assertIn("{{2}}", body_component["text"])
@@ -673,6 +707,7 @@ class TestTemplateLookups(TemplateTestBase):
 # TEST: Tenant Isolation
 # =============================================================================
 
+
 class TestTemplateTenantIsolation(TestCase):
     """Ensure templates from Tenant A are NOT visible to Tenant B."""
 
@@ -686,6 +721,7 @@ class TestTemplateTenantIsolation(TestCase):
     def setUp(self):
         # Mock BSP adapter for tenant isolation tests too
         from wa.adapters.base import AdapterResult
+
         self._mock_adapter = MagicMock()
         self._mock_adapter.submit_template.return_value = AdapterResult(
             success=True, provider="mock", data={"mock": True}
@@ -704,11 +740,15 @@ class TestTemplateTenantIsolation(TestCase):
         # Create template as Tenant A
         client_a = APIClient()
         client_a.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token_a}")
-        resp = client_a.post("/wa/v2/templates/", {
-            **SAMPLE_TEXT_TEMPLATE,
-            "wa_app": str(self.wa_app_a.id),
-            "element_name": "tenant_a_only_" + uuid.uuid4().hex[:8],
-        }, format="json")
+        resp = client_a.post(
+            "/wa/v2/templates/",
+            {
+                **SAMPLE_TEXT_TEMPLATE,
+                "wa_app": str(self.wa_app_a.id),
+                "element_name": "tenant_a_only_" + uuid.uuid4().hex[:8],
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         template_id = resp.data["id"]
 

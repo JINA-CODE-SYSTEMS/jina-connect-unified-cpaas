@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -27,6 +28,7 @@ class InteractiveBody(BaseModel):
 
 class InteractiveFooter(BaseModel):
     """Footer for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -42,6 +44,7 @@ class InteractiveFooter(BaseModel):
 
 class ProductAction(BaseModel):
     """Action for single product message"""
+
     catalog_id: str = Field(
         ...,
         description="Facebook catalog ID",
@@ -59,20 +62,16 @@ class ProductAction(BaseModel):
 
 class InteractiveProductContent(BaseModel):
     """Interactive single product content"""
+
     type: Literal["product"] = "product"
-    body: Optional[InteractiveBody] = Field(
-        None, description="Optional body text"
-    )
-    footer: Optional[InteractiveFooter] = Field(
-        None, description="Optional footer"
-    )
-    action: ProductAction = Field(
-        ..., description="Product action with catalog and product IDs"
-    )
+    body: Optional[InteractiveBody] = Field(None, description="Optional body text")
+    footer: Optional[InteractiveFooter] = Field(None, description="Optional footer")
+    action: ProductAction = Field(..., description="Product action with catalog and product IDs")
 
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -105,22 +104,12 @@ class InteractiveProductMessageSendRequestValidator(BaseModel):
         >>> request = InteractiveProductMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type (must be 'interactive')"
-    )
-    interactive: InteractiveProductContent = Field(
-        ..., description="Interactive single product content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    type: Literal["interactive"] = Field("interactive", description="Message type (must be 'interactive')")
+    interactive: InteractiveProductContent = Field(..., description="Interactive single product content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -129,9 +118,7 @@ class InteractiveProductMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

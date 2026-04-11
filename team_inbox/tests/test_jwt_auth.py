@@ -21,12 +21,16 @@ class AuthenticateJwtTests(TransactionTestCase):
         self.tenant = Tenant.objects.create(name="JWTTest Tenant")
         self.owner_role = TenantRole.objects.get(tenant=self.tenant, slug="owner")
         self.user = User.objects.create_user(
-            username="jwt_user", email="jwt_user@t.com",
-            mobile="+910000077771", password="testpass123",
+            username="jwt_user",
+            email="jwt_user@t.com",
+            mobile="+910000077771",
+            password="testpass123",
         )
         TenantUser.objects.create(
-            user=self.user, tenant=self.tenant,
-            role=self.owner_role, is_active=True,
+            user=self.user,
+            tenant=self.tenant,
+            role=self.owner_role,
+            is_active=True,
         )
         self.manager = WebSocketSecurityManager()
         self.token = str(AccessToken.for_user(self.user))
@@ -82,6 +86,7 @@ class AuthenticateJwtTests(TransactionTestCase):
     def test_expired_token_returns_none(self):
         """Expired token returns None."""
         from datetime import timedelta
+
         token = AccessToken.for_user(self.user)
         token.set_exp(lifetime=timedelta(seconds=-1))
         user = async_to_sync(self.manager.authenticate_jwt)(self._scope(str(token), "header"))

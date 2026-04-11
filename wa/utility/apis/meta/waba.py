@@ -18,11 +18,9 @@ class WABAAPI(WAAPI):
 
     waba_id: Optional[str] = None
 
-
     @property
     def _get_waba_details(self):
         return f"{self.BASE_URL}{self.waba_id}?fields=name,status,currency,country,business_verification_status,onboarding_status,marketing_messages_onboarding_status"
-        
 
     def get_waba_details(self):
         url = self._get_waba_details
@@ -32,5 +30,3 @@ class WABAAPI(WAAPI):
             "headers": self.headers,
         }
         return self.make_request(request_data)
-    
-    

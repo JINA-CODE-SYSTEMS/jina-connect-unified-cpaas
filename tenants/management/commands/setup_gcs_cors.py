@@ -24,10 +24,7 @@ class Command(BaseCommand):
             "--origins",
             nargs="*",
             default=None,
-            help=(
-                "Allowed origins (e.g. https://app.jinaconnect.com). "
-                "Defaults to ['*'] (all origins)."
-            ),
+            help=("Allowed origins (e.g. https://app.jinaconnect.com). Defaults to ['*'] (all origins)."),
         )
         parser.add_argument(
             "--dry-run",
@@ -39,8 +36,7 @@ class Command(BaseCommand):
         backend = getattr(settings, "STORAGE_BACKEND", "local")
         if backend != "gcs":
             raise CommandError(
-                f"STORAGE_BACKEND is '{backend}', not 'gcs'. "
-                "This command only applies to Google Cloud Storage."
+                f"STORAGE_BACKEND is '{backend}', not 'gcs'. This command only applies to Google Cloud Storage."
             )
 
         bucket_name = getattr(settings, "GS_BUCKET_NAME", None)

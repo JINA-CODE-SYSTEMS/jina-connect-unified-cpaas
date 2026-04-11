@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('wa', '0004_add_tenant_media_and_card_media_to_watemplate'),
+        ("wa", "0004_add_tenant_media_and_card_media_to_watemplate"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='watemplate',
-            name='example_media_url',
-            field=models.URLField(blank=True, help_text='Example media URL for approval', max_length=1024, null=True),
+            model_name="watemplate",
+            name="example_media_url",
+            field=models.URLField(blank=True, help_text="Example media URL for approval", max_length=1024, null=True),
         ),
     ]

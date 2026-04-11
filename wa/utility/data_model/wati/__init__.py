@@ -12,14 +12,14 @@ Modules:
 """
 
 from wa.utility.data_model.wati.message_input import WATIMessageInput
-from wa.utility.data_model.wati.session_message import (SessionMessageBase,
-                                                        TextSessionMessage)
-from wa.utility.data_model.wati.template_input import (WATITemplateButton,
-                                                       WATITemplateCustomParam,
-                                                       WATITemplateHeader,
-                                                       WATITemplateInput)
-from wa.utility.data_model.wati.template_message import (
-    TemplateMessageParameter, TemplateMessagePayload)
+from wa.utility.data_model.wati.session_message import SessionMessageBase, TextSessionMessage
+from wa.utility.data_model.wati.template_input import (
+    WATITemplateButton,
+    WATITemplateCustomParam,
+    WATITemplateHeader,
+    WATITemplateInput,
+)
+from wa.utility.data_model.wati.template_message import TemplateMessageParameter, TemplateMessagePayload
 from wa.utility.data_model.wati.webhook_event import WATIWebhookEvent
 
 __all__ = [

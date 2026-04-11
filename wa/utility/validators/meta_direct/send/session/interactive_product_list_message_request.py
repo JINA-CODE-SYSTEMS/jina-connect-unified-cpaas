@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class TextHeader(BaseModel):
     """Text header for product list message"""
+
     type: Literal["text"] = "text"
     text: str = Field(
         ...,
@@ -33,6 +34,7 @@ class TextHeader(BaseModel):
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -43,6 +45,7 @@ class InteractiveBody(BaseModel):
 
 class InteractiveFooter(BaseModel):
     """Footer for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -58,6 +61,7 @@ class InteractiveFooter(BaseModel):
 
 class ProductItem(BaseModel):
     """A product item in a section"""
+
     product_retailer_id: str = Field(
         ...,
         description="Product retailer ID from the catalog",
@@ -66,6 +70,7 @@ class ProductItem(BaseModel):
 
 class ProductSection(BaseModel):
     """A section in the product list"""
+
     title: Optional[str] = Field(
         None,
         max_length=24,
@@ -80,6 +85,7 @@ class ProductSection(BaseModel):
 
 class ProductListAction(BaseModel):
     """Action for product list interactive message"""
+
     catalog_id: str = Field(
         ...,
         description="Facebook catalog ID",
@@ -94,20 +100,14 @@ class ProductListAction(BaseModel):
     @model_validator(mode="after")
     def validate_sections(self):
         # Total products across all sections cannot exceed 30
-        total_products = sum(
-            len(section.product_items) for section in self.sections
-        )
+        total_products = sum(len(section.product_items) for section in self.sections)
         if total_products > 30:
-            raise ValueError(
-                f"Total products across all sections cannot exceed 30, got {total_products}"
-            )
+            raise ValueError(f"Total products across all sections cannot exceed 30, got {total_products}")
         # If multiple sections, each should have a title
         if len(self.sections) > 1:
             for i, section in enumerate(self.sections):
                 if not section.title:
-                    raise ValueError(
-                        f"Section {i + 1} should have a title when multiple sections are present"
-                    )
+                    raise ValueError(f"Section {i + 1} should have a title when multiple sections are present")
         return self
 
 
@@ -118,10 +118,9 @@ class ProductListAction(BaseModel):
 
 class InteractiveProductListContent(BaseModel):
     """Interactive product list content"""
+
     type: Literal["product_list"] = "product_list"
-    header: TextHeader = Field(
-        ..., description="Header (required for product list)"
-    )
+    header: TextHeader = Field(..., description="Header (required for product list)")
     body: InteractiveBody = Field(..., description="Message body (required)")
     footer: Optional[InteractiveFooter] = Field(None, description="Optional footer")
     action: ProductListAction = Field(..., description="Product list action")
@@ -129,6 +128,7 @@ class InteractiveProductListContent(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -170,22 +170,12 @@ class InteractiveProductListMessageSendRequestValidator(BaseModel):
         >>> request = InteractiveProductListMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type (must be 'interactive')"
-    )
-    interactive: InteractiveProductListContent = Field(
-        ..., description="Interactive product list content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    type: Literal["interactive"] = Field("interactive", description="Message type (must be 'interactive')")
+    interactive: InteractiveProductListContent = Field(..., description="Interactive product list content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -194,9 +184,7 @@ class InteractiveProductListMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

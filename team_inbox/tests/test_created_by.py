@@ -21,26 +21,37 @@ class CreatedByPropertyTests(TestCase):
         cls.tenant = Tenant.objects.create(name="CreatedByTest Tenant")
         cls.owner_role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.user = User.objects.create_user(
-            username="cb_user", email="cb_user@t.com",
-            mobile="+910000055551", password="testpass123",
-            first_name="Jane", last_name="Doe",
+            username="cb_user",
+            email="cb_user@t.com",
+            mobile="+910000055551",
+            password="testpass123",
+            first_name="Jane",
+            last_name="Doe",
         )
         cls.tenant_user = TenantUser.objects.create(
-            user=cls.user, tenant=cls.tenant,
-            role=cls.owner_role, is_active=True,
+            user=cls.user,
+            tenant=cls.tenant,
+            role=cls.owner_role,
+            is_active=True,
         )
 
         cls.contact_full = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+910000055552",
-            first_name="Alice", last_name="Smith",
+            tenant=cls.tenant,
+            phone="+910000055552",
+            first_name="Alice",
+            last_name="Smith",
         )
         cls.contact_first_only = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+910000055553",
-            first_name="Bob", last_name="",
+            tenant=cls.tenant,
+            phone="+910000055553",
+            first_name="Bob",
+            last_name="",
         )
         cls.contact_no_name = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+910000055554",
-            first_name="", last_name="",
+            tenant=cls.tenant,
+            phone="+910000055554",
+            first_name="",
+            last_name="",
         )
 
     def _msg(self, author, contact=None, tenant_user=None, **kw):

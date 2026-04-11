@@ -9,9 +9,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient, APIRequestFactory
 
 from chat_flow.models import ChatFlow, ChatFlowEdge, ChatFlowNode
-from chat_flow.serializers import (ChatFlowEdgeSerializer,
-                                   ChatFlowNodeSerializer,
-                                   ChatFlowSerializer)
+from chat_flow.serializers import ChatFlowEdgeSerializer, ChatFlowNodeSerializer, ChatFlowSerializer
 from chat_flow.viewsets import ChatFlowEdgeViewSet, ChatFlowNodeViewSet
 from tenants.models import Tenant, TenantRole, TenantUser, TenantWAApp
 from wa.models import WATemplate
@@ -23,12 +21,16 @@ def _make_wa_template(tenant, element_name):
     """Helper to create a minimal WATemplate for a tenant."""
     wa_app = TenantWAApp.objects.create(
         tenant=tenant,
-        app_name=f"app_{element_name}", app_id=f"id_{element_name}",
-        app_secret="secret", wa_number="+14155550100",
+        app_name=f"app_{element_name}",
+        app_id=f"id_{element_name}",
+        app_secret="secret",
+        wa_number="+14155550100",
     )
     return WATemplate.objects.create(
         element_name=element_name,
-        wa_app=wa_app, status="APPROVED", category="MARKETING",
+        wa_app=wa_app,
+        status="APPROVED",
+        category="MARKETING",
     )
 
 
@@ -41,55 +43,85 @@ class ChatFlowTenantIsolationTests(TestCase):
         cls.tenant_a = Tenant.objects.create(name="Flow Tenant A")
         cls.role_a = TenantRole.objects.get(tenant=cls.tenant_a, slug="owner")
         cls.user_a = User.objects.create_user(
-            username="flow_a", email="flow_a@t.com",
-            mobile="+910000088801", password="testpass123",
+            username="flow_a",
+            email="flow_a@t.com",
+            mobile="+910000088801",
+            password="testpass123",
         )
         TenantUser.objects.create(
-            user=cls.user_a, tenant=cls.tenant_a,
-            role=cls.role_a, is_active=True,
+            user=cls.user_a,
+            tenant=cls.tenant_a,
+            role=cls.role_a,
+            is_active=True,
         )
         cls.flow_a = ChatFlow.objects.create(
-            name="Flow A", tenant=cls.tenant_a, flow_data={"nodes": [], "edges": []},
+            name="Flow A",
+            tenant=cls.tenant_a,
+            flow_data={"nodes": [], "edges": []},
         )
         cls.template_a = _make_wa_template(cls.tenant_a, "tmpl_a")
         cls.node_a1 = ChatFlowNode.objects.create(
-            name="Node A1", flow=cls.flow_a, node_id="a1",
-            position_x=0, position_y=0, template=cls.template_a,
+            name="Node A1",
+            flow=cls.flow_a,
+            node_id="a1",
+            position_x=0,
+            position_y=0,
+            template=cls.template_a,
         )
         cls.node_a2 = ChatFlowNode.objects.create(
-            name="Node A2", flow=cls.flow_a, node_id="a2",
-            position_x=100, position_y=0, template=cls.template_a,
+            name="Node A2",
+            flow=cls.flow_a,
+            node_id="a2",
+            position_x=100,
+            position_y=0,
+            template=cls.template_a,
         )
         cls.edge_a = ChatFlowEdge.objects.create(
-            name="Edge A", flow=cls.flow_a, edge_id="ea1",
-            source_node=cls.node_a1, target_node=cls.node_a2,
-            button_text="Next", button_type="QUICK_REPLY",
+            name="Edge A",
+            flow=cls.flow_a,
+            edge_id="ea1",
+            source_node=cls.node_a1,
+            target_node=cls.node_a2,
+            button_text="Next",
+            button_type="QUICK_REPLY",
         )
 
         # ── Tenant B ─────────────────────────────────────────
         cls.tenant_b = Tenant.objects.create(name="Flow Tenant B")
         cls.role_b = TenantRole.objects.get(tenant=cls.tenant_b, slug="owner")
         cls.user_b = User.objects.create_user(
-            username="flow_b", email="flow_b@t.com",
-            mobile="+910000088802", password="testpass123",
+            username="flow_b",
+            email="flow_b@t.com",
+            mobile="+910000088802",
+            password="testpass123",
         )
         TenantUser.objects.create(
-            user=cls.user_b, tenant=cls.tenant_b,
-            role=cls.role_b, is_active=True,
+            user=cls.user_b,
+            tenant=cls.tenant_b,
+            role=cls.role_b,
+            is_active=True,
         )
         cls.flow_b = ChatFlow.objects.create(
-            name="Flow B", tenant=cls.tenant_b, flow_data={"nodes": [], "edges": []},
+            name="Flow B",
+            tenant=cls.tenant_b,
+            flow_data={"nodes": [], "edges": []},
         )
         cls.template_b = _make_wa_template(cls.tenant_b, "tmpl_b")
         cls.node_b = ChatFlowNode.objects.create(
-            name="Node B1", flow=cls.flow_b, node_id="b1",
-            position_x=0, position_y=0, template=cls.template_b,
+            name="Node B1",
+            flow=cls.flow_b,
+            node_id="b1",
+            position_x=0,
+            position_y=0,
+            template=cls.template_b,
         )
 
         # ── Superuser ────────────────────────────────────────
         cls.superuser = User.objects.create_superuser(
-            username="flow_su", email="flow_su@t.com",
-            mobile="+910000088803", password="testpass123",
+            username="flow_su",
+            email="flow_su@t.com",
+            mobile="+910000088803",
+            password="testpass123",
         )
 
     def _get_viewset_queryset(self, viewset_cls, user, query_params=None):
@@ -98,6 +130,7 @@ class ChatFlowTenantIsolationTests(TestCase):
         django_request = factory.get("/", query_params or {})
         django_request.user = user
         from rest_framework.request import Request
+
         drf_request = Request(django_request)
         drf_request.user = user
         view = viewset_cls()
@@ -133,7 +166,8 @@ class ChatFlowTenantIsolationTests(TestCase):
     def test_node_flow_id_filter(self):
         """flow_id query param filters within own tenant."""
         qs = self._get_viewset_queryset(
-            ChatFlowNodeViewSet, self.user_a,
+            ChatFlowNodeViewSet,
+            self.user_a,
             {"flow_id": str(self.flow_a.id)},
         )
         ids = set(qs.values_list("id", flat=True))
@@ -162,7 +196,8 @@ class ChatFlowTenantIsolationTests(TestCase):
     def test_edge_flow_id_filter(self):
         """flow_id query param filters edges within own tenant."""
         qs = self._get_viewset_queryset(
-            ChatFlowEdgeViewSet, self.user_a,
+            ChatFlowEdgeViewSet,
+            self.user_a,
             {"flow_id": str(self.flow_a.id)},
         )
         ids = set(qs.values_list("id", flat=True))
@@ -183,7 +218,8 @@ class ChatFlowTenantIsolationTests(TestCase):
         client.force_authenticate(user=self.user_b)
         resp = client.patch(
             f"/chat-flow/nodes/{self.node_a1.id}/",
-            {"name": "Hacked"}, format="json",
+            {"name": "Hacked"},
+            format="json",
         )
         self.assertEqual(resp.status_code, 404)
 
@@ -216,22 +252,31 @@ class SlugRelatedFieldSourceTests(TestCase):
         cls.tenant = Tenant.objects.create(name="Slug Tenant")
         cls.role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.user = User.objects.create_user(
-            username="slug_u", email="slug_u@t.com",
-            mobile="+910000088810", password="testpass123",
+            username="slug_u",
+            email="slug_u@t.com",
+            mobile="+910000088810",
+            password="testpass123",
         )
         TenantUser.objects.create(
-            user=cls.user, tenant=cls.tenant,
-            role=cls.role, is_active=True,
+            user=cls.user,
+            tenant=cls.tenant,
+            role=cls.role,
+            is_active=True,
         )
         cls.template = _make_wa_template(cls.tenant, "slug_tmpl")
         cls.flow = ChatFlow.objects.create(
-            name="Slug Flow", tenant=cls.tenant,
+            name="Slug Flow",
+            tenant=cls.tenant,
             flow_data={"nodes": [], "edges": []},
             start_template=cls.template,
         )
         cls.node = ChatFlowNode.objects.create(
-            name="Slug Node", flow=cls.flow, node_id="s1",
-            position_x=0, position_y=0, template=cls.template,
+            name="Slug Node",
+            flow=cls.flow,
+            node_id="s1",
+            position_x=0,
+            position_y=0,
+            template=cls.template,
         )
 
     def test_chatflow_serializer_start_template_name(self):
@@ -242,7 +287,8 @@ class SlugRelatedFieldSourceTests(TestCase):
     def test_chatflow_serializer_null_start_template(self):
         """start_template_name is None when start_template is null."""
         flow = ChatFlow.objects.create(
-            name="No Start", tenant=self.tenant,
+            name="No Start",
+            tenant=self.tenant,
             flow_data={"nodes": [], "edges": []},
         )
         data = ChatFlowSerializer(flow).data
@@ -268,30 +314,47 @@ class EdgeSlugRelatedFieldTests(TestCase):
         cls.tenant = Tenant.objects.create(name="EdgeSlug Tenant")
         cls.role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.user = User.objects.create_user(
-            username="eslug_u", email="eslug_u@t.com",
-            mobile="+910000088820", password="testpass123",
+            username="eslug_u",
+            email="eslug_u@t.com",
+            mobile="+910000088820",
+            password="testpass123",
         )
         TenantUser.objects.create(
-            user=cls.user, tenant=cls.tenant,
-            role=cls.role, is_active=True,
+            user=cls.user,
+            tenant=cls.tenant,
+            role=cls.role,
+            is_active=True,
         )
         cls.template = _make_wa_template(cls.tenant, "edge_tmpl")
         cls.flow = ChatFlow.objects.create(
-            name="Edge Flow", tenant=cls.tenant,
+            name="Edge Flow",
+            tenant=cls.tenant,
             flow_data={"nodes": [], "edges": []},
         )
         cls.node_src = ChatFlowNode.objects.create(
-            name="Src", flow=cls.flow, node_id="esrc",
-            position_x=0, position_y=0, template=cls.template,
+            name="Src",
+            flow=cls.flow,
+            node_id="esrc",
+            position_x=0,
+            position_y=0,
+            template=cls.template,
         )
         cls.node_tgt = ChatFlowNode.objects.create(
-            name="Tgt", flow=cls.flow, node_id="etgt",
-            position_x=100, position_y=0, template=cls.template,
+            name="Tgt",
+            flow=cls.flow,
+            node_id="etgt",
+            position_x=100,
+            position_y=0,
+            template=cls.template,
         )
         cls.edge = ChatFlowEdge.objects.create(
-            name="Test Edge", flow=cls.flow, edge_id="te1",
-            source_node=cls.node_src, target_node=cls.node_tgt,
-            button_text="Go", button_type="QUICK_REPLY",
+            name="Test Edge",
+            flow=cls.flow,
+            edge_id="te1",
+            source_node=cls.node_src,
+            target_node=cls.node_tgt,
+            button_text="Go",
+            button_type="QUICK_REPLY",
         )
 
     def test_source_template_name(self):
@@ -317,12 +380,16 @@ class ChatFlowNodeStrTests(TestCase):
     def setUpTestData(cls):
         cls.tenant = Tenant.objects.create(name="Str Tenant")
         cls.flow = ChatFlow.objects.create(
-            name="Pizza Flow", tenant=cls.tenant,
+            name="Pizza Flow",
+            tenant=cls.tenant,
             flow_data={"nodes": [], "edges": []},
         )
         cls.node = ChatFlowNode.objects.create(
-            name="Welcome", flow=cls.flow, node_id="welcome-node",
-            position_x=0, position_y=0,
+            name="Welcome",
+            flow=cls.flow,
+            node_id="welcome-node",
+            position_x=0,
+            position_y=0,
         )
 
     def test_str_no_trailing_paren(self):
@@ -347,18 +414,27 @@ class TemplateButtonsNullTests(TestCase):
         cls.tenant = Tenant.objects.create(name="Btns Tenant")
         cls.template = _make_wa_template(cls.tenant, "btns_tmpl")
         cls.flow = ChatFlow.objects.create(
-            name="Btns Flow", tenant=cls.tenant,
+            name="Btns Flow",
+            tenant=cls.tenant,
             flow_data={"nodes": [], "edges": []},
         )
         # Node WITHOUT template (start/end/delay type)
         cls.node_no_tmpl = ChatFlowNode.objects.create(
-            name="Start", flow=cls.flow, node_id="start",
-            position_x=0, position_y=0, template=None,
+            name="Start",
+            flow=cls.flow,
+            node_id="start",
+            position_x=0,
+            position_y=0,
+            template=None,
         )
         # Node WITH template
         cls.node_with_tmpl = ChatFlowNode.objects.create(
-            name="Tmpl", flow=cls.flow, node_id="tmpl",
-            position_x=100, position_y=0, template=cls.template,
+            name="Tmpl",
+            flow=cls.flow,
+            node_id="tmpl",
+            position_x=100,
+            position_y=0,
+            template=cls.template,
         )
 
     def test_null_template_returns_empty_list(self):
@@ -387,28 +463,39 @@ class SendTemplateMessageOrderTests(TestCase):
         cls.tenant = Tenant.objects.create(name="BM Order Tenant")
         cls.role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.user = User.objects.create_user(
-            username="bm_order_u", email="bm_order@t.com",
-            mobile="+910000088830", password="testpass123",
+            username="bm_order_u",
+            email="bm_order@t.com",
+            mobile="+910000088830",
+            password="testpass123",
         )
         TenantUser.objects.create(
-            user=cls.user, tenant=cls.tenant,
-            role=cls.role, is_active=True,
+            user=cls.user,
+            tenant=cls.tenant,
+            role=cls.role,
+            is_active=True,
         )
         cls.wa_app = TenantWAApp.objects.create(
-            tenant=cls.tenant, app_name="bm_app",
-            app_id="bm_id", app_secret="secret",
+            tenant=cls.tenant,
+            app_name="bm_app",
+            app_id="bm_id",
+            app_secret="secret",
             wa_number="+14155550200",
         )
         from message_templates.models import TemplateNumber
+
         cls.template_number = TemplateNumber.objects.create(name="bm_tn")
         cls.template = WATemplate.objects.create(
-            element_name="bm_tmpl", wa_app=cls.wa_app,
-            status="APPROVED", category="MARKETING",
+            element_name="bm_tmpl",
+            wa_app=cls.wa_app,
+            status="APPROVED",
+            category="MARKETING",
             number=cls.template_number,
         )
         from contacts.models import TenantContact
+
         cls.contact = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+14155550201",
+            tenant=cls.tenant,
+            phone="+14155550201",
         )
 
     @staticmethod
@@ -419,6 +506,7 @@ class SendTemplateMessageOrderTests(TestCase):
         side-effects (Celery tasks, credit deduction, etc.).
         """
         from unittest.mock import patch
+
         from chat_flow.services.graph_executor import send_template_message
 
         with patch(
@@ -429,7 +517,8 @@ class SendTemplateMessageOrderTests(TestCase):
 
     def test_broadcast_message_created_before_queued(self):
         """BroadcastMessage row exists before Broadcast moves to QUEUED."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
+
         from broadcast.models import Broadcast, BroadcastMessage
         from chat_flow.services.graph_executor import send_template_message
 
@@ -442,24 +531,24 @@ class SendTemplateMessageOrderTests(TestCase):
             # Capture whether BroadcastMessage exists at the moment
             # the broadcast transitions to QUEUED via save(update_fields=['status', ...])
             if "status" in update_fields and self_bc.status == "QUEUED":
-                bm_exists_at_save["exists"] = BroadcastMessage.objects.filter(
-                    broadcast=self_bc
-                ).exists()
+                bm_exists_at_save["exists"] = BroadcastMessage.objects.filter(broadcast=self_bc).exists()
             return original_save(self_bc, *args, **kwargs)
 
-        with patch.object(Broadcast, "save", spy_save), \
-             patch("broadcast.signals.handle_broadcast_scheduling", side_effect=lambda *a, **kw: None):
+        with (
+            patch.object(Broadcast, "save", spy_save),
+            patch("broadcast.signals.handle_broadcast_scheduling", side_effect=lambda *a, **kw: None),
+        ):
             result = send_template_message(self.template.id, self.contact.id)
 
         self.assertTrue(result["success"], result.get("error"))
         self.assertTrue(
-            bm_exists_at_save.get("exists"),
-            "BroadcastMessage must exist BEFORE Broadcast.save(status=QUEUED)"
+            bm_exists_at_save.get("exists"), "BroadcastMessage must exist BEFORE Broadcast.save(status=QUEUED)"
         )
 
     def test_no_duplicate_broadcast_messages(self):
         """Only one BroadcastMessage should exist per broadcast+contact."""
         from unittest.mock import patch
+
         from broadcast.models import BroadcastMessage
         from chat_flow.services.graph_executor import send_template_message
 
@@ -476,6 +565,7 @@ class SendTemplateMessageOrderTests(TestCase):
     def test_result_contains_broadcast_message_id(self):
         """send_template_message returns a valid broadcast_message_id."""
         from unittest.mock import patch
+
         from broadcast.models import BroadcastMessage
         from chat_flow.services.graph_executor import send_template_message
 
@@ -484,9 +574,7 @@ class SendTemplateMessageOrderTests(TestCase):
 
         self.assertTrue(result["success"], result.get("error"))
         self.assertIsNotNone(result["broadcast_message_id"])
-        self.assertTrue(
-            BroadcastMessage.objects.filter(id=result["broadcast_message_id"]).exists()
-        )
+        self.assertTrue(BroadcastMessage.objects.filter(id=result["broadcast_message_id"]).exists())
 
 
 class SessionStoreDBFallbackTests(TestCase):
@@ -497,25 +585,33 @@ class SessionStoreDBFallbackTests(TestCase):
         cls.tenant = Tenant.objects.create(name="Session Tenant")
         cls.role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.user = User.objects.create_user(
-            username="sess_u", email="sess_u@t.com",
-            mobile="+910000088840", password="testpass123",
+            username="sess_u",
+            email="sess_u@t.com",
+            mobile="+910000088840",
+            password="testpass123",
         )
         TenantUser.objects.create(
-            user=cls.user, tenant=cls.tenant,
-            role=cls.role, is_active=True,
+            user=cls.user,
+            tenant=cls.tenant,
+            role=cls.role,
+            is_active=True,
         )
         cls.flow = ChatFlow.objects.create(
-            name="Sess Flow", tenant=cls.tenant,
+            name="Sess Flow",
+            tenant=cls.tenant,
             flow_data={"nodes": [], "edges": []},
         )
         from contacts.models import TenantContact
+
         cls.contact = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+14155550300",
+            tenant=cls.tenant,
+            phone="+14155550300",
         )
 
     def _create_db_session(self, node_id="welcome", is_active=True, is_complete=False):
         """Helper: create a UserChatFlowSession directly in DB."""
         from chat_flow.models import UserChatFlowSession
+
         return UserChatFlowSession.objects.create(
             contact=self.contact,
             flow=self.flow,
@@ -537,7 +633,8 @@ class SessionStoreDBFallbackTests(TestCase):
 
     def test_get_session_state_falls_back_to_db(self):
         """get_session_state returns DB session when memory is empty."""
-        from chat_flow.services.graph_executor import _session_store, ChatFlowExecutor
+        from chat_flow.services.graph_executor import ChatFlowExecutor, _session_store
+
         session = self._create_db_session("node-a")
 
         executor = ChatFlowExecutor.__new__(ChatFlowExecutor)
@@ -556,7 +653,7 @@ class SessionStoreDBFallbackTests(TestCase):
 
     def test_get_session_state_returns_none_when_no_session(self):
         """get_session_state returns None when neither memory nor DB has a session."""
-        from chat_flow.services.graph_executor import _session_store, ChatFlowExecutor
+        from chat_flow.services.graph_executor import ChatFlowExecutor, _session_store
 
         executor = ChatFlowExecutor.__new__(ChatFlowExecutor)
         executor.flow_id = self.flow.id
@@ -569,14 +666,18 @@ class SessionStoreDBFallbackTests(TestCase):
 
     def test_get_session_state_prefers_memory(self):
         """get_session_state returns memory state when available (no DB query)."""
-        from chat_flow.services.graph_executor import _session_store, ChatFlowExecutor
+        from chat_flow.services.graph_executor import ChatFlowExecutor, _session_store
 
         executor = ChatFlowExecutor.__new__(ChatFlowExecutor)
         executor.flow_id = self.flow.id
 
         thread_id = f"flow_{self.flow.id}_contact_{self.contact.id}"
-        memory_state = {"flow_id": self.flow.id, "current_node_id": "from-memory",
-                        "contact_id": self.contact.id, "is_complete": False}
+        memory_state = {
+            "flow_id": self.flow.id,
+            "current_node_id": "from-memory",
+            "contact_id": self.contact.id,
+            "is_complete": False,
+        }
         _session_store[thread_id] = memory_state
 
         state = executor.get_session_state(self.contact.id)
@@ -587,8 +688,7 @@ class SessionStoreDBFallbackTests(TestCase):
 
     def test_reset_session_deactivates_db_session(self):
         """reset_session should set is_active=False on the DB session."""
-        from chat_flow.services.graph_executor import _session_store, ChatFlowExecutor
-        from chat_flow.models import UserChatFlowSession
+        from chat_flow.services.graph_executor import ChatFlowExecutor, _session_store
 
         session = self._create_db_session("node-x")
         self.assertTrue(session.is_active)
@@ -614,8 +714,7 @@ class SessionStoreDBFallbackTests(TestCase):
 
     def test_reset_session_db_only(self):
         """reset_session works even when only the DB session exists (memory empty)."""
-        from chat_flow.services.graph_executor import _session_store, ChatFlowExecutor
-        from chat_flow.models import UserChatFlowSession
+        from chat_flow.services.graph_executor import ChatFlowExecutor, _session_store
 
         session = self._create_db_session("node-y")
 
@@ -635,7 +734,7 @@ class SessionStoreDBFallbackTests(TestCase):
 
     def test_reset_session_returns_false_when_nothing_exists(self):
         """reset_session returns False when neither memory nor DB has a session."""
-        from chat_flow.services.graph_executor import _session_store, ChatFlowExecutor
+        from chat_flow.services.graph_executor import ChatFlowExecutor, _session_store
 
         executor = ChatFlowExecutor.__new__(ChatFlowExecutor)
         executor.flow_id = self.flow.id
@@ -652,8 +751,8 @@ class SessionTenantFKTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        from tenants.models import Tenant
         from contacts.models import TenantContact
+        from tenants.models import Tenant
 
         cls.tenant = Tenant.objects.create(name="Tenant FK Test")
         cls.flow = ChatFlow.objects.create(
@@ -686,8 +785,8 @@ class SessionTenantFKTests(TestCase):
 
     def test_session_queryable_by_tenant(self):
         """Sessions can be filtered directly by tenant FK."""
-        from chat_flow.services.graph_executor import save_session_to_db
         from chat_flow.models import UserChatFlowSession
+        from chat_flow.services.graph_executor import save_session_to_db
 
         state = {
             "flow_id": self.flow.id,
@@ -731,8 +830,8 @@ class SessionTenantFKTests(TestCase):
 
     def test_session_update_preserves_tenant(self):
         """Moving to a new node deactivates old session, new session keeps tenant."""
-        from chat_flow.services.graph_executor import save_session_to_db
         from chat_flow.models import UserChatFlowSession
+        from chat_flow.services.graph_executor import save_session_to_db
 
         state = {
             "flow_id": self.flow.id,
@@ -757,7 +856,5 @@ class SessionTenantFKTests(TestCase):
         self.assertEqual(session2.tenant_id, self.tenant.id)
         self.assertEqual(session2.current_node_id, "node-b")
         # Only one active session per contact+flow
-        active = UserChatFlowSession.objects.filter(
-            contact=self.contact, flow=self.flow, is_active=True
-        )
+        active = UserChatFlowSession.objects.filter(contact=self.contact, flow=self.flow, is_active=True)
         self.assertEqual(active.count(), 1)

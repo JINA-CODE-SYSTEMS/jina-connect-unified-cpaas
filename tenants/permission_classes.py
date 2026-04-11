@@ -23,10 +23,10 @@ from rest_framework.permissions import BasePermission
 
 from tenants.permissions import has_permission as _check_permission
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _resolve_tenant_user(request):
     """
@@ -41,17 +41,13 @@ def _resolve_tenant_user(request):
     if tenant is None:
         return None
 
-    return (
-        TenantUser.objects
-        .select_related("role")
-        .filter(user=user, tenant=tenant, is_active=True)
-        .first()
-    )
+    return TenantUser.objects.select_related("role").filter(user=user, tenant=tenant, is_active=True).first()
 
 
 # ---------------------------------------------------------------------------
 # Main permission class
 # ---------------------------------------------------------------------------
+
 
 class TenantRolePermission(BasePermission):
     """
@@ -90,8 +86,7 @@ class TenantRolePermission(BasePermission):
         if not perm_key:
             if required_perms:
                 self.message = (
-                    f"Permission denied: no permission mapping for "
-                    f"action '{action}'. Access denied by default."
+                    f"Permission denied: no permission mapping for action '{action}'. Access denied by default."
                 )
                 return False
             # Viewset has no required_permissions at all → allow
@@ -100,17 +95,13 @@ class TenantRolePermission(BasePermission):
         # Resolve user's role within their tenant
         tenant_user = _resolve_tenant_user(request)
         if not tenant_user or not tenant_user.role:
-            self.message = (
-                "You are not assigned a role in this tenant. "
-                "Contact your tenant admin."
-            )
+            self.message = "You are not assigned a role in this tenant. Contact your tenant admin."
             return False
 
         # Check the DB-backed permission
         if not _check_permission(tenant_user.role, perm_key):
             self.message = (
-                f"Permission denied: your role '{tenant_user.role.name}' "
-                f"does not have '{perm_key}' permission."
+                f"Permission denied: your role '{tenant_user.role.name}' does not have '{perm_key}' permission."
             )
             return False
 
@@ -120,6 +111,7 @@ class TenantRolePermission(BasePermission):
 # ---------------------------------------------------------------------------
 # Priority-based shortcut classes
 # ---------------------------------------------------------------------------
+
 
 class _PriorityPermission(BasePermission):
     """
@@ -144,8 +136,7 @@ class _PriorityPermission(BasePermission):
 
         if tenant_user.role.priority < self.min_priority:
             self.message = (
-                f"This action requires {self.role_label} role or above. "
-                f"Your current role is '{tenant_user.role.name}'."
+                f"This action requires {self.role_label} role or above. Your current role is '{tenant_user.role.name}'."
             )
             return False
 

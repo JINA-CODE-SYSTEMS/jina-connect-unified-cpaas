@@ -61,10 +61,13 @@ Reference: https://docs.wati.io/reference/post_api-v1-whatsapp-templates
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field, model_validator
-from wa.utility.data_model.wati.template_input import (WATIButtonsType,
-                                                       WATIHeaderFormat,
-                                                       WATITemplateButton,
-                                                       WATITemplateSubCategory)
+
+from wa.utility.data_model.wati.template_input import (
+    WATIButtonsType,
+    WATIHeaderFormat,
+    WATITemplateButton,
+    WATITemplateSubCategory,
+)
 
 from .base_validator import BaseTemplateValidator
 
@@ -203,29 +206,15 @@ class UtilityTemplateValidator(BaseTemplateValidator):
     )
 
     # ORDER_STATUS fields
-    order_reference_id: Optional[str] = Field(
-        None, max_length=35, description="Order reference ID (max 35 chars)"
-    )
-    order_status: Optional[str] = Field(
-        None, description="Current order status value"
-    )
-    shipping_carrier: Optional[str] = Field(
-        None, max_length=100, description="Shipping carrier name"
-    )
-    tracking_number: Optional[str] = Field(
-        None, max_length=100, description="Shipment tracking number"
-    )
-    tracking_url: Optional[str] = Field(
-        None, max_length=2000, description="Shipment tracking URL"
-    )
+    order_reference_id: Optional[str] = Field(None, max_length=35, description="Order reference ID (max 35 chars)")
+    order_status: Optional[str] = Field(None, description="Current order status value")
+    shipping_carrier: Optional[str] = Field(None, max_length=100, description="Shipping carrier name")
+    tracking_number: Optional[str] = Field(None, max_length=100, description="Shipment tracking number")
+    tracking_url: Optional[str] = Field(None, max_length=2000, description="Shipment tracking URL")
 
     # CHECKOUT_BUTTON fields
-    order_action: Optional[str] = Field(
-        None, description="Order action: 'review_and_pay' or 'review_order'"
-    )
-    order_items: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Order items list for checkout templates"
-    )
+    order_action: Optional[str] = Field(None, description="Order action: 'review_and_pay' or 'review_order'")
+    order_items: Optional[List[Dict[str, Any]]] = Field(None, description="Order items list for checkout templates")
 
     # =========================================================================
     # Helpers
@@ -273,9 +262,7 @@ class UtilityTemplateValidator(BaseTemplateValidator):
         """Validate footer against sub-category guardrails."""
         guardrails = self._get_guardrails()
         if self.footer and not guardrails.get("footer_allowed", True):
-            raise ValueError(
-                f"{self.subCategory.value} utility templates do not allow footers."
-            )
+            raise ValueError(f"{self.subCategory.value} utility templates do not allow footers.")
         return self
 
     @model_validator(mode="after")
@@ -297,8 +284,7 @@ class UtilityTemplateValidator(BaseTemplateValidator):
         # Total count
         if len(self.buttons) > max_total:
             raise ValueError(
-                f"{self.subCategory.value} utility templates allow max "
-                f"{max_total} buttons, got {len(self.buttons)}."
+                f"{self.subCategory.value} utility templates allow max {max_total} buttons, got {len(self.buttons)}."
             )
 
         counts = self._count_buttons_by_type()
@@ -353,28 +339,20 @@ class UtilityTemplateValidator(BaseTemplateValidator):
 
         # customParams required for order variables
         if not self.customParams or len(self.customParams) == 0:
-            raise ValueError(
-                "ORDER_STATUS templates require at least one custom parameter "
-                "for order information."
-            )
+            raise ValueError("ORDER_STATUS templates require at least one custom parameter for order information.")
 
         # Validate order_status value if provided
         if self.order_status:
             os_rules = rules.get("order_status_component", {})
             valid = os_rules.get("valid_statuses", VALID_ORDER_STATUSES)
             if self.order_status not in valid:
-                raise ValueError(
-                    f"Invalid order status '{self.order_status}'. "
-                    f"Valid: {valid}"
-                )
+                raise ValueError(f"Invalid order status '{self.order_status}'. Valid: {valid}")
 
         # Validate reference_id length
         if self.order_reference_id:
             max_len = rules.get("order_status_component", {}).get("reference_id_max_length", 35)
             if len(self.order_reference_id) > max_len:
-                raise ValueError(
-                    f"order_reference_id max {max_len} chars, got {len(self.order_reference_id)}."
-                )
+                raise ValueError(f"order_reference_id max {max_len} chars, got {len(self.order_reference_id)}.")
 
         return self
 
@@ -398,29 +376,23 @@ class UtilityTemplateValidator(BaseTemplateValidator):
             raise ValueError("CHECKOUT_BUTTON templates require order_action.")
         valid_actions = rules.get("actions", ["review_and_pay", "review_order"])
         if self.order_action not in valid_actions:
-            raise ValueError(
-                f"Invalid order_action '{self.order_action}'. Valid: {valid_actions}"
-            )
+            raise ValueError(f"Invalid order_action '{self.order_action}'. Valid: {valid_actions}")
 
         # Validate order items
         if not self.order_items:
             raise ValueError("CHECKOUT_BUTTON templates require order_items.")
         if len(self.order_items) < rules.get("items_min", 1):
-            raise ValueError(
-                f"CHECKOUT_BUTTON templates require at least {rules.get('items_min', 1)} item."
-            )
+            raise ValueError(f"CHECKOUT_BUTTON templates require at least {rules.get('items_min', 1)} item.")
         if len(self.order_items) > rules.get("items_max", 999):
-            raise ValueError(
-                f"CHECKOUT_BUTTON templates allow max {rules.get('items_max', 999)} items."
-            )
+            raise ValueError(f"CHECKOUT_BUTTON templates allow max {rules.get('items_max', 999)} items.")
 
         # Validate item names
         name_max = rules.get("item_name_max_length", 60)
         for i, item in enumerate(self.order_items):
             name = item.get("name", "")
             if not name:
-                raise ValueError(f"Order item {i+1}: name is required.")
+                raise ValueError(f"Order item {i + 1}: name is required.")
             if len(name) > name_max:
-                raise ValueError(f"Order item {i+1}: name max {name_max} chars, got {len(name)}.")
+                raise ValueError(f"Order item {i + 1}: name max {name_max} chars, got {len(name)}.")
 
         return self

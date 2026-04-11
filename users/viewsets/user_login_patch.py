@@ -3,6 +3,7 @@ from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+
 from tenants.authentication import TenantAccessKeyAuthentication
 from users.serializers import LoginPatchUserSerializer
 
@@ -19,11 +20,12 @@ class LoginPatchViewSet(viewsets.ViewSet):
         type=openapi.TYPE_STRING,
         required=True,
     )
+
     @swagger_auto_schema(
         request_body=LoginPatchUserSerializer,
         manual_parameters=[access_key_param],
         responses={201: LoginPatchUserSerializer},
-        operation_description="Create or get a user associated with the tenant identified by the access key."
+        operation_description="Create or get a user associated with the tenant identified by the access key.",
     )
     def create(self, request, *args, **kwargs):
         serializer = self.serializer_class(

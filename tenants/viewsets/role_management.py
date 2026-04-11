@@ -5,12 +5,13 @@ Provides CRUD endpoints for tenant roles, a permissions catalog,
 and a reset-to-defaults action at /tenants/roles/.
 """
 
-from abstract.viewsets.base import BaseTenantModelViewSet
 from django.db.models import Count, Q
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from tenants.models import RolePermission, TenantRole, TenantUser
+
+from abstract.viewsets.base import BaseTenantModelViewSet
+from tenants.models import RolePermission, TenantRole
 from tenants.permissions import (
     ALL_PERMISSIONS,
     DEFAULT_ROLE_PERMISSIONS,
@@ -58,11 +59,7 @@ class RoleManagementViewSet(BaseTenantModelViewSet):
         return (
             qs.select_related("tenant")
             .prefetch_related("permissions")
-            .annotate(
-                member_count=Count(
-                    "members", filter=Q(members__is_active=True)
-                )
-            )
+            .annotate(member_count=Count("members", filter=Q(members__is_active=True)))
         )
 
     def get_serializer_class(self):
@@ -105,14 +102,16 @@ class RoleManagementViewSet(BaseTenantModelViewSet):
 
         # Create permission rows for all known keys
         permissions = data.get("permissions", {})
-        RolePermission.objects.bulk_create([
-            RolePermission(
-                role=role,
-                permission=perm_key,
-                allowed=permissions.get(perm_key, False),
-            )
-            for perm_key in ALL_PERMISSIONS
-        ])
+        RolePermission.objects.bulk_create(
+            [
+                RolePermission(
+                    role=role,
+                    permission=perm_key,
+                    allowed=permissions.get(perm_key, False),
+                )
+                for perm_key in ALL_PERMISSIONS
+            ]
+        )
 
         # Re-fetch with annotations for response
         role = self.get_queryset().get(pk=role.pk)
@@ -211,10 +210,7 @@ class RoleManagementViewSet(BaseTenantModelViewSet):
                 parts.append(f"{active} active")
             if inactive:
                 parts.append(f"{inactive} inactive")
-            detail = (
-                f"Cannot delete role with {' and '.join(parts)} "
-                f"member(s). Reassign them first."
-            )
+            detail = f"Cannot delete role with {' and '.join(parts)} member(s). Reassign them first."
             return Response(
                 {
                     "detail": detail,
@@ -231,8 +227,10 @@ class RoleManagementViewSet(BaseTenantModelViewSet):
     # Permissions Catalog
     # ------------------------------------------------------------------
     @action(
-        detail=False, methods=["get"],
-        url_path="permissions-catalog", url_name="permissions-catalog",
+        detail=False,
+        methods=["get"],
+        url_path="permissions-catalog",
+        url_name="permissions-catalog",
     )
     def permissions_catalog(self, request):
         """Return all available permission keys with descriptions, grouped by module."""
@@ -241,18 +239,22 @@ class RoleManagementViewSet(BaseTenantModelViewSet):
         grouped = defaultdict(list)
         for perm in ALL_PERMISSIONS:
             group = perm.split(".")[0]
-            grouped[group].append({
-                "key": perm,
-                "label": PERMISSION_DESCRIPTIONS.get(perm, ""),
-            })
+            grouped[group].append(
+                {
+                    "key": perm,
+                    "label": PERMISSION_DESCRIPTIONS.get(perm, ""),
+                }
+            )
         return Response(dict(grouped))
 
     # ------------------------------------------------------------------
     # Reset Defaults
     # ------------------------------------------------------------------
     @action(
-        detail=True, methods=["post"],
-        url_path="reset", url_name="reset-permissions",
+        detail=True,
+        methods=["post"],
+        url_path="reset",
+        url_name="reset-permissions",
     )
     def reset_permissions(self, request, pk=None):
         """Reset a system role's permissions to the built-in defaults."""
@@ -272,14 +274,16 @@ class RoleManagementViewSet(BaseTenantModelViewSet):
         # Delete all existing permission rows, then re-seed from defaults
         role.permissions.all().delete()
         default_perms = DEFAULT_ROLE_PERMISSIONS.get(role.slug, {})
-        RolePermission.objects.bulk_create([
-            RolePermission(
-                role=role,
-                permission=perm_key,
-                allowed=default_perms.get(perm_key, False),
-            )
-            for perm_key in ALL_PERMISSIONS
-        ])
+        RolePermission.objects.bulk_create(
+            [
+                RolePermission(
+                    role=role,
+                    permission=perm_key,
+                    allowed=default_perms.get(perm_key, False),
+                )
+                for perm_key in ALL_PERMISSIONS
+            ]
+        )
 
         # Re-fetch with annotations
         role = self.get_queryset().get(pk=role.pk)

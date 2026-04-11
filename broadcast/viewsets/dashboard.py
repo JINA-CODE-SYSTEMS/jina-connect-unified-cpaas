@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -10,13 +10,11 @@ from rest_framework.viewsets import ViewSet
 from broadcast.models import (
     Broadcast,
     BroadcastMessage,
-    BroadcastPlatformChoices,
     BroadcastStatusChoices,
     MessageStatusChoices,
 )
 from broadcast.url_tracker.models import TrackedURLClick
 from tenants.permission_classes import TenantRolePermission
-
 
 PERIOD_DELTAS = {
     "24h": timedelta(hours=24),
@@ -78,9 +76,7 @@ class BroadcastDashboardViewSet(ViewSet):
     def stats(self, request):
         tenant = self._get_tenant(request)
         if not tenant:
-            return Response(
-                {"detail": "No active tenant found."}, status=400
-            )
+            return Response({"detail": "No active tenant found."}, status=400)
 
         period_key, channel = self._parse_params(request)
         current_start, prev_start, now = self._period_range(period_key)
@@ -94,12 +90,8 @@ class BroadcastDashboardViewSet(ViewSet):
         sent_filter = Q(status__in=_SENT_STATUSES)
 
         # Current period broadcasts
-        curr_broadcasts = broadcasts_qs.filter(
-            sent_filter, created_at__gte=current_start, created_at__lte=now
-        )
-        prev_broadcasts = broadcasts_qs.filter(
-            sent_filter, created_at__gte=prev_start, created_at__lt=current_start
-        )
+        curr_broadcasts = broadcasts_qs.filter(sent_filter, created_at__gte=current_start, created_at__lte=now)
+        prev_broadcasts = broadcasts_qs.filter(sent_filter, created_at__gte=prev_start, created_at__lt=current_start)
 
         # ── 1. Total broadcasts ────────────────────────────────────────
         total_broadcasts_curr = curr_broadcasts.count()
@@ -161,25 +153,13 @@ class BroadcastDashboardViewSet(ViewSet):
         if channel != "ALL":
             click_base = click_base.filter(tracked_url__broadcast__platform=channel)
 
-        total_clicks_curr = click_base.filter(
-            clicked_at__gte=current_start, clicked_at__lte=now
-        ).count()
-        total_clicks_prev = click_base.filter(
-            clicked_at__gte=prev_start, clicked_at__lt=current_start
-        ).count()
+        total_clicks_curr = click_base.filter(clicked_at__gte=current_start, clicked_at__lte=now).count()
+        total_clicks_prev = click_base.filter(clicked_at__gte=prev_start, clicked_at__lt=current_start).count()
 
         # ── 4. Engagement rate = (read + replied) / delivered × 100 ────
         # We don't have "replied" status — use read / delivered
-        engagement_curr = (
-            round((curr_agg["read"] / total_reach_curr) * 100, 1)
-            if total_reach_curr > 0
-            else 0.0
-        )
-        engagement_prev = (
-            round((prev_agg["read"] / total_reach_prev) * 100, 1)
-            if total_reach_prev > 0
-            else 0.0
-        )
+        engagement_curr = round((curr_agg["read"] / total_reach_curr) * 100, 1) if total_reach_curr > 0 else 0.0
+        engagement_prev = round((prev_agg["read"] / total_reach_prev) * 100, 1) if total_reach_prev > 0 else 0.0
 
         return Response(
             {
@@ -190,18 +170,10 @@ class BroadcastDashboardViewSet(ViewSet):
                 "period": period_key,
                 "channel": channel.lower(),
                 "comparison": {
-                    "broadcasts_change_percent": self._pct_change(
-                        total_broadcasts_curr, total_broadcasts_prev
-                    ),
-                    "reach_change_percent": self._pct_change(
-                        total_reach_curr, total_reach_prev
-                    ),
-                    "clicks_change_percent": self._pct_change(
-                        total_clicks_curr, total_clicks_prev
-                    ),
-                    "engagement_change_percent": self._pct_change(
-                        engagement_curr, engagement_prev
-                    ),
+                    "broadcasts_change_percent": self._pct_change(total_broadcasts_curr, total_broadcasts_prev),
+                    "reach_change_percent": self._pct_change(total_reach_curr, total_reach_prev),
+                    "clicks_change_percent": self._pct_change(total_clicks_curr, total_clicks_prev),
+                    "engagement_change_percent": self._pct_change(engagement_curr, engagement_prev),
                 },
             }
         )

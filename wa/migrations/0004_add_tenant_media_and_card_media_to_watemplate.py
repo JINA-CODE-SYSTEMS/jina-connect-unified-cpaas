@@ -5,21 +5,32 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0004_add_open_session_rate_multiplier'),
-        ('wa', '0003_metabaserate_ratecardmargin_tenantratecard'),
+        ("tenants", "0004_add_open_session_rate_multiplier"),
+        ("wa", "0003_metabaserate_ratecardmargin_tenantratecard"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='watemplate',
-            name='card_media',
-            field=models.ManyToManyField(blank=True, help_text='Local media files for carousel cards (linked by TenantMedia.card_index)', related_name='card_templates', to='tenants.tenantmedia'),
+            model_name="watemplate",
+            name="card_media",
+            field=models.ManyToManyField(
+                blank=True,
+                help_text="Local media files for carousel cards (linked by TenantMedia.card_index)",
+                related_name="card_templates",
+                to="tenants.tenantmedia",
+            ),
         ),
         migrations.AddField(
-            model_name='watemplate',
-            name='tenant_media',
-            field=models.ForeignKey(blank=True, help_text='Local media file for header (IMAGE/VIDEO/DOCUMENT templates)', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='templates', to='tenants.tenantmedia'),
+            model_name="watemplate",
+            name="tenant_media",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Local media file for header (IMAGE/VIDEO/DOCUMENT templates)",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="templates",
+                to="tenants.tenantmedia",
+            ),
         ),
     ]

@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class AudioContent(BaseModel):
     """Audio content for the message"""
+
     id: Optional[str] = Field(
         None,
         description="Media ID from uploaded media (use either id or link)",
@@ -40,6 +41,7 @@ class AudioContent(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -63,20 +65,12 @@ class AudioMessageSendRequestValidator(BaseModel):
         >>> request = AudioMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["audio"] = Field(
-        "audio", description="Message type (must be 'audio')"
-    )
+    type: Literal["audio"] = Field("audio", description="Message type (must be 'audio')")
     audio: AudioContent = Field(..., description="Audio message content")
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -85,9 +79,7 @@ class AudioMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

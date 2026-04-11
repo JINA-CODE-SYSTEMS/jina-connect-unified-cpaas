@@ -24,10 +24,10 @@ import requests as http_requests
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
+
 from tenants.models import TenantMedia
 from wa.adapters import get_bsp_adapter
-from wa.models import (TemplateCategory, TemplateStatus, TemplateType,
-                       WATemplate)
+from wa.models import TemplateCategory, TemplateStatus, TemplateType, WATemplate
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +58,14 @@ _TYPE_MAP = {
     "VIDEO": TemplateType.VIDEO,
     "DOCUMENT": TemplateType.DOCUMENT,
     "CAROUSEL": TemplateType.CAROUSEL,
-    "LOCATION": TemplateType.TEXT,      # fallback
+    "LOCATION": TemplateType.TEXT,  # fallback
 }
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Gupshup field parser
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 def _parse_container_meta(raw: str | None) -> Dict[str, Any]:
     """Parse the ``containerMeta`` JSON string from Gupshup."""
@@ -206,6 +207,7 @@ def _extract_example_body(container: Dict[str, Any], meta: Dict[str, Any]) -> Op
 # Mapper: single Gupshup template dict → WATemplate field dict
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 def _map_gupshup_template(gs_tpl: Dict[str, Any]) -> Dict[str, Any]:
     """
     Convert a single Gupshup template response dict into a flat dict of
@@ -254,6 +256,7 @@ def _map_gupshup_template(gs_tpl: Dict[str, Any]) -> Dict[str, Any]:
 # ═════════════════════════════════════════════════════════════════════════════
 # Mapper: single META Graph API template dict → WATemplate field dict
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 def _map_meta_template(meta_tpl: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -389,6 +392,7 @@ def _map_meta_template(meta_tpl: Dict[str, Any]) -> Dict[str, Any]:
 # META Graph API — batch-fetch header media URLs
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 def _fetch_meta_media_urls(wa_app) -> Dict[Tuple[str, str], str]:
     """
     Fetch header media CDN URLs for all templates from META's Graph API.
@@ -421,6 +425,7 @@ def _fetch_meta_media_urls(wa_app) -> Dict[Tuple[str, str], str]:
     waba_id = None
     try:
         from tenants.models import WABAInfo
+
         waba_info = WABAInfo.objects.filter(wa_app=wa_app).first()
         if waba_info:
             waba_id = waba_info.waba_id
@@ -443,8 +448,7 @@ def _fetch_meta_media_urls(wa_app) -> Dict[Tuple[str, str], str]:
     media_urls: Dict[Tuple[str, str], str] = {}
     card_media_urls: Dict[Tuple[str, str], List[str]] = {}
     url: Optional[str] = (
-        f"https://graph.facebook.com/v24.0/{waba_id}/message_templates"
-        f"?fields=name,language,components&limit=100"
+        f"https://graph.facebook.com/v24.0/{waba_id}/message_templates?fields=name,language,components&limit=100"
     )
 
     page = 0
@@ -453,9 +457,7 @@ def _fetch_meta_media_urls(wa_app) -> Dict[Tuple[str, str], str]:
         try:
             resp = http_requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=30)
             if resp.status_code != 200:
-                logger.warning(
-                    f"[TemplateSync] META API returned {resp.status_code} on page {page}"
-                )
+                logger.warning(f"[TemplateSync] META API returned {resp.status_code} on page {page}")
                 break
             data = resp.json()
         except Exception as exc:
@@ -469,17 +471,11 @@ def _fetch_meta_media_urls(wa_app) -> Dict[Tuple[str, str], str]:
                 continue
             for comp in tpl.get("components", []):
                 # ── Standard header media (IMAGE / VIDEO / DOCUMENT) ──
-                if (
-                    comp.get("type") == "HEADER"
-                    and comp.get("format") in ("IMAGE", "VIDEO", "DOCUMENT")
-                ):
+                if comp.get("type") == "HEADER" and comp.get("format") in ("IMAGE", "VIDEO", "DOCUMENT"):
                     example = comp.get("example", {})
                     handles = example.get("header_handle", [])
                     urls = example.get("header_url", [])
-                    cdn_url = (
-                        handles[0] if handles
-                        else (urls[0] if urls else None)
-                    )
+                    cdn_url = handles[0] if handles else (urls[0] if urls else None)
                     if cdn_url:
                         media_urls[(name, lang)] = cdn_url
 
@@ -495,10 +491,7 @@ def _fetch_meta_media_urls(wa_app) -> Dict[Tuple[str, str], str]:
                                 example = card_comp.get("example", {})
                                 handles = example.get("header_handle", [])
                                 urls_list = example.get("header_url", [])
-                                card_url = (
-                                    handles[0] if handles
-                                    else (urls_list[0] if urls_list else None)
-                                )
+                                card_url = handles[0] if handles else (urls_list[0] if urls_list else None)
                                 break
                         card_urls.append(card_url)  # None if no media found for this card
                     if any(card_urls):
@@ -519,6 +512,7 @@ def _fetch_meta_media_urls(wa_app) -> Dict[Tuple[str, str], str]:
 # Phase 3 helper – download media → TenantMedia → Gupshup upload
 # ═════════════════════════════════════════════════════════════════════════════
 
+
 def _upload_media_to_gupshup(wa_app, tenant_media, content_type: str):
     """
     Upload a TenantMedia file to Gupshup and return the handle response dict
@@ -534,13 +528,10 @@ def _upload_media_to_gupshup(wa_app, tenant_media, content_type: str):
     app_id = wa_app.app_id
     app_secret = wa_app.app_secret
     if not app_id or not app_secret:
-        logger.warning(
-            "[TemplateSync] Missing Gupshup app_id/app_secret, skipping upload"
-        )
+        logger.warning("[TemplateSync] Missing Gupshup app_id/app_secret, skipping upload")
         return None
 
-    from wa.utility.apis.gupshup.template_api import \
-        TemplateAPI as GupshupTemplateAPI
+    from wa.utility.apis.gupshup.template_api import TemplateAPI as GupshupTemplateAPI
 
     api = GupshupTemplateAPI(appId=app_id, token=app_secret)
 
@@ -584,10 +575,7 @@ def _patch_template_media(template: WATemplate):
     ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ".png"
     filename = f"template_media_{template.element_name}{ext}"
 
-    logger.debug(
-        f"[TemplateSync] Downloaded {len(resp.content)} bytes for "
-        f"'{template.element_name}' ({content_type})"
-    )
+    logger.debug(f"[TemplateSync] Downloaded {len(resp.content)} bytes for '{template.element_name}' ({content_type})")
 
     # 2. Create TenantMedia
     with transaction.atomic():
@@ -607,15 +595,13 @@ def _patch_template_media(template: WATemplate):
     template.tenant_media = tm
     template.save(update_fields=["tenant_media"])
 
-    logger.info(
-        f"[TemplateSync] Patched media for '{template.element_name}' → "
-        f"TenantMedia id={tm.id}"
-    )
+    logger.info(f"[TemplateSync] Patched media for '{template.element_name}' → TenantMedia id={tm.id}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Main entry point
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
     """
@@ -695,11 +681,19 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
                 # Check if anything meaningful changed
                 changed_fields = []
                 for field_name in (
-                    "status", "category", "template_type", "content",
-                    "header", "footer", "buttons", "cards",
-                    "bsp_template_id", "meta_template_id",
+                    "status",
+                    "category",
+                    "template_type",
+                    "content",
+                    "header",
+                    "footer",
+                    "buttons",
+                    "cards",
+                    "bsp_template_id",
+                    "meta_template_id",
                     "media_handle",
-                    "error_message", "rejection_reason",
+                    "error_message",
+                    "rejection_reason",
                 ):
                     new_val = mapped.get(field_name)
                     old_val = getattr(existing, field_name, None)
@@ -708,13 +702,15 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
 
                 if not changed_fields:
                     if dry_run:
-                        preview.append({
-                            "element_name": element_name,
-                            "language_code": language_code,
-                            "action": "skip",
-                            "reason": "no changes",
-                            "status": mapped.get("status"),
-                        })
+                        preview.append(
+                            {
+                                "element_name": element_name,
+                                "language_code": language_code,
+                                "action": "skip",
+                                "reason": "no changes",
+                                "status": mapped.get("status"),
+                            }
+                        )
                     else:
                         # Touch last_synced_at even if nothing changed
                         existing.last_synced_at = timezone.now()
@@ -724,15 +720,17 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
                     continue
 
                 if dry_run:
-                    preview.append({
-                        "element_name": element_name,
-                        "language_code": language_code,
-                        "action": "update",
-                        "changed_fields": changed_fields,
-                        "status": mapped.get("status"),
-                        "category": mapped.get("category"),
-                        "template_type": mapped.get("template_type"),
-                    })
+                    preview.append(
+                        {
+                            "element_name": element_name,
+                            "language_code": language_code,
+                            "action": "update",
+                            "changed_fields": changed_fields,
+                            "status": mapped.get("status"),
+                            "category": mapped.get("category"),
+                            "template_type": mapped.get("template_type"),
+                        }
+                    )
                     updated += 1
                     continue
 
@@ -745,25 +743,22 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
                 if not existing.name:
                     existing.name = mapped["name"]
                     changed_fields.append("name")
-                existing.save(
-                    update_fields=changed_fields + ["last_synced_at", "needs_sync"]
-                )
+                existing.save(update_fields=changed_fields + ["last_synced_at", "needs_sync"])
                 updated += 1
-                logger.info(
-                    f"[TemplateSync] Updated '{element_name}' — "
-                    f"fields: {changed_fields}"
-                )
+                logger.info(f"[TemplateSync] Updated '{element_name}' — fields: {changed_fields}")
             else:
                 if dry_run:
-                    preview.append({
-                        "element_name": element_name,
-                        "language_code": language_code,
-                        "action": "create",
-                        "status": mapped.get("status"),
-                        "category": mapped.get("category"),
-                        "template_type": mapped.get("template_type"),
-                        "content_preview": (mapped.get("content") or "")[:100],
-                    })
+                    preview.append(
+                        {
+                            "element_name": element_name,
+                            "language_code": language_code,
+                            "action": "create",
+                            "status": mapped.get("status"),
+                            "category": mapped.get("category"),
+                            "template_type": mapped.get("template_type"),
+                            "content_preview": (mapped.get("content") or "")[:100],
+                        }
+                    )
                     created += 1
                     continue
 
@@ -863,19 +858,24 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
     media_patched = 0
     media_patch_failed = 0
     try:
-        orphan_media_templates = WATemplate.objects.filter(
-            wa_app=wa_app,
-            template_type__in=[
-                TemplateType.IMAGE,
-                TemplateType.VIDEO,
-                TemplateType.DOCUMENT,
-            ],
-            tenant_media__isnull=True,
-        ).exclude(
-            example_media_url__isnull=True,
-        ).exclude(
-            example_media_url="",
-        ).select_related("wa_app", "wa_app__tenant")
+        orphan_media_templates = (
+            WATemplate.objects.filter(
+                wa_app=wa_app,
+                template_type__in=[
+                    TemplateType.IMAGE,
+                    TemplateType.VIDEO,
+                    TemplateType.DOCUMENT,
+                ],
+                tenant_media__isnull=True,
+            )
+            .exclude(
+                example_media_url__isnull=True,
+            )
+            .exclude(
+                example_media_url="",
+            )
+            .select_related("wa_app", "wa_app__tenant")
+        )
 
         for tpl in orphan_media_templates:
             try:
@@ -883,16 +883,10 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
                 media_patched += 1
             except Exception as exc:
                 media_patch_failed += 1
-                logger.warning(
-                    f"[TemplateSync] Failed to patch media for "
-                    f"'{tpl.element_name}': {exc}"
-                )
+                logger.warning(f"[TemplateSync] Failed to patch media for '{tpl.element_name}': {exc}")
 
         if media_patched or media_patch_failed:
-            logger.info(
-                f"[TemplateSync] Media patch — "
-                f"patched={media_patched}, failed={media_patch_failed}"
-            )
+            logger.info(f"[TemplateSync] Media patch — patched={media_patched}, failed={media_patch_failed}")
     except Exception as exc:
         logger.warning(
             f"[TemplateSync] Failed media patch phase: {exc}",

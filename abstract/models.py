@@ -2,14 +2,14 @@ import secrets
 import string
 import uuid
 
-from abstract.managers import BaseTenantModelForFilterUserManager
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.db import models
 from djmoney.models.fields import MoneyField
 from djmoney.money import Money
 from phonenumber_field.modelfields import PhoneNumberField
 from simple_history.models import HistoricalRecords
+
+from abstract.managers import BaseTenantModelForFilterUserManager
 
 User = settings.AUTH_USER_MODEL
 
@@ -17,21 +17,22 @@ User = settings.AUTH_USER_MODEL
 def generate_transaction_id(prefix="jc", length=16):
     """
     Generate a clean transaction ID with format: prefix_RANDOMSTRING
-    
+
     Args:
         prefix: Prefix for the transaction ID (default: "jc")
         length: Length of random string (default: 16)
-    
+
     Returns:
         str: Transaction ID like "jc_A8K9X2M5P7Q1N4R6"
     """
     chars = string.ascii_uppercase + string.digits
-    random_string = ''.join(secrets.choice(chars) for _ in range(length))
+    random_string = "".join(secrets.choice(chars) for _ in range(length))
     return f"{prefix}_{random_string}"
+
 
 class BaseModel(models.Model):
     """
-    BaseModel is an abstract base model that provides common fields and functionality 
+    BaseModel is an abstract base model that provides common fields and functionality
     for other models to inherit.
     Attributes:
         description (TextField): An optional text field to store a description.
@@ -71,25 +72,24 @@ class BaseModelWithOwner(BaseModel):
     Methods:
         __str__(): Returns the string representation of the model instance, which is the value of the `name` attribute.
     """
-    
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="%(class)s_created_by", blank=True, null=True)
-    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="%(class)s_updated_by", blank=True, null=True)
-   
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, related_name="%(class)s_created_by", blank=True, null=True
+    )
+    updated_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, related_name="%(class)s_updated_by", blank=True, null=True
+    )
 
     class Meta:
         abstract = True
 
     def __str__(self):
-        return self.name    
-
+        return self.name
 
 
 class BaseFileModel(BaseModel):
-
     class Meta:
         abstract = True
-
-
 
 
 class BaseEntity(BaseModelWithOwner):
@@ -103,19 +103,16 @@ class BaseEntity(BaseModelWithOwner):
         email (EmailField): The email address of the organization. Optional.
         website (URLField): The website URL of the organization. Optional.
     """
+
     address = models.TextField(blank=True, null=True)
     phone = PhoneNumberField(blank=True)
     email = models.EmailField(blank=True, null=True)
     website = models.URLField(blank=True, null=True)
-    
+
     class Meta:
         verbose_name = "Entity"
         verbose_name_plural = "Entities"
         abstract = True
-
-
-
-
 
 
 class TransactionTypeChoices(models.TextChoices):
@@ -131,7 +128,6 @@ class TransactionTypeChoices(models.TextChoices):
     VOICE_RECORDING = "VOICE_RECORDING", "Voice Recording"
 
 
-
 class BaseTransaction(BaseModelWithOwner):
     """
     TransactionBaseModel is an abstract base model that extends from BaseModelWithOwner.
@@ -141,17 +137,21 @@ class BaseTransaction(BaseModelWithOwner):
     Meta:
         abstract (bool): Indicates that this is an abstract base class and should not be used to create any database table.
     """
+
     system_transaction_id = models.CharField(max_length=100, editable=False, null=True, blank=True)
     transaction_id = models.CharField(max_length=100, editable=True, null=True, blank=True)
-    amount = MoneyField(max_digits=14, decimal_places=4, default_currency='INR')
-    transaction_type = models.CharField(max_length=20, choices=TransactionTypeChoices.choices, default=TransactionTypeChoices.CONSUMPTION)
-        
+    amount = MoneyField(max_digits=14, decimal_places=4, default_currency="INR")
+    transaction_type = models.CharField(
+        max_length=20, choices=TransactionTypeChoices.choices, default=TransactionTypeChoices.CONSUMPTION
+    )
+
     def save(self, *args, **kwargs):
         if not self.system_transaction_id:
             # Get prefix from settings
             from django.conf import settings
-            prefix = getattr(settings, 'TRANSACTION_ID_PREFIX', 'jc')
-            
+
+            prefix = getattr(settings, "TRANSACTION_ID_PREFIX", "jc")
+
             # Generate unique transaction ID with retry logic
             max_attempts = 10
             for attempt in range(max_attempts):
@@ -187,35 +187,47 @@ class BaseWallet(BaseModelWithOwner):
     Meta:
         abstract (bool): Indicates that this is an abstract base class.
     """
-    
-    balance = MoneyField(max_digits=14, decimal_places=6, default_currency='USD', help_text="Current wallet balance - can be negative if credit line is used", default=Money(0, 'USD'))
-    credit_line = MoneyField(max_digits=15, decimal_places=6, default_currency='USD', default=Money(0, 'USD'), help_text="Credit line available to the wallet")
-    threshold_alert = MoneyField(max_digits=15, decimal_places=6, default_currency='USD', default=Money(10, 'USD'))
+
+    balance = MoneyField(
+        max_digits=14,
+        decimal_places=6,
+        default_currency="USD",
+        help_text="Current wallet balance - can be negative if credit line is used",
+        default=Money(0, "USD"),
+    )
+    credit_line = MoneyField(
+        max_digits=15,
+        decimal_places=6,
+        default_currency="USD",
+        default=Money(0, "USD"),
+        help_text="Credit line available to the wallet",
+    )
+    threshold_alert = MoneyField(max_digits=15, decimal_places=6, default_currency="USD", default=Money(10, "USD"))
     history = HistoricalRecords(inherit=True)
 
     @property
     def is_overdrawn(self):
         return self.balance < 0
-    
+
     @property
     def total_balance(self):
         """
         Calculate the total available balance including credit line.
-        
+
         Returns:
             Money: The sum of current balance and available credit line.
-            
+
         Examples:
             - balance: $100, credit_line: $50 → total_balance: $150
             - balance: -$30, credit_line: $50 → total_balance: $20
             - balance: $75, credit_line: $0 → total_balance: $75
         """
         return self.balance + self.credit_line
-    
+
     @property
     def is_below_threshold(self):
         return self.total_balance < self.threshold_alert
-    
+
     @property
     def is_prepaid(self):
         return self.credit_line.amount == 0
@@ -228,7 +240,7 @@ class BaseWallet(BaseModelWithOwner):
             raise ValueError("Total balance (balance + credit_line) cannot be negative")
         super().save(*args, **kwargs)
 
-    
+
 class BaseWebhookDumps(BaseModel):
     """
     Model to store webhook dumps for Gupshup apps.
@@ -238,7 +250,8 @@ class BaseWebhookDumps(BaseModel):
         is_processed (BooleanField): Flag indicating if the webhook has been processed. Defaults to False.
         processed_at (DateTimeField): Timestamp when the webhook was processed. Optional.
         error_message (TextField): Any error message encountered during processing. Optional.
-    """    
+    """
+
     payload = models.JSONField()
     received_at = models.DateTimeField(auto_now_add=True)
     is_processed = models.BooleanField(default=False)
@@ -248,17 +261,18 @@ class BaseWebhookDumps(BaseModel):
 
     def __str__(self):
         return f"WebhookDump {self.pk}"
-    
+
     class Meta:
         abstract = True
-
 
     def save(self, *args, **kwargs):
         if self.is_processed and not self.processed_at:
             from django.utils import timezone
+
             self.processed_at = timezone.now()
         super().save(*args, **kwargs)
-        
+
+
 class BaseTenantModelForFilterUser(BaseModelWithOwner):
     """
     Abstract base model that includes a manager to filter by user tenant foreign key.
@@ -269,9 +283,9 @@ class BaseTenantModelForFilterUser(BaseModelWithOwner):
     Meta:
         abstract (bool): Indicates that this is an abstract base class and should not be used to
     """
-    filter_by_user_tenant_fk:str = None
+
+    filter_by_user_tenant_fk: str = None
     objects = BaseTenantModelForFilterUserManager()
 
     class Meta:
         abstract = True
-    

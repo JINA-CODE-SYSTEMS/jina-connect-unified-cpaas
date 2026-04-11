@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more'),
+        ("tenants", "0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='open_session_rate_multiplier',
-            field=models.DecimalField(decimal_places=2, default=0, help_text='Fraction of normal rate charged for open-session (CSW) messages. 0.00 = free, 1.00 = full price. Configurable per BSP.', max_digits=4),
+            model_name="tenantwaapp",
+            name="open_session_rate_multiplier",
+            field=models.DecimalField(
+                decimal_places=2,
+                default=0,
+                help_text="Fraction of normal rate charged for open-session (CSW) messages. 0.00 = free, 1.00 = full price. Configurable per BSP.",
+                max_digits=4,
+            ),
         ),
     ]

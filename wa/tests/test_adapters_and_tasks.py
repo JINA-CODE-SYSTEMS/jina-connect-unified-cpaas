@@ -16,17 +16,17 @@ HOW TO RUN:
 
 import io
 import uuid
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
 from django.core.management import call_command
+from django.test import TestCase
 
 from wa.adapters.base import AdapterResult
-
 
 # =============================================================================
 # Test data factory
 # =============================================================================
+
 
 def make_tenant_and_wa_app(bsp="META"):
     """Create a tenant + wa_app for adapter testing."""
@@ -76,6 +76,7 @@ def make_template(wa_app, **overrides):
 # Adapter Factory Tests
 # =============================================================================
 
+
 class TestAdapterFactory(TestCase):
     """Tests for get_bsp_adapter() factory."""
 
@@ -87,12 +88,14 @@ class TestAdapterFactory(TestCase):
     def test_meta_adapter_returned_for_meta_bsp(self):
         from wa.adapters import get_bsp_adapter
         from wa.adapters.meta_direct import MetaDirectAdapter
+
         adapter = get_bsp_adapter(self.wa_app_meta)
         self.assertIsInstance(adapter, MetaDirectAdapter)
 
     def test_gupshup_adapter_returned_for_gupshup_bsp(self):
         from wa.adapters import get_bsp_adapter
         from wa.adapters.gupshup import GupshupAdapter
+
         adapter = get_bsp_adapter(self.wa_app_gupshup)
         self.assertIsInstance(adapter, GupshupAdapter)
 
@@ -133,6 +136,7 @@ class TestAdapterFactory(TestCase):
 # to_meta_payload Tests (Phase 1.8 — TEXT, Phase 3.11 — CAROUSEL)
 # =============================================================================
 
+
 class TestToMetaPayload(TestCase):
     """Tests for WATemplate.to_meta_payload() method."""
 
@@ -168,9 +172,7 @@ class TestToMetaPayload(TestCase):
         template = make_template(self.wa_app, header="Welcome!")
         payload = template.to_meta_payload()
 
-        header = next(
-            (c for c in payload["components"] if c["type"] == "HEADER"), None
-        )
+        header = next((c for c in payload["components"] if c["type"] == "HEADER"), None)
         self.assertIsNotNone(header)
         self.assertEqual(header["text"], "Welcome!")
         self.assertEqual(header["format"], "TEXT")
@@ -179,9 +181,7 @@ class TestToMetaPayload(TestCase):
         template = make_template(self.wa_app, footer="Opt out")
         payload = template.to_meta_payload()
 
-        footer = next(
-            (c for c in payload["components"] if c["type"] == "FOOTER"), None
-        )
+        footer = next((c for c in payload["components"] if c["type"] == "FOOTER"), None)
         self.assertIsNotNone(footer)
         self.assertEqual(footer["text"], "Opt out")
 
@@ -195,9 +195,7 @@ class TestToMetaPayload(TestCase):
         )
         payload = template.to_meta_payload()
 
-        buttons = next(
-            (c for c in payload["components"] if c["type"] == "BUTTONS"), None
-        )
+        buttons = next((c for c in payload["components"] if c["type"] == "BUTTONS"), None)
         self.assertIsNotNone(buttons)
         self.assertEqual(len(buttons["buttons"]), 2)
         self.assertEqual(buttons["buttons"][0]["type"], "QUICK_REPLY")
@@ -247,9 +245,7 @@ class TestToMetaPayload(TestCase):
         )
         payload = template.to_meta_payload()
 
-        carousel = next(
-            (c for c in payload["components"] if c["type"] == "CAROUSEL"), None
-        )
+        carousel = next((c for c in payload["components"] if c["type"] == "CAROUSEL"), None)
         self.assertIsNotNone(carousel)
         self.assertEqual(len(carousel["cards"]), 2)
 
@@ -257,9 +253,7 @@ class TestToMetaPayload(TestCase):
         card1 = carousel["cards"][0]["components"]
         card1_header = next(c for c in card1 if c["type"] == "HEADER")
         self.assertEqual(card1_header["format"], "IMAGE")
-        self.assertEqual(
-            card1_header["example"]["header_handle"], ["media_handle_1"]
-        )
+        self.assertEqual(card1_header["example"]["header_handle"], ["media_handle_1"])
 
         card1_body = next(c for c in card1 if c["type"] == "BODY")
         self.assertEqual(card1_body["text"], "Card 1 text")
@@ -268,9 +262,7 @@ class TestToMetaPayload(TestCase):
         self.assertEqual(card1_buttons["buttons"][0]["url"], "https://example.com")
 
         # Card 2 has VIDEO header
-        card2_header = next(
-            c for c in carousel["cards"][1]["components"] if c["type"] == "HEADER"
-        )
+        card2_header = next(c for c in carousel["cards"][1]["components"] if c["type"] == "HEADER")
         self.assertEqual(card2_header["format"], "VIDEO")
 
     def test_carousel_removes_top_level_header(self):
@@ -288,10 +280,7 @@ class TestToMetaPayload(TestCase):
         )
         payload = template.to_meta_payload()
 
-        top_level_header = [
-            c for c in payload["components"]
-            if c["type"] == "HEADER"
-        ]
+        top_level_header = [c for c in payload["components"] if c["type"] == "HEADER"]
         self.assertEqual(len(top_level_header), 0)
 
 
@@ -299,17 +288,20 @@ class TestToMetaPayload(TestCase):
 # Viewset create() — result.success check (ticket #386 fix)
 # =============================================================================
 
+
 class TestViewsetCreateResultCheck(TestCase):
     """Verify create() schedules retry on AdapterResult(success=False)."""
 
     @classmethod
     def setUpTestData(cls):
         from wa.tests.test_template_api_v2 import create_test_tenant_and_user, create_test_wa_app
+
         cls.tenant, cls.user, cls.token = create_test_tenant_and_user(username="resultcheck")
         cls.wa_app = create_test_wa_app(cls.tenant)
 
     def setUp(self):
         from rest_framework.test import APIClient
+
         self.client = APIClient()
         if self.token:
             self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
@@ -368,6 +360,7 @@ class TestViewsetCreateResultCheck(TestCase):
 # retry_submit_template Celery Task Tests
 # =============================================================================
 
+
 class TestRetrySubmitTemplate(TestCase):
     """Tests for the retry_submit_template Celery task."""
 
@@ -377,7 +370,8 @@ class TestRetrySubmitTemplate(TestCase):
 
     def test_skips_nonexistent_template(self):
         from wa.tasks import retry_submit_template
-        result = retry_submit_template(fake_id := str(uuid.uuid4()))
+
+        result = retry_submit_template(_fake_id := str(uuid.uuid4()))
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "not_found")
 
@@ -403,9 +397,7 @@ class TestRetrySubmitTemplate(TestCase):
         """Successful submit returns success status."""
         from wa.tasks import retry_submit_template
 
-        mock_submit.return_value = AdapterResult(
-            success=True, provider="meta_direct", data={"mock": True}
-        )
+        mock_submit.return_value = AdapterResult(success=True, provider="meta_direct", data={"mock": True})
         template = make_template(self.wa_app)
         result = retry_submit_template(str(template.id))
 
@@ -433,6 +425,7 @@ class TestRetrySubmitTemplate(TestCase):
 # Cron Command Tests
 # =============================================================================
 
+
 class TestCheckTemplateStatusesCron(TestCase):
     """Tests for the check_template_statuses_cron management command."""
 
@@ -455,7 +448,6 @@ class TestCheckTemplateStatusesCron(TestCase):
 
     def test_dry_run_does_not_modify_templates(self):
         """--dry-run should not change any template status."""
-        from wa.models import WATemplate
 
         template = make_template(
             self.wa_app,
@@ -469,7 +461,6 @@ class TestCheckTemplateStatusesCron(TestCase):
 
     def test_marks_orphaned_templates_as_failed(self):
         """Templates with PENDING status but no BSP/META ID → FAILED."""
-        from wa.models import WATemplate
 
         template = make_template(
             self.wa_app,
@@ -492,7 +483,7 @@ class TestCheckTemplateStatusesCron(TestCase):
             data={"status": "APPROVED"},
         )
 
-        template = make_template(
+        make_template(
             self.wa_app,
             status="PENDING",
             meta_template_id="meta_789",
@@ -505,7 +496,6 @@ class TestCheckTemplateStatusesCron(TestCase):
     @patch("wa.adapters.meta_direct.MetaDirectAdapter.get_template_status")
     def test_adapter_failure_records_error_message(self, mock_status):
         """When adapter returns failure, error_message is recorded."""
-        from wa.models import WATemplate
 
         mock_status.return_value = AdapterResult(
             success=False,
@@ -526,7 +516,6 @@ class TestCheckTemplateStatusesCron(TestCase):
     @patch("wa.adapters.meta_direct.MetaDirectAdapter.get_template_status")
     def test_exception_in_adapter_continues_to_next_template(self, mock_status):
         """An exception for one template doesn't stop processing the next."""
-        from wa.models import WATemplate
 
         # First call raises, second succeeds
         mock_status.side_effect = [
@@ -543,7 +532,7 @@ class TestCheckTemplateStatusesCron(TestCase):
             status="PENDING",
             meta_template_id="meta_err1",
         )
-        t2 = make_template(
+        make_template(
             self.wa_app,
             status="PENDING",
             meta_template_id="meta_ok2",
@@ -561,6 +550,7 @@ class TestCheckTemplateStatusesCron(TestCase):
 # =============================================================================
 # MetaDirectAdapter._validate_payload Tests (ticket #382)
 # =============================================================================
+
 
 class TestMetaDirectValidatePayload(TestCase):
     """Tests for _validate_payload() Pydantic validation before META API call."""
@@ -580,8 +570,10 @@ class TestMetaDirectValidatePayload(TestCase):
         mock_api_obj.waba_id = "waba_test"
         mock_api_obj.apply_for_template.return_value = {"id": "template_123"}
 
-        with patch.object(adapter, "_validate_payload") as mock_validate, \
-             patch.object(adapter, "_get_template_api", return_value=mock_api_obj):
+        with (
+            patch.object(adapter, "_validate_payload") as mock_validate,
+            patch.object(adapter, "_get_template_api", return_value=mock_api_obj),
+        ):
             mock_validate.return_value = None  # No validation error
             adapter.submit_template(template)
             mock_validate.assert_called_once()
@@ -610,6 +602,7 @@ class TestMetaDirectValidatePayload(TestCase):
 # MetaDirectAdapter.upload_media Tests (ticket #378)
 # =============================================================================
 
+
 class TestMetaDirectUploadMedia(TestCase):
     """Tests for MetaDirectAdapter.upload_media() implementation."""
 
@@ -625,14 +618,12 @@ class TestMetaDirectUploadMedia(TestCase):
         mock_file = io.BytesIO(b"fake image data")
         mock_file.name = "test.jpg"
 
-        with patch.object(adapter, "_resolve_access_token", return_value="fake_token"), \
-             patch(
-                "wa.utility.apis.meta.media_api.MetaMediaAPI"
-             ) as MockMediaAPI:
+        with (
+            patch.object(adapter, "_resolve_access_token", return_value="fake_token"),
+            patch("wa.utility.apis.meta.media_api.MetaMediaAPI") as MockMediaAPI,
+        ):
             mock_api_instance = MagicMock()
-            mock_api_instance.upload_media_from_file_object.return_value = {
-                "id": "media_12345"
-            }
+            mock_api_instance.upload_media_from_file_object.return_value = {"id": "media_12345"}
             MockMediaAPI.return_value = mock_api_instance
 
             result = adapter.upload_media(
@@ -653,14 +644,12 @@ class TestMetaDirectUploadMedia(TestCase):
         mock_file = io.BytesIO(b"fake data")
         mock_file.name = "test.jpg"
 
-        with patch.object(adapter, "_resolve_access_token", return_value="fake_token"), \
-             patch(
-                "wa.utility.apis.meta.media_api.MetaMediaAPI"
-             ) as MockMediaAPI:
+        with (
+            patch.object(adapter, "_resolve_access_token", return_value="fake_token"),
+            patch("wa.utility.apis.meta.media_api.MetaMediaAPI") as MockMediaAPI,
+        ):
             mock_api_instance = MagicMock()
-            mock_api_instance.upload_media_from_file_object.side_effect = Exception(
-                "Upload failed"
-            )
+            mock_api_instance.upload_media_from_file_object.side_effect = Exception("Upload failed")
             MockMediaAPI.return_value = mock_api_instance
 
             result = adapter.upload_media(
@@ -676,6 +665,7 @@ class TestMetaDirectUploadMedia(TestCase):
 # =============================================================================
 # GupshupAdapter.upload_media Tests (Phase 2.3)
 # =============================================================================
+
 
 class TestGupshupUploadMedia(TestCase):
     """Tests for GupshupAdapter.upload_media() with nested handle format."""
@@ -693,9 +683,7 @@ class TestGupshupUploadMedia(TestCase):
         mock_file.name = "test.jpg"
 
         mock_api = MagicMock()
-        mock_api.upload_media_from_file_object.return_value = {
-            "handleId": "4::base64::abc123"
-        }
+        mock_api.upload_media_from_file_object.return_value = {"handleId": "4::base64::abc123"}
 
         with patch.object(adapter, "_get_template_api", return_value=mock_api):
             result = adapter.upload_media(
@@ -716,9 +704,7 @@ class TestGupshupUploadMedia(TestCase):
         mock_file.name = "test.jpg"
 
         mock_api = MagicMock()
-        mock_api.upload_media_from_file_object.return_value = {
-            "handleId": {"message": "4::base64::nested_id"}
-        }
+        mock_api.upload_media_from_file_object.return_value = {"handleId": {"message": "4::base64::nested_id"}}
 
         with patch.object(adapter, "_get_template_api", return_value=mock_api):
             result = adapter.upload_media(
@@ -734,6 +720,7 @@ class TestGupshupUploadMedia(TestCase):
 # =============================================================================
 # Adapter result shape consistency
 # =============================================================================
+
 
 class TestAdapterResultShape(TestCase):
     """Verify AdapterResult pattern works correctly."""

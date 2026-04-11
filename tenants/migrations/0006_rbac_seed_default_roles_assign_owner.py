@@ -9,27 +9,51 @@ This is idempotent — safe to run multiple times.
 
 from django.db import migrations
 
-
 # ---------------------------------------------------------------------------
 # Inline copy of constants from tenants/permissions.py so the migration is
 # self-contained and not affected by future code changes.
 # ---------------------------------------------------------------------------
 
 ALL_PERMISSIONS = [
-    "tenant.view", "tenant.edit", "tenant.delete", "tenant.transfer",
-    "users.view", "users.invite", "users.change_role", "users.remove",
-    "billing.view", "billing.manage",
-    "wa_app.view", "wa_app.manage", "rate_card.manage",
-    "template.view", "template.create", "template.edit",
-    "template.delete", "template.submit",
-    "broadcast.view", "broadcast.create", "broadcast.cancel",
+    "tenant.view",
+    "tenant.edit",
+    "tenant.delete",
+    "tenant.transfer",
+    "users.view",
+    "users.invite",
+    "users.change_role",
+    "users.remove",
+    "billing.view",
+    "billing.manage",
+    "wa_app.view",
+    "wa_app.manage",
+    "rate_card.manage",
+    "template.view",
+    "template.create",
+    "template.edit",
+    "template.delete",
+    "template.submit",
+    "broadcast.view",
+    "broadcast.create",
+    "broadcast.cancel",
     "broadcast.charge_breakdown",
-    "contact.view", "contact.create", "contact.edit", "contact.delete",
-    "contact.import", "contact.export",
-    "inbox.view", "inbox.reply", "inbox.assign", "inbox.resolve",
-    "chatflow.view", "chatflow.create", "chatflow.edit",
-    "chatflow.delete", "chatflow.toggle",
-    "product.view", "product.manage",
+    "contact.view",
+    "contact.create",
+    "contact.edit",
+    "contact.delete",
+    "contact.import",
+    "contact.export",
+    "inbox.view",
+    "inbox.reply",
+    "inbox.assign",
+    "inbox.resolve",
+    "chatflow.view",
+    "chatflow.create",
+    "chatflow.edit",
+    "chatflow.delete",
+    "chatflow.toggle",
+    "product.view",
+    "product.manage",
     "analytics.view",
 ]
 
@@ -41,46 +65,72 @@ DEFAULT_ROLE_PERMISSIONS = {
         "tenant.transfer": False,
     },
     "manager": {
-        "tenant.view": True, "users.view": True, "billing.view": True,
+        "tenant.view": True,
+        "users.view": True,
+        "billing.view": True,
         "wa_app.view": True,
-        "template.view": True, "template.create": True, "template.edit": True,
-        "template.delete": True, "template.submit": True,
-        "broadcast.view": True, "broadcast.create": True,
-        "broadcast.cancel": True, "broadcast.charge_breakdown": True,
-        "contact.view": True, "contact.create": True,
-        "contact.edit": True, "contact.delete": True,
-        "contact.import": True, "contact.export": True,
-        "inbox.view": True, "inbox.reply": True,
-        "inbox.assign": True, "inbox.resolve": True,
-        "chatflow.view": True, "chatflow.create": True,
-        "chatflow.edit": True, "chatflow.delete": True,
+        "template.view": True,
+        "template.create": True,
+        "template.edit": True,
+        "template.delete": True,
+        "template.submit": True,
+        "broadcast.view": True,
+        "broadcast.create": True,
+        "broadcast.cancel": True,
+        "broadcast.charge_breakdown": True,
+        "contact.view": True,
+        "contact.create": True,
+        "contact.edit": True,
+        "contact.delete": True,
+        "contact.import": True,
+        "contact.export": True,
+        "inbox.view": True,
+        "inbox.reply": True,
+        "inbox.assign": True,
+        "inbox.resolve": True,
+        "chatflow.view": True,
+        "chatflow.create": True,
+        "chatflow.edit": True,
+        "chatflow.delete": True,
         "chatflow.toggle": True,
-        "product.view": True, "product.manage": True,
+        "product.view": True,
+        "product.manage": True,
         "analytics.view": True,
     },
     "agent": {
-        "tenant.view": True, "users.view": True,
-        "wa_app.view": True, "template.view": True,
-        "broadcast.view": True, "contact.view": True,
-        "inbox.view": True, "inbox.reply": True,
-        "chatflow.view": True, "product.view": True,
+        "tenant.view": True,
+        "users.view": True,
+        "wa_app.view": True,
+        "template.view": True,
+        "broadcast.view": True,
+        "contact.view": True,
+        "inbox.view": True,
+        "inbox.reply": True,
+        "chatflow.view": True,
+        "product.view": True,
         "analytics.view": True,
     },
     "viewer": {
-        "tenant.view": True, "users.view": True, "billing.view": True,
-        "wa_app.view": True, "template.view": True,
-        "broadcast.view": True, "contact.view": True,
-        "inbox.view": True, "chatflow.view": True,
-        "product.view": True, "analytics.view": True,
+        "tenant.view": True,
+        "users.view": True,
+        "billing.view": True,
+        "wa_app.view": True,
+        "template.view": True,
+        "broadcast.view": True,
+        "contact.view": True,
+        "inbox.view": True,
+        "chatflow.view": True,
+        "product.view": True,
+        "analytics.view": True,
     },
 }
 
 ROLE_DEFS = [
-    {"slug": "owner",   "name": "Owner",   "priority": 100, "is_editable": False},
-    {"slug": "admin",   "name": "Admin",   "priority": 80,  "is_editable": True},
-    {"slug": "manager", "name": "Manager", "priority": 60,  "is_editable": True},
-    {"slug": "agent",   "name": "Agent",   "priority": 40,  "is_editable": True},
-    {"slug": "viewer",  "name": "Viewer",  "priority": 20,  "is_editable": True},
+    {"slug": "owner", "name": "Owner", "priority": 100, "is_editable": False},
+    {"slug": "admin", "name": "Admin", "priority": 80, "is_editable": True},
+    {"slug": "manager", "name": "Manager", "priority": 60, "is_editable": True},
+    {"slug": "agent", "name": "Agent", "priority": 40, "is_editable": True},
+    {"slug": "viewer", "name": "Viewer", "priority": 20, "is_editable": True},
 ]
 
 
@@ -125,9 +175,7 @@ def seed_roles_and_assign_owner(apps, schema_editor):
 
         # Assign all existing TenantUsers in this tenant to OWNER
         if owner_role:
-            TenantUser.objects.filter(tenant=tenant, role__isnull=True).update(
-                role=owner_role
-            )
+            TenantUser.objects.filter(tenant=tenant, role__isnull=True).update(role=owner_role)
 
 
 def reverse_seed(apps, schema_editor):
@@ -145,9 +193,8 @@ def reverse_seed(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0005_rbac_add_tenantrole_rolepermission'),
+        ("tenants", "0005_rbac_add_tenantrole_rolepermission"),
     ]
 
     operations = [

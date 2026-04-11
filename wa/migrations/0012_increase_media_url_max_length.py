@@ -4,20 +4,36 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('wa', '0011_add_waorder_wapaymentevent_and_payment_webhook_type'),
+        ("wa", "0011_add_waorder_wapaymentevent_and_payment_webhook_type"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='wamessage',
-            name='media_url',
-            field=models.URLField(blank=True, help_text='Media download URL (expires after 5 min)', max_length=2048, null=True),
+            model_name="wamessage",
+            name="media_url",
+            field=models.URLField(
+                blank=True, help_text="Media download URL (expires after 5 min)", max_length=2048, null=True
+            ),
         ),
         migrations.AlterField(
-            model_name='watemplate',
-            name='template_type',
-            field=models.CharField(choices=[('TEXT', 'Text'), ('IMAGE', 'Image'), ('VIDEO', 'Video'), ('DOCUMENT', 'Document'), ('LOCATION', 'Location'), ('AUDIO', 'Audio'), ('CAROUSEL', 'Carousel'), ('CATALOG', 'Catalog'), ('PRODUCT', 'Product'), ('ORDER_DETAILS', 'Order Details')], default='TEXT', max_length=20),
+            model_name="watemplate",
+            name="template_type",
+            field=models.CharField(
+                choices=[
+                    ("TEXT", "Text"),
+                    ("IMAGE", "Image"),
+                    ("VIDEO", "Video"),
+                    ("DOCUMENT", "Document"),
+                    ("LOCATION", "Location"),
+                    ("AUDIO", "Audio"),
+                    ("CAROUSEL", "Carousel"),
+                    ("CATALOG", "Catalog"),
+                    ("PRODUCT", "Product"),
+                    ("ORDER_DETAILS", "Order Details"),
+                ],
+                default="TEXT",
+                max_length=20,
+            ),
         ),
     ]

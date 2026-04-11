@@ -8,11 +8,12 @@ contacts message sending requests during the 24-hour session window.
 import re
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ContactName(BaseModel):
     """Contact name information"""
+
     formatted_name: str = Field(
         ...,
         min_length=1,
@@ -28,21 +29,22 @@ class ContactName(BaseModel):
 
 class ContactPhone(BaseModel):
     """Contact phone number"""
+
     phone: str = Field(..., description="Phone number")
-    type: Optional[Literal["CELL", "MAIN", "IPHONE", "HOME", "WORK"]] = Field(
-        None, description="Phone type"
-    )
+    type: Optional[Literal["CELL", "MAIN", "IPHONE", "HOME", "WORK"]] = Field(None, description="Phone type")
     wa_id: Optional[str] = Field(None, description="WhatsApp ID")
 
 
 class ContactEmail(BaseModel):
     """Contact email address"""
+
     email: str = Field(..., description="Email address")
     type: Optional[Literal["HOME", "WORK"]] = Field(None, description="Email type")
 
 
 class ContactAddress(BaseModel):
     """Contact address"""
+
     street: Optional[str] = Field(None, description="Street address")
     city: Optional[str] = Field(None, description="City")
     state: Optional[str] = Field(None, description="State")
@@ -54,6 +56,7 @@ class ContactAddress(BaseModel):
 
 class ContactOrg(BaseModel):
     """Contact organization"""
+
     company: Optional[str] = Field(None, description="Company name")
     department: Optional[str] = Field(None, description="Department")
     title: Optional[str] = Field(None, description="Job title")
@@ -61,12 +64,14 @@ class ContactOrg(BaseModel):
 
 class ContactUrl(BaseModel):
     """Contact URL"""
+
     url: str = Field(..., description="URL")
     type: Optional[Literal["HOME", "WORK"]] = Field(None, description="URL type")
 
 
 class Contact(BaseModel):
     """Single contact information"""
+
     name: ContactName = Field(..., description="Contact name (required)")
     phones: Optional[List[ContactPhone]] = Field(None, description="Phone numbers")
     emails: Optional[List[ContactEmail]] = Field(None, description="Email addresses")
@@ -89,6 +94,7 @@ class Contact(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -113,24 +119,16 @@ class ContactsMessageSendRequestValidator(BaseModel):
         >>> request = ContactsMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["contacts"] = Field(
-        "contacts", description="Message type (must be 'contacts')"
-    )
+    type: Literal["contacts"] = Field("contacts", description="Message type (must be 'contacts')")
     contacts: List[Contact] = Field(
         ...,
         min_length=1,
         description="List of contacts to share",
     )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -139,9 +137,7 @@ class ContactsMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:
@@ -172,9 +168,7 @@ class ContactsMessageSendRequestValidator(BaseModel):
                                 "first_name": "John",
                                 "last_name": "Doe",
                             },
-                            "phones": [
-                                {"phone": "+14155551234", "type": "WORK", "wa_id": "14155551234"}
-                            ],
+                            "phones": [{"phone": "+14155551234", "type": "WORK", "wa_id": "14155551234"}],
                             "emails": [{"email": "john.doe@example.com", "type": "WORK"}],
                             "org": {
                                 "company": "Example Corp",

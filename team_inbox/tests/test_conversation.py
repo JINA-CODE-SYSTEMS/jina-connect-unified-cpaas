@@ -16,8 +16,11 @@ User = get_user_model()
 
 def _make_user(username, email, mobile, **kwargs):
     return User.objects.create_user(
-        username=username, email=email, mobile=mobile,
-        password="testpass123", **kwargs,
+        username=username,
+        email=email,
+        mobile=mobile,
+        password="testpass123",
+        **kwargs,
     )
 
 
@@ -30,17 +33,24 @@ class ConversationActionTests(TestCase):
         cls.owner_role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.owner = _make_user("conv_owner", "conv_owner@t.com", "+910000022221")
         TenantUser.objects.create(
-            user=cls.owner, tenant=cls.tenant, role=cls.owner_role, is_active=True,
+            user=cls.owner,
+            tenant=cls.tenant,
+            role=cls.owner_role,
+            is_active=True,
         )
 
         # Two contacts in the same tenant
         cls.contact_a = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+910000033331",
-            first_name="Alice", last_name="A",
+            tenant=cls.tenant,
+            phone="+910000033331",
+            first_name="Alice",
+            last_name="A",
         )
         cls.contact_b = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+910000033332",
-            first_name="Bob", last_name="B",
+            tenant=cls.tenant,
+            phone="+910000033332",
+            first_name="Bob",
+            last_name="B",
         )
 
         # Messages for contact_a
@@ -135,7 +145,8 @@ class ConversationActionTests(TestCase):
     def test_conversation_requires_platform(self):
         """Missing platform returns 400."""
         resp = self.client.get(
-            self.url, {"contact_id": self.contact_a.id},
+            self.url,
+            {"contact_id": self.contact_a.id},
         )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("error", resp.data)

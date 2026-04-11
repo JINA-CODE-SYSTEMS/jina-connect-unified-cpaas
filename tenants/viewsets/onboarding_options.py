@@ -44,10 +44,7 @@ INDUSTRY_CHOICES = [
 
 def get_all_countries():
     """Get all countries from pycountry (ISO 3166-1)."""
-    return [
-        {"value": country.alpha_2, "label": country.name}
-        for country in pycountry.countries
-    ]
+    return [{"value": country.alpha_2, "label": country.name} for country in pycountry.countries]
 
 
 def get_subdivisions_for_country(country_code: str):
@@ -110,11 +107,7 @@ class OnboardingOptionsViewSet(viewsets.ViewSet):
         country_list = get_all_countries()
 
         if search:
-            country_list = [
-                c
-                for c in country_list
-                if search in c["label"].lower() or search in c["value"].lower()
-            ]
+            country_list = [c for c in country_list if search in c["label"].lower() or search in c["value"].lower()]
 
         return Response(country_list, status=status.HTTP_200_OK)
 
@@ -159,16 +152,10 @@ class OnboardingOptionsViewSet(viewsets.ViewSet):
         states = get_subdivisions_for_country(country_code)
 
         if search:
-            states = [
-                s
-                for s in states
-                if search in s["label"].lower() or search in s["value"].lower()
-            ]
+            states = [s for s in states if search in s["label"].lower() or search in s["value"].lower()]
 
         if subdivision_type:
-            states = [
-                s for s in states if s.get("type", "").lower() == subdivision_type
-            ]
+            states = [s for s in states if s.get("type", "").lower() == subdivision_type]
 
         return Response(states, status=status.HTTP_200_OK)
 
@@ -192,11 +179,7 @@ class OnboardingOptionsViewSet(viewsets.ViewSet):
         industries = INDUSTRY_CHOICES.copy()
 
         if search:
-            industries = [
-                i
-                for i in industries
-                if search in i["label"].lower() or search in i["value"].lower()
-            ]
+            industries = [i for i in industries if search in i["label"].lower() or search in i["value"].lower()]
 
         return Response(industries, status=status.HTTP_200_OK)
 

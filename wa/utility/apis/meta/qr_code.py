@@ -19,11 +19,10 @@ class QRCodeAPI(WAAPI):
     waba_id: Optional[str] = None
     generate_qr_image: str = "SVG"
 
-
     @property
     def _get_qr_code_details(self):
         return f"{self.BASE_URL}{self.waba_id}/message_qrdls"
-    
+
     def get_qr_code_details(self, message_text: str):
         url = self._get_qr_code_details
         request_data = {

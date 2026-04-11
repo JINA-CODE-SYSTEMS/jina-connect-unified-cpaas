@@ -2,6 +2,7 @@
 Django management command for checking WhatsApp template statuses.
 This command can be called by django-crontab or executed manually.
 """
+
 import json
 from datetime import datetime
 
@@ -9,54 +10,49 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = 'Check WhatsApp template statuses via BSP adapters and update local database'
+    help = "Check WhatsApp template statuses via BSP adapters and update local database"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='Show what would be processed without making any changes',
+            "--dry-run",
+            action="store_true",
+            help="Show what would be processed without making any changes",
         )
         parser.add_argument(
-            '--verbose',
-            action='store_true',
-            help='Enable verbose logging output',
+            "--verbose",
+            action="store_true",
+            help="Enable verbose logging output",
         )
 
     def handle(self, *args, **options):
         """Main command handler"""
-        dry_run = options.get('dry_run', False)
-        verbose = options.get('verbose', False)
+        dry_run = options.get("dry_run", False)
+        verbose = options.get("verbose", False)
 
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING('DRY RUN MODE - No changes will be made')
-            )
+            self.stdout.write(self.style.WARNING("DRY RUN MODE - No changes will be made"))
             return self._dry_run_check()
         else:
             return self._run_template_status_check(verbose)
 
     def _dry_run_check(self):
         """Show what templates would be processed without making changes"""
-        from wa.models import WATemplate, StatusChoices
+        from wa.models import StatusChoices, WATemplate
 
-        pending_templates = WATemplate.objects.filter(
-            status=StatusChoices.PENDING,
-            is_active=True
-        ).exclude(
-            bsp_template_id__isnull=True, meta_template_id__isnull=True
-        ).select_related('wa_app')
+        pending_templates = (
+            WATemplate.objects.filter(status=StatusChoices.PENDING, is_active=True)
+            .exclude(bsp_template_id__isnull=True, meta_template_id__isnull=True)
+            .select_related("wa_app")
+        )
 
         self.stdout.write(f"Found {pending_templates.count()} pending templates that would be checked:")
 
         for template in pending_templates:
-            self.stdout.write(f"  - {template.element_name} (ID: {template.bsp_template_id or template.meta_template_id}) - App: {template.wa_app.app_id}")
+            self.stdout.write(
+                f"  - {template.element_name} (ID: {template.bsp_template_id or template.meta_template_id}) - App: {template.wa_app.app_id}"
+            )
 
-        return json.dumps({
-            "processed": 0,
-            "updated": 0,
-            "total_pending": pending_templates.count()
-        })
+        return json.dumps({"processed": 0, "updated": 0, "total_pending": pending_templates.count()})
 
     def _run_template_status_check(self, verbose=False):
         """
@@ -65,7 +61,7 @@ class Command(BaseCommand):
         The adapter handles API calls, status mapping, and DB saves.
         """
         from wa.adapters import get_bsp_adapter
-        from wa.models import WATemplate, StatusChoices
+        from wa.models import StatusChoices, WATemplate
 
         start_time = datetime.now()
         if verbose:
@@ -73,21 +69,18 @@ class Command(BaseCommand):
 
         # Mark templates that were never submitted (no BSP/META ID) as FAILED
         orphaned = WATemplate.objects.filter(
-            bsp_template_id__isnull=True,
-            meta_template_id__isnull=True,
-            status=StatusChoices.PENDING
+            bsp_template_id__isnull=True, meta_template_id__isnull=True, status=StatusChoices.PENDING
         ).update(status=StatusChoices.FAILED, error_message="Template could not be sent to BSP")
 
         if verbose and orphaned:
             self.stdout.write(f"Marked {orphaned} orphaned templates as FAILED")
 
         # Get all pending templates that have a BSP or META template ID
-        pending_templates = WATemplate.objects.filter(
-            status=StatusChoices.PENDING,
-            is_active=True
-        ).exclude(
-            bsp_template_id__isnull=True, meta_template_id__isnull=True
-        ).select_related('wa_app')
+        pending_templates = (
+            WATemplate.objects.filter(status=StatusChoices.PENDING, is_active=True)
+            .exclude(bsp_template_id__isnull=True, meta_template_id__isnull=True)
+            .select_related("wa_app")
+        )
 
         if verbose:
             self.stdout.write(f"Found {pending_templates.count()} pending templates to check")
@@ -124,9 +117,7 @@ class Command(BaseCommand):
                 if verbose:
                     self.stdout.write(f"  ❌ Error checking {template.element_name}: {str(e)}")
                 try:
-                    WATemplate.objects.filter(id=template.id).update(
-                        error_message=f"Status check error: {str(e)}"
-                    )
+                    WATemplate.objects.filter(id=template.id).update(error_message=f"Status check error: {str(e)}")
                 except Exception:
                     pass
                 continue
@@ -135,7 +126,7 @@ class Command(BaseCommand):
         result = {
             "processed": templates_processed,
             "updated": templates_updated,
-            "total_pending": pending_templates.count()
+            "total_pending": pending_templates.count(),
         }
 
         if verbose:
@@ -144,12 +135,11 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f'✅ Template status check completed!\n'
-                f'   Processed: {result["processed"]} templates\n'
-                f'   Updated: {result["updated"]} templates\n'
-                f'   Total pending: {result["total_pending"]} templates'
+                f"✅ Template status check completed!\n"
+                f"   Processed: {result['processed']} templates\n"
+                f"   Updated: {result['updated']} templates\n"
+                f"   Total pending: {result['total_pending']} templates"
             )
         )
 
         return json.dumps(result)
-            

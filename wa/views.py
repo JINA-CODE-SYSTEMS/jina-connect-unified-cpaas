@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 # Shared helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _classify_cloud_api_event(payload: Dict[str, Any]) -> str:
     """
     Classify a META Cloud API webhook payload into our ``WebhookEventType``.
@@ -62,12 +63,7 @@ def _classify_cloud_api_event(payload: Dict[str, Any]) -> str:
         account_update                     -> ACCOUNT
     """
     try:
-        field = (
-            payload
-            .get("entry", [{}])[0]
-            .get("changes", [{}])[0]
-            .get("field", "")
-        )
+        field = payload.get("entry", [{}])[0].get("changes", [{}])[0].get("field", "")
     except (IndexError, AttributeError):
         field = ""
 
@@ -83,12 +79,7 @@ def _classify_cloud_api_event(payload: Dict[str, Any]) -> str:
     # key).  We must inspect the value *contents* to classify correctly.
     if field == "messages":
         try:
-            value = (
-                payload
-                .get("entry", [{}])[0]
-                .get("changes", [{}])[0]
-                .get("value", {})
-            )
+            value = payload.get("entry", [{}])[0].get("changes", [{}])[0].get("value", {})
         except (IndexError, AttributeError):
             value = {}
 
@@ -132,7 +123,8 @@ def _classify_cloud_api_event(payload: Dict[str, Any]) -> str:
     logger.warning(
         "Could not classify Cloud API webhook (field=%r, type=%r), "
         "defaulting to UNKNOWN — will be skipped by processors",
-        field, payload_type,
+        field,
+        payload_type,
     )
     return "UNKNOWN"
 
@@ -157,9 +149,7 @@ def _extract_meta_waba_id(payload: Dict[str, Any]) -> Optional[str]:
 def _extract_meta_phone_number_id(payload: Dict[str, Any]) -> Optional[str]:
     """Return the phone_number_id from ``entry[0].changes[0].value.metadata``."""
     try:
-        return str(
-            payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
-        )
+        return str(payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"])
     except (KeyError, IndexError, TypeError):
         return None
 
@@ -195,6 +185,7 @@ def _verify_meta_signature(request) -> bool:
 # Gupshup Webhook Receiver
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @method_decorator(csrf_exempt, name="dispatch")
 class GupshupWebhookView(View):
     """
@@ -214,7 +205,7 @@ class GupshupWebhookView(View):
         ``hub.challenge``.  We echo back the challenge to prove ownership.
         """
         mode = request.GET.get("hub.mode")
-        token = request.GET.get("hub.verify_token")
+        request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
 
         if mode == "subscribe" and challenge:
@@ -266,7 +257,7 @@ class GupshupWebhookView(View):
             wa_app=wa_app,
             event_type=event_type,
             bsp=BSPChoices.GUPSHUP,
-            payload=payload,          # BaseWebhookDumps.payload
+            payload=payload,  # BaseWebhookDumps.payload
         )
 
         logger.info(
@@ -290,6 +281,7 @@ class GupshupWebhookView(View):
 # ──────────────────────────────────────────────────────────────────────────────
 # META Direct Webhook Receiver
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @method_decorator(csrf_exempt, name="dispatch")
 class MetaWebhookView(View):
@@ -326,8 +318,7 @@ class MetaWebhookView(View):
         if mode == "subscribe" and challenge:
             if expected_token and token != expected_token:
                 logger.warning(
-                    "META webhook verification FAILED -- "
-                    "hub.verify_token mismatch (got=%s)",
+                    "META webhook verification FAILED -- hub.verify_token mismatch (got=%s)",
                     token,
                 )
                 return JsonResponse({"error": "Verify token mismatch"}, status=403)

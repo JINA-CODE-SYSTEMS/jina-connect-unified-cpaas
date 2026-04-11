@@ -40,7 +40,10 @@ class WAOrderViewSet(BaseTenantModelViewSet):
     http_method_names = ["get", "post"]
     search_fields = ["reference_id", "contact__name", "contact__wa_number"]
     ordering_fields = [
-        "created_at", "payment_captured_at", "order_status", "payment_status",
+        "created_at",
+        "payment_captured_at",
+        "order_status",
+        "payment_status",
     ]
 
     def get_serializer_class(self):

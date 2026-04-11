@@ -36,12 +36,12 @@ Usage:
 """
 
 from wa.utility.validators.wati.authentication_validator import (
-    AUTHENTICATION_GUARDRAILS, AuthenticationTemplateValidator)
+    AUTHENTICATION_GUARDRAILS,
+    AuthenticationTemplateValidator,
+)
 from wa.utility.validators.wati.base_validator import BaseTemplateValidator
-from wa.utility.validators.wati.marketing_validator import (
-    MARKETING_GUARDRAILS, MarketingTemplateValidator)
-from wa.utility.validators.wati.utility_validator import (
-    UTILITY_GUARDRAILS, UtilityTemplateValidator)
+from wa.utility.validators.wati.marketing_validator import MARKETING_GUARDRAILS, MarketingTemplateValidator
+from wa.utility.validators.wati.utility_validator import UTILITY_GUARDRAILS, UtilityTemplateValidator
 
 __all__ = [
     "BaseTemplateValidator",

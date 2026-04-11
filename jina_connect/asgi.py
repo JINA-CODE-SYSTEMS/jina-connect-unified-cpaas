@@ -11,7 +11,5 @@ import os
 
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'jina_connect.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jina_connect.settings")
 django.setup()
-
-from jina_connect.routing import application

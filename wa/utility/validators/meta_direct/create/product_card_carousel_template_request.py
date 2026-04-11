@@ -11,11 +11,9 @@ product details (image, title, price) pulled automatically from the catalog.
 from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample)
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
 from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
-from wa.utility.data_model.meta_direct.buttons import (QuickReplyButton,
-                                                       URLButton)
 
 # ============================================================================
 # Product Card Models
@@ -24,9 +22,8 @@ from wa.utility.data_model.meta_direct.buttons import (QuickReplyButton,
 
 class ProductCardButton(BaseModel):
     """Button for product card - quick_reply or url only"""
-    type: Literal["quick_reply", "url"] = Field(
-        ..., description="Button type (quick_reply or url)"
-    )
+
+    type: Literal["quick_reply", "url"] = Field(..., description="Button type (quick_reply or url)")
     text: str = Field(
         ...,
         min_length=1,
@@ -34,16 +31,13 @@ class ProductCardButton(BaseModel):
         description="Button text (max 25 characters)",
     )
     # URL button specific fields
-    url: Optional[str] = Field(
-        None, description="URL for url type button"
-    )
-    example: Optional[List[str]] = Field(
-        None, description="Example values for URL variables"
-    )
+    url: Optional[str] = Field(None, description="URL for url type button")
+    example: Optional[List[str]] = Field(None, description="Example values for URL variables")
 
 
 class ProductCardButtonsComponent(BaseModel):
     """Buttons component for product card - max 2 buttons"""
+
     type: Literal["buttons", "BUTTONS"] = "buttons"
     buttons: List[ProductCardButton] = Field(
         ...,
@@ -55,6 +49,7 @@ class ProductCardButtonsComponent(BaseModel):
 
 class ProductCard(BaseModel):
     """A single product card in the carousel"""
+
     product_retailer_id: str = Field(
         ...,
         min_length=1,
@@ -95,22 +90,18 @@ class ProductCard(BaseModel):
                         elif isinstance(btn, dict):
                             parsed_buttons.append(ProductCardButton(**btn))
                         else:
-                            raise ValueError(
-                                f"Button must be a dictionary, got {type(btn)}"
-                            )
+                            raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                     comp["buttons"] = parsed_buttons
                 parsed.append(ProductCardButtonsComponent(**comp))
             else:
-                raise ValueError(
-                    f"Unknown component type for product card: {comp_type}. "
-                    f"Only 'buttons' is allowed."
-                )
+                raise ValueError(f"Unknown component type for product card: {comp_type}. Only 'buttons' is allowed.")
 
         return parsed
 
 
 class ProductCarouselComponent(BaseModel):
     """Product carousel component containing product cards"""
+
     type: Literal["product_carousel", "PRODUCT_CAROUSEL"] = "product_carousel"
     cards: List[ProductCard] = Field(
         ...,
@@ -204,9 +195,7 @@ class ProductCardCarouselTemplateRequestValidator(BaseTemplateValidator):
                             elif isinstance(card, dict):
                                 parsed_cards.append(ProductCard(**card))
                             else:
-                                raise ValueError(
-                                    f"Card must be a dictionary, got {type(card)}"
-                                )
+                                raise ValueError(f"Card must be a dictionary, got {type(card)}")
                         comp["cards"] = parsed_cards
                     parsed.append(ProductCarouselComponent(**comp))
                 else:
@@ -226,15 +215,11 @@ class ProductCardCarouselTemplateRequestValidator(BaseTemplateValidator):
 
         # Body is required
         if "body" not in component_types:
-            raise ValueError(
-                "Body component is required for product card carousel templates"
-            )
+            raise ValueError("Body component is required for product card carousel templates")
 
         # product_carousel is required
         if "product_carousel" not in component_types:
-            raise ValueError(
-                "product_carousel component is required for product card carousel templates"
-            )
+            raise ValueError("product_carousel component is required for product card carousel templates")
 
         # Check for duplicates
         if component_types.count("body") > 1:
@@ -243,17 +228,13 @@ class ProductCardCarouselTemplateRequestValidator(BaseTemplateValidator):
             raise ValueError("Only one product_carousel component is allowed")
 
         # Validate all cards have consistent button configuration
-        carousel_comp = next(
-            c for c in self.components if c.type.lower() == "product_carousel"
-        )
+        carousel_comp = next(c for c in self.components if c.type.lower() == "product_carousel")
         if carousel_comp.cards:
             first_card_buttons = None
             for i, card in enumerate(carousel_comp.cards):
                 if card.components:
                     buttons_comp = card.components[0]  # Only buttons allowed
-                    button_config = [
-                        (b.type, b.text) for b in buttons_comp.buttons
-                    ]
+                    button_config = [(b.type, b.text) for b in buttons_comp.buttons]
                     if first_card_buttons is None:
                         first_card_buttons = button_config
                     elif len(button_config) != len(first_card_buttons):

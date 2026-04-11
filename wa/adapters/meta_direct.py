@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Optional
 from django.conf import settings
 from django.utils import timezone
 from pydantic import ValidationError
+
 from wa.adapters.base import AdapterResult, BaseBSPAdapter
 from wa.models import TemplateStatus
 
@@ -27,13 +28,16 @@ from wa.models import TemplateStatus
 try:
     from silk.profiling.profiler import silk_profile
 except (ImportError, RuntimeError):
-    def silk_profile(name=""):              # noqa: no-op fallback
+
+    def silk_profile(name=""):  # noqa: no-op fallback
         def decorator(func):
             return func
+
         return decorator
 
+
 if TYPE_CHECKING:
-    from wa.models import WAApp, WASubscription, WATemplate
+    from wa.models import WASubscription, WATemplate
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +100,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         waba_id = self._resolve_waba_id()
         if not waba_id:
             raise ValueError(
-                "WABA ID not configured on the WAApp. "
-                "Please set wa_app.waba_id before submitting templates."
+                "WABA ID not configured on the WAApp. Please set wa_app.waba_id before submitting templates."
             )
 
         api = TemplateAPI(token=token)
@@ -109,7 +112,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
     @staticmethod
     def _has_copy_code_button(template: "WATemplate") -> bool:
         """Check if template has a COPY_CODE button (→ coupon code template)."""
-        for btn in (template.buttons or []):
+        for btn in template.buttons or []:
             if isinstance(btn, dict) and (btn.get("type") or "").upper() == "COPY_CODE":
                 return True
         return False
@@ -177,6 +180,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         # Pydantic v2 coerces nested dicts into model instances in-place,
         # so validate on a copy to keep the original JSON-serialisable.
         import copy
+
         validator_cls(**copy.deepcopy(payload))
         self._log("info", f"Payload validated via {validator_cls.__name__}")
 
@@ -196,21 +200,25 @@ class MetaDirectAdapter(BaseBSPAdapter):
             from wa.utility.validators.meta_direct.send.template.checkout_template_send_request import (
                 CheckoutTemplateSendRequestValidator,
             )
+
             return CheckoutTemplateSendRequestValidator
         elif ttype == "CAROUSEL":
             from wa.utility.validators.meta_direct.send.template.carousel_template_send_request import (
                 CarouselTemplateSendRequestValidator,
             )
+
             return CarouselTemplateSendRequestValidator
         elif ttype == "CATALOG":
             from wa.utility.validators.meta_direct.send.template.catalog_template_send_request import (
                 CatalogTemplateSendRequestValidator,
             )
+
             return CatalogTemplateSendRequestValidator
         elif ttype == "ORDER_STATUS":
             from wa.utility.validators.meta_direct.send.template.order_status_template_send_request import (
                 OrderStatusTemplateSendRequestValidator,
             )
+
             return OrderStatusTemplateSendRequestValidator
         return None
 
@@ -233,6 +241,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
             return
 
         import copy
+
         validator_cls(**copy.deepcopy(payload))
         self._log("info", f"Send payload validated via {validator_cls.__name__}")
 
@@ -247,12 +256,18 @@ class MetaDirectAdapter(BaseBSPAdapter):
         ``meta_template_id`` is stored.  On failure ``error_message`` is
         populated and the status stays unchanged.
         """
-        self._log("info", f"[STEP 1/5] submit_template START — element_name={template.element_name}, wa_app_id={template.wa_app_id}")
+        self._log(
+            "info",
+            f"[STEP 1/5] submit_template START — element_name={template.element_name}, wa_app_id={template.wa_app_id}",
+        )
 
         # Step 2: Resolve credentials
         try:
             api = self._get_template_api()
-            self._log("info", f"[STEP 2/5] Credentials resolved — waba_id={api.waba_id}, token={'***' + self._resolve_access_token()[-4:] if self._resolve_access_token() else 'NONE'}")
+            self._log(
+                "info",
+                f"[STEP 2/5] Credentials resolved — waba_id={api.waba_id}, token={'***' + self._resolve_access_token()[-4:] if self._resolve_access_token() else 'NONE'}",
+            )
         except ValueError as exc:
             self._log("error", f"[STEP 2/5] Credential resolution FAILED — {exc}")
             template.error_message = str(exc)
@@ -265,7 +280,10 @@ class MetaDirectAdapter(BaseBSPAdapter):
 
         # Step 3: Build & validate payload
         payload = template.to_meta_payload()
-        self._log("info", f"[STEP 3/5] Payload built — name={payload.get('name')}, category={payload.get('category')}, components={len(payload.get('components', []))}")
+        self._log(
+            "info",
+            f"[STEP 3/5] Payload built — name={payload.get('name')}, category={payload.get('category')}, components={len(payload.get('components', []))}",
+        )
         self._log("debug", f"[STEP 3/5] Full payload: {payload}")
 
         try:
@@ -285,7 +303,10 @@ class MetaDirectAdapter(BaseBSPAdapter):
         try:
             self._log("info", f"[STEP 4/5] Calling META Graph API — POST /{api.waba_id}/message_templates")
             response = api.apply_for_template(payload)
-            self._log("info", f"[STEP 4/5] META responded — keys={list(response.keys()) if isinstance(response, dict) else type(response)}")
+            self._log(
+                "info",
+                f"[STEP 4/5] META responded — keys={list(response.keys()) if isinstance(response, dict) else type(response)}",
+            )
             self._log("debug", f"[STEP 4/5] Full response: {response}")
         except Exception as exc:
             error_msg = f"META API call failed: {exc}"
@@ -351,7 +372,10 @@ class MetaDirectAdapter(BaseBSPAdapter):
         Requires ``template.meta_template_id`` to be set (i.e. the template
         was already submitted).
         """
-        self._log("info", f"[STEP 1/4] get_template_status START — element_name={template.element_name}, meta_id={template.meta_template_id}")
+        self._log(
+            "info",
+            f"[STEP 1/4] get_template_status START — element_name={template.element_name}, meta_id={template.meta_template_id}",
+        )
 
         if not template.meta_template_id:
             self._log("warning", "[STEP 1/4] ABORTED — meta_template_id is not set")
@@ -399,7 +423,9 @@ class MetaDirectAdapter(BaseBSPAdapter):
         # Persist the refreshed status
         template.status = canonical_status
         if meta_status == "REJECTED":
-            template.rejection_reason = response.get("rejected_reason", response.get("quality_score", {}).get("reasons"))
+            template.rejection_reason = response.get(
+                "rejected_reason", response.get("quality_score", {}).get("reasons")
+            )
             self._log("warning", f"[STEP 4/4] Template REJECTED — reason={template.rejection_reason}")
         template.last_synced_at = timezone.now()
         template.save(update_fields=["status", "rejection_reason", "last_synced_at"])
@@ -438,6 +464,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         url = f"{api.BASE_URL}{api.waba_id}/message_templates"
         try:
             import requests as http
+
             self._log("info", f"[STEP 3/4] Calling META — DELETE {url}?name={template.element_name}")
             resp = http.delete(
                 url,
@@ -468,7 +495,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         template.is_active = False
         template.save(update_fields=["status", "is_active"])
 
-        self._log("info", f"[STEP 4/4] delete_template SUCCESS — template disabled")
+        self._log("info", "[STEP 4/4] delete_template SUCCESS — template disabled")
 
         return AdapterResult(
             success=True,
@@ -568,7 +595,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
             provider=self.PROVIDER_NAME,
             data={
                 "note": "META uses app-level webhooks configured in App Dashboard. "
-                         "Subscription marked ACTIVE for internal routing.",
+                "Subscription marked ACTIVE for internal routing.",
             },
         )
 
@@ -635,15 +662,13 @@ class MetaDirectAdapter(BaseBSPAdapter):
             return AdapterResult(
                 success=False,
                 provider=self.PROVIDER_NAME,
-                error_message="app_id not configured on the WAApp. "
-                              "Required for META Resumable Upload API.",
+                error_message="app_id not configured on the WAApp. Required for META Resumable Upload API.",
             )
         if not phone_number_id:
             return AdapterResult(
                 success=False,
                 provider=self.PROVIDER_NAME,
-                error_message="phone_number_id not configured on the WAApp. "
-                              "Required for META media uploads.",
+                error_message="phone_number_id not configured on the WAApp. Required for META media uploads.",
             )
 
         # Build the MediaAPI client
@@ -780,7 +805,11 @@ class MetaDirectAdapter(BaseBSPAdapter):
         from wa.models import WASubscription
 
         qs = WASubscription.objects.filter(wa_app=self.wa_app).values(
-            "id", "webhook_url", "event_types", "status", "bsp_subscription_id",
+            "id",
+            "webhook_url",
+            "event_types",
+            "status",
+            "bsp_subscription_id",
         )
         subscriptions = list(qs)
 
@@ -804,13 +833,17 @@ class MetaDirectAdapter(BaseBSPAdapter):
 
         from wa.models import SubscriptionStatus, WASubscription
 
-        deleted_count = WASubscription.objects.filter(
-            wa_app=self.wa_app,
-        ).exclude(
-            status=SubscriptionStatus.INACTIVE,
-        ).update(
-            status=SubscriptionStatus.INACTIVE,
-            error_message="Purged during refresh",
+        deleted_count = (
+            WASubscription.objects.filter(
+                wa_app=self.wa_app,
+            )
+            .exclude(
+                status=SubscriptionStatus.INACTIVE,
+            )
+            .update(
+                status=SubscriptionStatus.INACTIVE,
+                error_message="Purged during refresh",
+            )
         )
 
         self._log("info", f"purge_all_webhooks SUCCESS — {deleted_count} local records marked INACTIVE")

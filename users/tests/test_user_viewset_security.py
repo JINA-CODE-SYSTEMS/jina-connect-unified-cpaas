@@ -31,12 +31,16 @@ class UserViewSetSecurityTests(TestCase):
         # ── Tenant A ──────────────────────────────────────────────────
         cls.tenant_a = Tenant.objects.create(name="Tenant A")
         cls.user_a1 = User.objects.create_user(
-            username="user_a1", email="a1@test.com",
-            mobile="+919100000001", password="testpass123",
+            username="user_a1",
+            email="a1@test.com",
+            mobile="+919100000001",
+            password="testpass123",
         )
         cls.user_a2 = User.objects.create_user(
-            username="user_a2", email="a2@test.com",
-            mobile="+919100000002", password="testpass123",
+            username="user_a2",
+            email="a2@test.com",
+            mobile="+919100000002",
+            password="testpass123",
         )
         role_a = TenantRole.objects.get(tenant=cls.tenant_a, slug="agent")
         TenantUser.objects.create(tenant=cls.tenant_a, user=cls.user_a1, role=role_a)
@@ -45,16 +49,20 @@ class UserViewSetSecurityTests(TestCase):
         # ── Tenant B ──────────────────────────────────────────────────
         cls.tenant_b = Tenant.objects.create(name="Tenant B")
         cls.user_b1 = User.objects.create_user(
-            username="user_b1", email="b1@test.com",
-            mobile="+919100000003", password="testpass123",
+            username="user_b1",
+            email="b1@test.com",
+            mobile="+919100000003",
+            password="testpass123",
         )
         role_b = TenantRole.objects.get(tenant=cls.tenant_b, slug="agent")
         TenantUser.objects.create(tenant=cls.tenant_b, user=cls.user_b1, role=role_b)
 
         # ── Superuser ────────────────────────────────────────────────
         cls.superuser = User.objects.create_superuser(
-            username="super_sec", email="super@test.com",
-            mobile="+919100000009", password="testpass123",
+            username="super_sec",
+            email="super@test.com",
+            mobile="+919100000009",
+            password="testpass123",
         )
 
     def _client(self, user):
@@ -79,7 +87,8 @@ class UserViewSetSecurityTests(TestCase):
 
     def test_patch_unauthenticated_returns_401(self):
         resp = APIClient().patch(
-            f"/users/user/{self.user_a1.pk}/", {"first_name": "Hacked"},
+            f"/users/user/{self.user_a1.pk}/",
+            {"first_name": "Hacked"},
         )
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -196,12 +205,15 @@ class UserViewSetSecurityTests(TestCase):
     # 6. POST (create) disabled
     # ──────────────────────────────────────────────────────────────────
     def test_post_create_disabled(self):
-        resp = self._client(self.user_a1).post("/users/user/", {
-            "username": "newuser",
-            "email": "new@test.com",
-            "mobile": "+919100000099",
-            "password": "testpass123",
-        })
+        resp = self._client(self.user_a1).post(
+            "/users/user/",
+            {
+                "username": "newuser",
+                "email": "new@test.com",
+                "mobile": "+919100000099",
+                "password": "testpass123",
+            },
+        )
         self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
     # ──────────────────────────────────────────────────────────────────

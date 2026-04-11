@@ -16,7 +16,7 @@ Supported BSPs:
 
 Usage:
     from wa.services.sync_templates import get_sync_service, BSPType
-    
+
     # Get sync service for a BSP app
     sync_service = get_sync_service(bsp_app)
     if sync_service:

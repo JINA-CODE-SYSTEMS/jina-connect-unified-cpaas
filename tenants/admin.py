@@ -1,5 +1,6 @@
 from django.apps import apps
 from django.contrib import admin, messages
+
 from tenants.models import RolePermission, TenantRole, TenantWAApp
 
 
@@ -45,11 +46,18 @@ admin.site.register(TenantUser, TenantUserAdmin)
 
 # ── TenantWAApp Admin with "Reset Webhooks" button ──────────────────────
 
+
 @admin.register(TenantWAApp)
 class TenantWAAppAdmin(admin.ModelAdmin):
     list_display = (
-        "id", "tenant", "app_name", "app_id", "wa_number",
-        "bsp", "is_active", "subscription_status",
+        "id",
+        "tenant",
+        "app_name",
+        "app_id",
+        "wa_number",
+        "bsp",
+        "is_active",
+        "subscription_status",
     )
     list_filter = ("bsp", "is_active", "tenant")
     search_fields = ("app_name", "app_id", "wa_number")
@@ -59,6 +67,7 @@ class TenantWAAppAdmin(admin.ModelAdmin):
     def subscription_status(self, obj):
         """Show current webhook subscription status inline."""
         from wa.models import WASubscription
+
         sub = WASubscription.objects.filter(wa_app=obj).order_by("-created_at").first()
         if not sub:
             return "❌ No subscription"
@@ -74,9 +83,9 @@ class TenantWAAppAdmin(admin.ModelAdmin):
         4. Register it with the BSP
         """
         from django.conf import settings as django_settings
+
         from wa.adapters import get_bsp_adapter
-        from wa.models import (SubscriptionStatus, WASubscription,
-                               WebhookEventType)
+        from wa.models import SubscriptionStatus, WASubscription, WebhookEventType
 
         base = getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "").rstrip("/")
         all_events = [et.value for et in WebhookEventType]
@@ -132,8 +141,7 @@ class TenantWAAppAdmin(admin.ModelAdmin):
                 else:
                     self.message_user(
                         request,
-                        f"⚠️ App {wa_app.pk} ({wa_app.app_name}): "
-                        f"BSP registration failed — {result.error_message}",
+                        f"⚠️ App {wa_app.pk} ({wa_app.app_name}): BSP registration failed — {result.error_message}",
                         messages.WARNING,
                     )
                     fail_count += 1

@@ -4,15 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('wa', '0006_add_gs_message_id_to_wamessage'),
+        ("wa", "0006_add_gs_message_id_to_wamessage"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='wawebhookevent',
-            name='event_type',
-            field=models.CharField(choices=[('MESSAGE', 'Message'), ('STATUS', 'Status'), ('TEMPLATE', 'Template'), ('BILLING', 'Billing'), ('ACCOUNT', 'Account'), ('UNKNOWN', 'Unknown')], max_length=20),
+            model_name="wawebhookevent",
+            name="event_type",
+            field=models.CharField(
+                choices=[
+                    ("MESSAGE", "Message"),
+                    ("STATUS", "Status"),
+                    ("TEMPLATE", "Template"),
+                    ("BILLING", "Billing"),
+                    ("ACCOUNT", "Account"),
+                    ("UNKNOWN", "Unknown"),
+                ],
+                max_length=20,
+            ),
         ),
     ]

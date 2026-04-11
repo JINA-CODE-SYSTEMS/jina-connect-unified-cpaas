@@ -34,9 +34,8 @@ import re
 from typing import Any, Dict, Literal, Optional
 
 from pydantic import Field, model_validator
-from wa.utility.data_model.wati.template_input import (WATIButtonsType,
-                                                       WATIHeaderFormat,
-                                                       WATITemplateSubCategory)
+
+from wa.utility.data_model.wati.template_input import WATIHeaderFormat, WATITemplateSubCategory
 
 from .base_validator import BaseTemplateValidator
 
@@ -59,9 +58,9 @@ AUTHENTICATION_GUARDRAILS: Dict[str, Any] = {
         },
     },
     "ttl": {
-        "default_seconds": 600,      # 10 minutes
-        "minimum_seconds": 60,       # 1 minute
-        "warning_threshold": 3600,   # warn if > 1 hour
+        "default_seconds": 600,  # 10 minutes
+        "minimum_seconds": 60,  # 1 minute
+        "warning_threshold": 3600,  # warn if > 1 hour
     },
 }
 
@@ -127,8 +126,7 @@ class AuthenticationTemplateValidator(BaseTemplateValidator):
             )
             if header_fmt not in allowed:
                 raise ValueError(
-                    f"Authentication templates cannot have '{header_fmt}' headers. "
-                    f"Only {allowed} are allowed."
+                    f"Authentication templates cannot have '{header_fmt}' headers. Only {allowed} are allowed."
                 )
         return self
 
@@ -142,8 +140,7 @@ class AuthenticationTemplateValidator(BaseTemplateValidator):
         """
         if self.footer:
             raise ValueError(
-                "Authentication templates do not allow custom footers. "
-                "META enforces a fixed footer automatically."
+                "Authentication templates do not allow custom footers. META enforces a fixed footer automatically."
             )
         return self
 
@@ -182,16 +179,14 @@ class AuthenticationTemplateValidator(BaseTemplateValidator):
 
         if len(self.buttons) > btn_rules["max_total"]:
             raise ValueError(
-                f"Authentication templates allow max {btn_rules['max_total']} button, "
-                f"got {len(self.buttons)}."
+                f"Authentication templates allow max {btn_rules['max_total']} button, got {len(self.buttons)}."
             )
 
         for btn in self.buttons:
             btn_type = btn.type if hasattr(btn, "type") else btn.get("type", "")
             if btn_type not in btn_rules["allowed_types"]:
                 raise ValueError(
-                    f"Authentication templates only support {btn_rules['allowed_types']} buttons, "
-                    f"got '{btn_type}'."
+                    f"Authentication templates only support {btn_rules['allowed_types']} buttons, got '{btn_type}'."
                 )
 
         return self

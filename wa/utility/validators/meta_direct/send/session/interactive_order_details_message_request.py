@@ -22,7 +22,6 @@ from wa.utility.data_model.shared.order_models import (
     OrderItem,
     OrderShipping,
     OrderTax,
-    PaymentGatewayConfig,
     PaymentSettings,
 )
 
@@ -33,6 +32,7 @@ from wa.utility.data_model.shared.order_models import (
 
 class TextHeader(BaseModel):
     """Text header for interactive message"""
+
     type: Literal["text"] = "text"
     text: str = Field(
         ...,
@@ -44,6 +44,7 @@ class TextHeader(BaseModel):
 
 class ImageHeader(BaseModel):
     """Image header for interactive message"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -61,6 +62,7 @@ OrderDetailsHeader = Union[TextHeader, ImageHeader]
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -71,6 +73,7 @@ class InteractiveBody(BaseModel):
 
 class InteractiveFooter(BaseModel):
     """Footer for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -86,6 +89,7 @@ class InteractiveFooter(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(
         ...,
         description="The message_id of the message being replied to",
@@ -103,30 +107,19 @@ class OrderSession(BaseModel):
 
     ``status`` is always ``"pending"`` for new orders sent via review_and_pay.
     """
-    status: Literal["pending"] = Field(
-        "pending", description="Order status, always 'pending' for new orders"
-    )
-    catalog_id: Optional[str] = Field(
-        None, description="Facebook catalog ID (optional)"
-    )
+
+    status: Literal["pending"] = Field("pending", description="Order status, always 'pending' for new orders")
+    catalog_id: Optional[str] = Field(None, description="Facebook catalog ID (optional)")
     items: List[OrderItem] = Field(
         ...,
         min_length=1,
         max_length=999,
         description="List of order items (1–999)",
     )
-    subtotal: OrderAmount = Field(
-        ..., description="Subtotal = sum of (item.amount.value × item.quantity)"
-    )
-    tax: OrderTax = Field(
-        ..., description="Tax amount"
-    )
-    shipping: Optional[OrderShipping] = Field(
-        None, description="Shipping cost (optional)"
-    )
-    discount: Optional[OrderDiscount] = Field(
-        None, description="Discount amount (optional)"
-    )
+    subtotal: OrderAmount = Field(..., description="Subtotal = sum of (item.amount.value × item.quantity)")
+    tax: OrderTax = Field(..., description="Tax amount")
+    shipping: Optional[OrderShipping] = Field(None, description="Shipping cost (optional)")
+    discount: Optional[OrderDiscount] = Field(None, description="Discount amount (optional)")
     expiration: Optional[dict] = Field(
         None,
         description='Payment expiration: {"timestamp": "EPOCH", "description": "text"}',
@@ -156,39 +149,29 @@ class OrderDetailsParameters(BaseModel):
     ``total_amount`` must equal ``subtotal + tax + shipping − discount``.
     ``currency`` is currently limited to ``"INR"`` (WhatsApp India Payments).
     """
+
     reference_id: str = Field(
         ...,
         min_length=1,
         max_length=35,
         description="Unique order reference ID (max 35 chars)",
     )
-    type: Literal["digital-goods", "physical-goods"] = Field(
-        ..., description="Goods type"
-    )
-    currency: Literal["INR"] = Field(
-        "INR", description="Currency code (only INR supported)"
-    )
-    total_amount: OrderAmount = Field(
-        ..., description="Order total = subtotal + tax + shipping − discount"
-    )
+    type: Literal["digital-goods", "physical-goods"] = Field(..., description="Goods type")
+    currency: Literal["INR"] = Field("INR", description="Currency code (only INR supported)")
+    total_amount: OrderAmount = Field(..., description="Order total = subtotal + tax + shipping − discount")
     payment_settings: List[PaymentSettings] = Field(
         ...,
         min_length=1,
         description="Payment gateway configurations",
     )
-    order: OrderSession = Field(
-        ..., description="Order contents (items, subtotal, tax, etc.)"
-    )
+    order: OrderSession = Field(..., description="Order contents (items, subtotal, tax, etc.)")
 
     @field_validator("reference_id")
     @classmethod
     def validate_reference_id_format(cls, v):
         """Reference ID: alphanumeric, underscores, dashes, dots only."""
         if not re.match(r"^[a-zA-Z0-9_.\-]+$", v):
-            raise ValueError(
-                "reference_id must contain only alphanumeric characters, "
-                "underscores, dashes, and dots"
-            )
+            raise ValueError("reference_id must contain only alphanumeric characters, underscores, dashes, and dots")
         return v
 
     @model_validator(mode="after")
@@ -218,12 +201,9 @@ class OrderDetailsParameters(BaseModel):
 
 class OrderDetailsAction(BaseModel):
     """Action wrapper for order_details messages."""
-    name: Literal["review_and_pay"] = Field(
-        "review_and_pay", description="Action name for order details"
-    )
-    parameters: OrderDetailsParameters = Field(
-        ..., description="Order details parameters"
-    )
+
+    name: Literal["review_and_pay"] = Field("review_and_pay", description="Action name for order details")
+    parameters: OrderDetailsParameters = Field(..., description="Order details parameters")
 
 
 # ============================================================================
@@ -237,21 +217,12 @@ class InteractiveOrderDetailsContent(BaseModel):
 
     order_details supports text and image headers only (no video/document).
     """
-    type: Literal["order_details"] = Field(
-        "order_details", description="Interactive type: order_details"
-    )
-    body: InteractiveBody = Field(
-        ..., description="Message body (required, max 1024 chars)"
-    )
-    action: OrderDetailsAction = Field(
-        ..., description="Order details action with review_and_pay parameters"
-    )
-    header: Optional[OrderDetailsHeader] = Field(
-        None, description="Optional header (text or image only)"
-    )
-    footer: Optional[InteractiveFooter] = Field(
-        None, description="Optional footer"
-    )
+
+    type: Literal["order_details"] = Field("order_details", description="Interactive type: order_details")
+    body: InteractiveBody = Field(..., description="Message body (required, max 1024 chars)")
+    action: OrderDetailsAction = Field(..., description="Order details action with review_and_pay parameters")
+    header: Optional[OrderDetailsHeader] = Field(None, description="Optional header (text or image only)")
+    footer: Optional[InteractiveFooter] = Field(None, description="Optional footer")
 
     @field_validator("header", mode="before")
     @classmethod
@@ -266,9 +237,7 @@ class InteractiveOrderDetailsContent(BaseModel):
             elif header_type == "image":
                 return ImageHeader(**v)
             else:
-                raise ValueError(
-                    f"order_details header type must be 'text' or 'image', got '{header_type}'"
-                )
+                raise ValueError(f"order_details header type must be 'text' or 'image', got '{header_type}'")
         return v
 
 
@@ -283,24 +252,13 @@ class InteractiveOrderDetailsMessageSendRequestValidator(BaseModel):
 
     Envelope: messaging_product, recipient_type, to, type, interactive
     """
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Must be 'whatsapp'"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Must be 'individual'"
-    )
-    to: str = Field(
-        ..., description="Recipient phone number"
-    )
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type: interactive"
-    )
-    interactive: InteractiveOrderDetailsContent = Field(
-        ..., description="Interactive order details content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Must be 'whatsapp'")
+    recipient_type: Literal["individual"] = Field("individual", description="Must be 'individual'")
+    to: str = Field(..., description="Recipient phone number")
+    type: Literal["interactive"] = Field("interactive", description="Message type: interactive")
+    interactive: InteractiveOrderDetailsContent = Field(..., description="Interactive order details content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -309,9 +267,7 @@ class InteractiveOrderDetailsMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

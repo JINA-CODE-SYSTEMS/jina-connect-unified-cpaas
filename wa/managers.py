@@ -1,22 +1,21 @@
-
-from broadcast.models import BroadcastPlatformChoices
-from contacts.models import ContactSource
-from django.db import models
-from django.db.models import (Case, CharField, Count, ExpressionWrapper, F,
-                              FloatField, Q, Value, When)
+from django.db.models import Case, CharField, Count, ExpressionWrapper, F, FloatField, Q, Value, When
 
 from abstract.managers import BaseTenantModelForFilterUserManager
+from broadcast.models import BroadcastPlatformChoices
+from contacts.models import ContactSource
 
 
 class BroadcastMessageStatusManager(BaseTenantModelForFilterUserManager):
-    def broadcast_summary(self,broadcast_id=None):
+    def broadcast_summary(self, broadcast_id=None):
         qs = self.get_queryset()
         if broadcast_id is not None:
             qs = qs.filter(broadcast_id=broadcast_id)
         return (
-            qs.values(broadcast_pk=F("broadcast__id"),   # 👈 avoid conflict
-        broadcast_name=F("broadcast__name"),
-        broadcast_scheduling_time=F("broadcast__scheduling_time"),)
+            qs.values(
+                broadcast_pk=F("broadcast__id"),  # 👈 avoid conflict
+                broadcast_name=F("broadcast__name"),
+                broadcast_scheduling_time=F("broadcast__scheduling_time"),
+            )
             .annotate(
                 queued=Count("id", filter=Q(status="QUEUED")),
                 pending=Count("id", filter=Q(status="PENDING")),
@@ -65,6 +64,7 @@ class WAContactsManager(BaseTenantModelForFilterUserManager):
         Source needs to be WHATSAPP or Manual for WA contacts
         """
         return super().get_queryset().filter(source__in=[ContactSource.WHATSAPP, ContactSource.MANUAL])
+
 
 class WABroadcastManager(BaseTenantModelForFilterUserManager):
     def get_queryset(self):

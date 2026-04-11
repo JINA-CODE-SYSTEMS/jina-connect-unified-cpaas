@@ -7,7 +7,8 @@ Keeps viewset thin; logic reusable from management commands, signals, admin acti
 import logging
 
 from django.db import transaction
-from tenants.models import TenantRole, TenantUser
+
+from tenants.models import TenantUser
 from users.models import EmailVerificationToken, User
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,7 @@ def add_member_to_tenant(
         token = EmailVerificationToken.create_for_user(user)
         try:
             from users.services.email_verification import EmailVerificationService
+
             EmailVerificationService.send_verification_email(user, token)
         except Exception:
             logger.exception("Failed to send verification email to %s", email)

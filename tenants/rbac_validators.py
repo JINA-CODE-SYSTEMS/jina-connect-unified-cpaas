@@ -10,7 +10,6 @@ from rest_framework import serializers
 from tenants.models import RolePermission, TenantRole, TenantUser
 from tenants.permissions import ALL_PERMISSIONS
 
-
 # ─── Requester Lookup ─────────────────────────────────────────────────────
 
 
@@ -24,7 +23,8 @@ def get_requester_tenant_user(request, tenant=None):
     tenant  : Tenant instance (optional) – if given, filters by that tenant.
     """
     qs = TenantUser.objects.select_related("tenant", "role").filter(
-        user=request.user, is_active=True,
+        user=request.user,
+        is_active=True,
     )
     if tenant is not None:
         qs = qs.filter(tenant=tenant)
@@ -43,9 +43,7 @@ def validate_priority_escalation(priority_value, request, tenant):
     """
     requester_tu = get_requester_tenant_user(request, tenant)
     if requester_tu and requester_tu.role and priority_value >= requester_tu.role.priority:
-        raise serializers.ValidationError(
-            f"Cannot set priority >= your own ({requester_tu.role.priority})."
-        )
+        raise serializers.ValidationError(f"Cannot set priority >= your own ({requester_tu.role.priority}).")
     return priority_value
 
 
@@ -73,25 +71,18 @@ def validate_permission_escalation(permissions_dict, request, tenant):
     # Unknown keys
     unknown = set(permissions_dict.keys()) - set(ALL_PERMISSIONS)
     if unknown:
-        raise serializers.ValidationError(
-            f"Unknown permission keys: {', '.join(sorted(unknown))}"
-        )
+        raise serializers.ValidationError(f"Unknown permission keys: {', '.join(sorted(unknown))}")
 
     # Escalation check – can't grant what you don't have
     requester_tu = get_requester_tenant_user(request, tenant)
     if requester_tu and requester_tu.role:
         requester_perms = dict(
-            RolePermission.objects.filter(role=requester_tu.role)
-            .values_list("permission", "allowed")
+            RolePermission.objects.filter(role=requester_tu.role).values_list("permission", "allowed")
         )
-        escalation = [
-            k for k, v in permissions_dict.items()
-            if v and not requester_perms.get(k, False)
-        ]
+        escalation = [k for k, v in permissions_dict.items() if v and not requester_perms.get(k, False)]
         if escalation:
             raise serializers.ValidationError(
-                f"Cannot grant permissions you don't have: "
-                f"{', '.join(sorted(escalation))}"
+                f"Cannot grant permissions you don't have: {', '.join(sorted(escalation))}"
             )
     return permissions_dict
 
@@ -122,9 +113,7 @@ def validate_role_assignment(role_id, request, tenant):
         raise serializers.ValidationError("Role not found in this tenant.")
 
     if target_role.slug == "owner":
-        raise serializers.ValidationError(
-            "OWNER role cannot be assigned directly. Use the transfer-ownership flow."
-        )
+        raise serializers.ValidationError("OWNER role cannot be assigned directly. Use the transfer-ownership flow.")
 
     requester_tu = get_requester_tenant_user(request, tenant)
     if not requester_tu or not requester_tu.role:
@@ -132,8 +121,7 @@ def validate_role_assignment(role_id, request, tenant):
 
     if target_role.priority >= requester_tu.role.priority:
         raise serializers.ValidationError(
-            f"You cannot assign a role with priority >= your own "
-            f"({requester_tu.role.priority})."
+            f"You cannot assign a role with priority >= your own ({requester_tu.role.priority})."
         )
     return role_id
 
@@ -152,14 +140,6 @@ def check_target_priority(requester_tu, target_role, action_verb="manage"):
     target_role  : TenantRole – the role being acted on
     action_verb  : str        – used in the error message (e.g. "edit", "delete", "remove")
     """
-    if (
-        requester_tu
-        and requester_tu.role
-        and target_role
-        and target_role.priority >= requester_tu.role.priority
-    ):
-        return (
-            f"You cannot {action_verb} a role with equal or higher "
-            f"priority than your own."
-        )
+    if requester_tu and requester_tu.role and target_role and target_role.priority >= requester_tu.role.priority:
+        return f"You cannot {action_verb} a role with equal or higher priority than your own."
     return None

@@ -17,18 +17,11 @@ class SessionMessageBase(BaseModel):
     """
     Base data model for WATI session messages.
     """
-    whatsapp_number: str = Field(
-        ..., description="Recipient WhatsApp number with country code (e.g., '85264318721')"
-    )
-    channel_phone_number: Optional[str] = Field(
-        None, description="Channel phone number with country code"
-    )
-    reply_context_id: Optional[str] = Field(
-        None, description="WhatsApp message ID (wamid) of the message to reply to"
-    )
-    local_message_id: Optional[str] = Field(
-        None, description="Unique message identifier for tracking"
-    )
+
+    whatsapp_number: str = Field(..., description="Recipient WhatsApp number with country code (e.g., '85264318721')")
+    channel_phone_number: Optional[str] = Field(None, description="Channel phone number with country code")
+    reply_context_id: Optional[str] = Field(None, description="WhatsApp message ID (wamid) of the message to reply to")
+    local_message_id: Optional[str] = Field(None, description="Unique message identifier for tracking")
 
     @field_validator("whatsapp_number")
     @classmethod
@@ -37,11 +30,10 @@ class SessionMessageBase(BaseModel):
             raise ValueError("WhatsApp number cannot be empty")
         # Remove any non-digit characters for validation
         import re
+
         digits = re.sub(r"\D", "", v)
         if len(digits) < 10 or len(digits) > 15:
-            raise ValueError(
-                "WhatsApp number must be 10-15 digits with country code"
-            )
+            raise ValueError("WhatsApp number must be 10-15 digits with country code")
         return v.strip()
 
 
@@ -55,9 +47,9 @@ class TextSessionMessage(SessionMessageBase):
             message_text="Hello! How can I help you?",
         )
     """
+
     message_text: str = Field(
-        ..., min_length=1, max_length=4096,
-        description="Message text to send (max 4096 characters)"
+        ..., min_length=1, max_length=4096, description="Message text to send (max 4096 characters)"
     )
 
     @field_validator("message_text")
@@ -95,12 +87,9 @@ class FileSessionMessage(SessionMessageBase):
             file_name="invoice.pdf",
         )
     """
-    file_url: str = Field(
-        ..., description="Public URL of the file to send"
-    )
-    file_name: Optional[str] = Field(
-        None, description="Optional filename override for the recipient"
-    )
+
+    file_url: str = Field(..., description="Public URL of the file to send")
+    file_name: Optional[str] = Field(None, description="Optional filename override for the recipient")
 
     @field_validator("file_url")
     @classmethod

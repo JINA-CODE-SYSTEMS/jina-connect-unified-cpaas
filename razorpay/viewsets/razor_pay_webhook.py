@@ -1,15 +1,15 @@
-import base64
 import hashlib
 import hmac
 import json
 
 from django.conf import settings
 from drf_yasg.utils import swagger_auto_schema
-from razorpay.models import RazorPayOrder
-from razorpay.serializers import RazorPayWebhookSerializer
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+from razorpay.models import RazorPayOrder
+from razorpay.serializers import RazorPayWebhookSerializer
 
 
 class RazorpayWebhookViewSet(viewsets.ViewSet):
@@ -33,12 +33,7 @@ class RazorpayWebhookViewSet(viewsets.ViewSet):
             return Response({"error": "Invalid signature"}, status=400)
         try:
             payload = json.loads(body)
-            order_id = (
-                payload.get("payload", {})
-                .get("payment", {})
-                .get("entity", {})
-                .get("order_id")
-            )
+            order_id = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("order_id")
         except json.JSONDecodeError:
             return Response({"error": "Invalid JSON payload"}, status=200)
 
@@ -53,11 +48,9 @@ class RazorpayWebhookViewSet(viewsets.ViewSet):
                 status=404,
             )
 
-        serializer = RazorPayWebhookSerializer(
-            data={"order": order.id, "response": payload}
-        )
+        serializer = RazorPayWebhookSerializer(data={"order": order.id, "response": payload})
         serializer.is_valid(raise_exception=True)
-        webhook = serializer.save()
+        serializer.save()
 
         return Response(serializer.data)
 

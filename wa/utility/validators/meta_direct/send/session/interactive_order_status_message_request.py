@@ -16,7 +16,6 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # ============================================================================
 # Body (reused shape, local definition for validator independence)
 # ============================================================================
@@ -24,6 +23,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -39,6 +39,7 @@ class InteractiveBody(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(
         ...,
         description="The message_id of the message being replied to",
@@ -57,9 +58,13 @@ class OrderStatusOrder(BaseModel):
     ``status`` must be one of the META-defined lifecycle states.
     Note: "pending" is NOT valid here — it's only used in order_details.
     """
+
     status: Literal[
-        "processing", "shipped", "completed",
-        "canceled", "partially_shipped",
+        "processing",
+        "shipped",
+        "completed",
+        "canceled",
+        "partially_shipped",
     ] = Field(..., description="New order status")
     description: Optional[str] = Field(
         None,
@@ -70,36 +75,29 @@ class OrderStatusOrder(BaseModel):
 
 class OrderStatusParameters(BaseModel):
     """Parameters for the ``review_order`` action."""
+
     reference_id: str = Field(
         ...,
         min_length=1,
         max_length=35,
         description="Same reference_id from the original order_details message",
     )
-    order: OrderStatusOrder = Field(
-        ..., description="New order status"
-    )
+    order: OrderStatusOrder = Field(..., description="New order status")
 
     @field_validator("reference_id")
     @classmethod
     def validate_reference_id_format(cls, v):
         """Reference ID: alphanumeric, underscores, dashes, dots only."""
         if not re.match(r"^[a-zA-Z0-9_.\-]+$", v):
-            raise ValueError(
-                "reference_id must contain only alphanumeric characters, "
-                "underscores, dashes, and dots"
-            )
+            raise ValueError("reference_id must contain only alphanumeric characters, underscores, dashes, and dots")
         return v
 
 
 class OrderStatusAction(BaseModel):
     """Action wrapper for order_status messages."""
-    name: Literal["review_order"] = Field(
-        "review_order", description="Action name for order status updates"
-    )
-    parameters: OrderStatusParameters = Field(
-        ..., description="Order status parameters"
-    )
+
+    name: Literal["review_order"] = Field("review_order", description="Action name for order status updates")
+    parameters: OrderStatusParameters = Field(..., description="Order status parameters")
 
 
 # ============================================================================
@@ -114,15 +112,10 @@ class InteractiveOrderStatusContent(BaseModel):
     order_status is simpler than order_details — no header, footer, items,
     or amounts. Just body text and the status update action.
     """
-    type: Literal["order_status"] = Field(
-        "order_status", description="Interactive type: order_status"
-    )
-    body: InteractiveBody = Field(
-        ..., description="Message body (required)"
-    )
-    action: OrderStatusAction = Field(
-        ..., description="Order status action with review_order parameters"
-    )
+
+    type: Literal["order_status"] = Field("order_status", description="Interactive type: order_status")
+    body: InteractiveBody = Field(..., description="Message body (required)")
+    action: OrderStatusAction = Field(..., description="Order status action with review_order parameters")
 
 
 # ============================================================================
@@ -136,24 +129,13 @@ class InteractiveOrderStatusMessageSendRequestValidator(BaseModel):
 
     Envelope: messaging_product, recipient_type, to, type, interactive
     """
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Must be 'whatsapp'"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Must be 'individual'"
-    )
-    to: str = Field(
-        ..., description="Recipient phone number"
-    )
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type: interactive"
-    )
-    interactive: InteractiveOrderStatusContent = Field(
-        ..., description="Interactive order status content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Must be 'whatsapp'")
+    recipient_type: Literal["individual"] = Field("individual", description="Must be 'individual'")
+    to: str = Field(..., description="Recipient phone number")
+    type: Literal["interactive"] = Field("interactive", description="Message type: interactive")
+    interactive: InteractiveOrderStatusContent = Field(..., description="Interactive order status content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -162,9 +144,7 @@ class InteractiveOrderStatusMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

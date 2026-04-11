@@ -16,26 +16,27 @@ from ..serializers import ChatFlowNodeSerializer
 class ChatFlowNodeViewSet(BaseTenantModelViewSet):
     """
     ViewSet for managing chat flow nodes.
-    
+
     This viewset provides full CRUD operations for individual nodes
-    within chat flows. Each node represents a single message or 
-    interaction point in the conversation flow. 
-    
+    within chat flows. Each node represents a single message or
+    interaction point in the conversation flow.
+
     Key Features:
     - Complete node lifecycle management
     - Flow-specific node filtering
     - Template association handling
     - Position and metadata management
-    
+
     Query Parameters:
     - flow_id: Filter nodes by specific flow
-    
+
     Use Cases:
     - Adding new nodes to existing flows
     - Updating node content and settings
     - Managing node positions in ReactFlow
     - Template assignment and validation
     """
+
     serializer_class = ChatFlowNodeSerializer
     queryset = ChatFlowNode.objects.all()
     required_permissions = {
@@ -47,7 +48,7 @@ class ChatFlowNodeViewSet(BaseTenantModelViewSet):
         "destroy": "chatflow.delete",
         "default": "chatflow.view",
     }
-    
+
     def get_queryset(self):
         """
         Tenant-scoped queryset (via BaseTenantModelViewSet) with
@@ -56,7 +57,7 @@ class ChatFlowNodeViewSet(BaseTenantModelViewSet):
         #268: Switched to BaseTenantModelViewSet for proper tenant isolation.
         """
         queryset = super().get_queryset()
-        flow_id = self.request.query_params.get('flow_id')
+        flow_id = self.request.query_params.get("flow_id")
         if flow_id:
             queryset = queryset.filter(flow_id=flow_id)
         return queryset

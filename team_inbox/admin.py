@@ -6,7 +6,7 @@ from django.contrib import admin
 app_models = apps.get_app_config("team_inbox").get_models()
 
 for model in app_models:
-    
+
     class GenericAdmin(admin.ModelAdmin):
         list_display = [field.name for field in model._meta.fields]
 

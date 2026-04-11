@@ -10,6 +10,7 @@ PHONE_SERIES_WHITELIST = getattr(
     ["+15"],  # Example: accept +1-555-... demo/test numbers
 )
 
+
 def validate_phone_with_series(value):
     """
     Compatible with phonenumber_field's PhoneNumberField.

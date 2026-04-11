@@ -1,6 +1,7 @@
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 from tenants.models import DefaultRoleSlugs, TenantRole, TenantUser
 from users.models import User
 
@@ -8,10 +9,8 @@ from users.models import User
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = '__all__'
-        extra_kwargs = {
-            "password": {"write_only": True}
-        }
+        fields = "__all__"
+        extra_kwargs = {"password": {"write_only": True}}
 
 
 class UserSafeSerializer(serializers.ModelSerializer):
@@ -29,8 +28,15 @@ class UserSelfSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            "id", "username", "first_name", "last_name",
-            "email", "mobile", "image", "birth_date", "address",
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "mobile",
+            "image",
+            "birth_date",
+            "address",
         ]
         read_only_fields = ["id", "username"]
         extra_kwargs = {
@@ -49,13 +55,13 @@ class LoginPatchUserSerializer(serializers.Serializer):
         tenant = self.context["tenant"]
 
         user, created = User.objects.get_or_create(
-            mobile = validated_data["mobile"],
+            mobile=validated_data["mobile"],
             defaults={
                 "username": str(validated_data["mobile"]),
                 "first_name": validated_data["first_name"],
                 "last_name": validated_data.get("last_name", ""),
                 "mobile": validated_data["mobile"],
-            }
+            },
         )
 
         if created:
@@ -64,14 +70,17 @@ class LoginPatchUserSerializer(serializers.Serializer):
 
         # Link user to tenant with default AGENT role
         default_role = TenantRole.objects.filter(
-            tenant=tenant, slug=DefaultRoleSlugs.AGENT,
+            tenant=tenant,
+            slug=DefaultRoleSlugs.AGENT,
         ).first()
         if default_role is None:
             # Safety net: seed default roles if they're missing, then retry
             from tenants.permissions import seed_default_roles
+
             seed_default_roles(tenant)
             default_role = TenantRole.objects.filter(
-                tenant=tenant, slug=DefaultRoleSlugs.AGENT,
+                tenant=tenant,
+                slug=DefaultRoleSlugs.AGENT,
             ).first()
         tenant_user, _tu_created = TenantUser.objects.get_or_create(
             tenant=tenant,
@@ -97,46 +106,43 @@ class LoginPatchUserSerializer(serializers.Serializer):
 
 class JwtUserSerializer(TokenObtainPairSerializer):
     username = serializers.CharField(
-        help_text="Username or email for authentication",
-        style={'placeholder': 'Enter your username or email'}
+        help_text="Username or email for authentication", style={"placeholder": "Enter your username or email"}
     )
     password = serializers.CharField(
         write_only=True,
         help_text="Password for authentication",
-        style={'input_type': 'password', 'placeholder': 'Enter your password'}
+        style={"input_type": "password", "placeholder": "Enter your password"},
     )
 
     class Meta:
-        fields = ['username', 'password']
+        fields = ["username", "password"]
 
     def get_token(self, user):
         token = super().get_token(user)
-        
+
         # Add username
-        token['username'] = user.username
-        
+        token["username"] = user.username
+
         # Add groups (list of group names)
-        token['groups'] = list(user.groups.values_list('name', flat=True))
-        
+        token["groups"] = list(user.groups.values_list("name", flat=True))
+
         # Add superuser flag
-        token['is_superuser'] = user.is_superuser
+        token["is_superuser"] = user.is_superuser
 
         # Get tenant from serializer context
-        tenant = self.context.get('tenant')  # context is passed from view
-        token['tenant_id'] = tenant.id if tenant else None
+        tenant = self.context.get("tenant")  # context is passed from view
+        token["tenant_id"] = tenant.id if tenant else None
 
         # ── RBAC role claims ────────────────────────────────────────
         if tenant:
             from tenants.models import TenantUser
+
             tenant_user = (
-                TenantUser.objects
-                .filter(user=user, tenant=tenant, is_active=True)
-                .select_related('role')
-                .first()
+                TenantUser.objects.filter(user=user, tenant=tenant, is_active=True).select_related("role").first()
             )
             if tenant_user and tenant_user.role:
-                token['role'] = tenant_user.role.slug
-                token['role_name'] = tenant_user.role.name
-                token['role_priority'] = tenant_user.role.priority
+                token["role"] = tenant_user.role.slug
+                token["role_name"] = tenant_user.role.name
+                token["role_priority"] = tenant_user.role.priority
 
         return token

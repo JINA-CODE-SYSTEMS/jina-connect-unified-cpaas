@@ -4,15 +4,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('wa', '0005_increase_example_media_url_max_length'),
+        ("wa", "0005_increase_example_media_url_max_length"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='wamessage',
-            name='gs_message_id',
-            field=models.CharField(blank=True, db_index=True, help_text='Secondary message ID — stores the Gupshup UUID (messageId) when wa_message_id holds the Cloud API wamid, or vice-versa.', max_length=255, null=True),
+            model_name="wamessage",
+            name="gs_message_id",
+            field=models.CharField(
+                blank=True,
+                db_index=True,
+                help_text="Secondary message ID — stores the Gupshup UUID (messageId) when wa_message_id holds the Cloud API wamid, or vice-versa.",
+                max_length=255,
+                null=True,
+            ),
         ),
     ]

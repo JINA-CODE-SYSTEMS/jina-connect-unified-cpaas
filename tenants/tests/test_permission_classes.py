@@ -10,19 +10,21 @@ Run with:
     python manage.py test tenants.tests.test_permission_classes
 """
 
-from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
-from rest_framework.views import APIView
+from django.test import RequestFactory, TestCase
 
 from tenants.models import (
-    Tenant, TenantUser, TenantRole, RolePermission, DefaultRoleSlugs,
+    RolePermission,
+    Tenant,
+    TenantRole,
+    TenantUser,
 )
 from tenants.permission_classes import (
-    TenantRolePermission,
-    IsOwner,
     IsAdminOrAbove,
-    IsManagerOrAbove,
     IsAgentOrAbove,
+    IsManagerOrAbove,
+    IsOwner,
+    TenantRolePermission,
 )
 
 User = get_user_model()
@@ -73,31 +75,45 @@ class PermissionClassesTestCase(TestCase):
 
         # ── Users ─────────────────────────────────────────────────────
         cls.superuser = User.objects.create_superuser(
-            username="superadmin", email="super@test.com", password="testpass",
+            username="superadmin",
+            email="super@test.com",
+            password="testpass",
             mobile="+919000000001",
         )
         cls.owner_user = User.objects.create_user(
-            username="owner_user", email="owner@test.com", password="testpass",
+            username="owner_user",
+            email="owner@test.com",
+            password="testpass",
             mobile="+919000000002",
         )
         cls.admin_user = User.objects.create_user(
-            username="admin_user", email="admin@test.com", password="testpass",
+            username="admin_user",
+            email="admin@test.com",
+            password="testpass",
             mobile="+919000000003",
         )
         cls.manager_user = User.objects.create_user(
-            username="manager_user", email="manager@test.com", password="testpass",
+            username="manager_user",
+            email="manager@test.com",
+            password="testpass",
             mobile="+919000000004",
         )
         cls.agent_user = User.objects.create_user(
-            username="agent_user", email="agent@test.com", password="testpass",
+            username="agent_user",
+            email="agent@test.com",
+            password="testpass",
             mobile="+919000000005",
         )
         cls.viewer_user = User.objects.create_user(
-            username="viewer_user", email="viewer@test.com", password="testpass",
+            username="viewer_user",
+            email="viewer@test.com",
+            password="testpass",
             mobile="+919000000006",
         )
         cls.no_role_user = User.objects.create_user(
-            username="norole_user", email="norole@test.com", password="testpass",
+            username="norole_user",
+            email="norole@test.com",
+            password="testpass",
             mobile="+919000000007",
         )
 
@@ -167,6 +183,7 @@ class PermissionClassesTestCase(TestCase):
 
     def test_unauthenticated_denied(self):
         from django.contrib.auth.models import AnonymousUser
+
         perm = TenantRolePermission()
         view = _FakeView(action="list", required_permissions={"list": "broadcast.view"})
         factory = RequestFactory()
@@ -255,7 +272,9 @@ class PermissionClassesTestCase(TestCase):
     def test_user_with_no_tenant_membership_denied(self):
         """User who exists but has no TenantUser row at all."""
         orphan = User.objects.create_user(
-            username="orphan", email="orphan@test.com", password="testpass",
+            username="orphan",
+            email="orphan@test.com",
+            password="testpass",
             mobile="+919000000099",
         )
         perm = TenantRolePermission()
@@ -265,12 +284,16 @@ class PermissionClassesTestCase(TestCase):
     def test_inactive_tenant_user_denied(self):
         """TenantUser with is_active=False should be denied even with a valid role."""
         inactive_user = User.objects.create_user(
-            username="inactive_user", email="inactive@test.com", password="testpass",
+            username="inactive_user",
+            email="inactive@test.com",
+            password="testpass",
             mobile="+919000000098",
         )
         TenantUser.objects.create(
-            tenant=self.tenant, user=inactive_user,
-            role=self.owner_role, is_active=False,
+            tenant=self.tenant,
+            user=inactive_user,
+            role=self.owner_role,
+            is_active=False,
         )
         perm = TenantRolePermission()
         view = _FakeView(action="list", required_permissions={"list": "broadcast.view"})
@@ -293,8 +316,8 @@ class PermissionClassesTestCase(TestCase):
         view = _FakeView(
             action="create",
             required_permissions={
-                "create": "broadcast.create",   # agent denied
-                "default": "broadcast.view",     # agent allowed
+                "create": "broadcast.create",  # agent denied
+                "default": "broadcast.view",  # agent allowed
             },
         )
         # Should use "create" key, not "default", so agent is denied
@@ -303,11 +326,16 @@ class PermissionClassesTestCase(TestCase):
     def test_custom_role_with_custom_priority(self):
         """Custom role with priority=50 should pass IsAgentOrAbove but fail IsManagerOrAbove."""
         custom_role = TenantRole.objects.create(
-            tenant=self.tenant, name="Campaign Lead", slug="campaign_lead",
-            priority=50, is_system=False,
+            tenant=self.tenant,
+            name="Campaign Lead",
+            slug="campaign_lead",
+            priority=50,
+            is_system=False,
         )
         custom_user = User.objects.create_user(
-            username="custom_user", email="custom@test.com", password="testpass",
+            username="custom_user",
+            email="custom@test.com",
+            password="testpass",
             mobile="+919000000097",
         )
         TenantUser.objects.create(tenant=self.tenant, user=custom_user, role=custom_role)
@@ -319,12 +347,16 @@ class PermissionClassesTestCase(TestCase):
     def test_inactive_tenant_user_denied_for_shortcut(self):
         """Priority shortcut should also deny inactive TenantUser."""
         inactive_owner = User.objects.create_user(
-            username="inactive_owner", email="inactiveowner@test.com", password="testpass",
+            username="inactive_owner",
+            email="inactiveowner@test.com",
+            password="testpass",
             mobile="+919000000096",
         )
         TenantUser.objects.create(
-            tenant=self.tenant, user=inactive_owner,
-            role=self.owner_role, is_active=False,
+            tenant=self.tenant,
+            user=inactive_owner,
+            role=self.owner_role,
+            is_active=False,
         )
         perm = IsOwner()
         view = _FakeView()

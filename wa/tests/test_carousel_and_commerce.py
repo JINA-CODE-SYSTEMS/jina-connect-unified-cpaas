@@ -23,12 +23,13 @@ from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-
 # ─── Factories ────────────────────────────────────────────────────────────────
+
 
 def create_test_tenant_and_user(username="testuser", password="TestPass123!"):
     """Create a Tenant + User + JWT token."""
     from django.contrib.auth import get_user_model
+
     from tenants.models import Tenant, TenantRole, TenantUser
 
     User = get_user_model()
@@ -157,6 +158,7 @@ TEXT_PAYLOAD = {
 
 # ─── Base class ───────────────────────────────────────────────────────────────
 
+
 class TemplateTestBase(TestCase):
     """Sets up tenant, user, WAApp, and authenticated client with mocked BSP."""
 
@@ -171,6 +173,7 @@ class TemplateTestBase(TestCase):
             self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
 
         from wa.adapters.base import AdapterResult
+
         self._mock_adapter = MagicMock()
         self._mock_adapter.submit_template.return_value = AdapterResult(
             success=True, provider="mock", data={"mock": True}
@@ -205,6 +208,7 @@ class TemplateTestBase(TestCase):
 # =============================================================================
 # #374  CAROUSEL to_meta_payload()
 # =============================================================================
+
 
 class TestCarouselMetaPayload(TemplateTestBase):
     """
@@ -339,10 +343,8 @@ class TestCarouselMetaPayload(TemplateTestBase):
         data = {
             **CAROUSEL_IMAGE_PAYLOAD,
             "cards": [
-                {"body": "", "media_handle": "h:001",
-                 "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
-                {"body": "Has body", "media_handle": "h:002",
-                 "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
+                {"body": "", "media_handle": "h:001", "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
+                {"body": "Has body", "media_handle": "h:002", "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
             ],
         }
         payload = self._get_meta_payload(data)
@@ -362,8 +364,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
             **CAROUSEL_IMAGE_PAYLOAD,
             "cards": [
                 {"body": "No buttons card", "media_handle": "h:001"},
-                {"body": "With buttons", "media_handle": "h:002",
-                 "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
+                {"body": "With buttons", "media_handle": "h:002", "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
             ],
         }
         payload = self._get_meta_payload(data)
@@ -403,8 +404,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         data = {
             **CAROUSEL_IMAGE_PAYLOAD,
             "cards": [
-                {"body": "Default header", "media_handle": "h:def",
-                 "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
+                {"body": "Default header", "media_handle": "h:def", "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
             ],
         }
         payload = self._get_meta_payload(data)
@@ -417,6 +417,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
 # #375  card_media M2M linking
 # =============================================================================
 
+
 class TestCardMediaM2MLinking(TemplateTestBase):
     """
     Verify that the create endpoint links TenantMedia records to the
@@ -425,9 +426,10 @@ class TestCardMediaM2MLinking(TemplateTestBase):
 
     def _create_tenant_media(self, card_index, media_id):
         """Create a TenantMedia record for the test tenant."""
-        from tenants.models import TenantMedia
-        import tempfile
+
         from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from tenants.models import TenantMedia
 
         dummy_file = SimpleUploadedFile(
             name=f"card_{card_index}.jpg",
@@ -451,6 +453,7 @@ class TestCardMediaM2MLinking(TemplateTestBase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
 
         from wa.models import WATemplate
+
         template = WATemplate.objects.get(pk=resp.data["id"])
         linked_ids = set(template.card_media.values_list("id", flat=True))
         self.assertIn(tm0.id, linked_ids)
@@ -465,6 +468,7 @@ class TestCardMediaM2MLinking(TemplateTestBase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         from wa.models import WATemplate
+
         template = WATemplate.objects.get(pk=resp.data["id"])
         self.assertEqual(template.card_media.count(), 2)
 
@@ -474,6 +478,7 @@ class TestCardMediaM2MLinking(TemplateTestBase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         from wa.models import WATemplate
+
         template = WATemplate.objects.get(pk=resp.data["id"])
         self.assertEqual(template.card_media.count(), 0)
 
@@ -486,6 +491,7 @@ class TestCardMediaM2MLinking(TemplateTestBase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         from wa.models import WATemplate
+
         template = WATemplate.objects.get(pk=resp.data["id"])
         self.assertEqual(template.card_media.count(), 1)
         self.assertEqual(template.card_media.first().id, tm0.id)
@@ -496,6 +502,7 @@ class TestCardMediaM2MLinking(TemplateTestBase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         from wa.models import WATemplate
+
         template = WATemplate.objects.get(pk=resp.data["id"])
         self.assertEqual(template.card_media.count(), 0)
 
@@ -522,6 +529,7 @@ class TestCardMediaM2MLinking(TemplateTestBase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         from wa.models import WATemplate
+
         template = WATemplate.objects.get(pk=resp.data["id"])
         self.assertEqual(template.card_media.count(), 1)
 
@@ -529,20 +537,24 @@ class TestCardMediaM2MLinking(TemplateTestBase):
         """✅ When multiple TenantMedia match same (card_index, media_id),
         the most recently created one is linked (order_by -created_at)."""
         # Create two TenantMedia for same card_index + media_id
-        tm_old = self._create_tenant_media(card_index=0, media_id="h:111111")
+        self._create_tenant_media(card_index=0, media_id="h:111111")
         tm_new = self._create_tenant_media(card_index=0, media_id="h:111111")
 
         data = {
             **CAROUSEL_IMAGE_PAYLOAD,
             "cards": [
-                {"body": "Only one card", "media_handle": "h:111111",
-                 "buttons": [{"type": "QUICK_REPLY", "text": "OK"}]},
+                {
+                    "body": "Only one card",
+                    "media_handle": "h:111111",
+                    "buttons": [{"type": "QUICK_REPLY", "text": "OK"}],
+                },
             ],
         }
         resp = self.create_template(data)
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 
         from wa.models import WATemplate
+
         template = WATemplate.objects.get(pk=resp.data["id"])
         # Should link the newest one
         linked = list(template.card_media.values_list("id", flat=True))
@@ -552,6 +564,7 @@ class TestCardMediaM2MLinking(TemplateTestBase):
 # =============================================================================
 # #317  Commerce Manager gating on /types/
 # =============================================================================
+
 
 class TestCommerceManagerGating(TemplateTestBase):
     """
@@ -567,9 +580,8 @@ class TestCommerceManagerGating(TemplateTestBase):
     def _set_commerce_enabled(self, enabled):
         """Toggle is_commerce_manager_enabled on the test WAApp."""
         from tenants.models import TenantWAApp
-        TenantWAApp.objects.filter(pk=self.wa_app.pk).update(
-            is_commerce_manager_enabled=enabled
-        )
+
+        TenantWAApp.objects.filter(pk=self.wa_app.pk).update(is_commerce_manager_enabled=enabled)
         self.wa_app.refresh_from_db()
 
     def _get_type_entry(self, types_list, value):
@@ -605,7 +617,7 @@ class TestCommerceManagerGating(TemplateTestBase):
             if type_entry["value"] not in ("CATALOG", "PRODUCT"):
                 self.assertTrue(
                     type_entry["enabled"],
-                    f"{type_entry['value']} should be enabled but got enabled={type_entry['enabled']}"
+                    f"{type_entry['value']} should be enabled but got enabled={type_entry['enabled']}",
                 )
 
     def test_non_commerce_types_have_no_disabled_reason(self):
@@ -614,8 +626,7 @@ class TestCommerceManagerGating(TemplateTestBase):
         for type_entry in resp.data:
             if type_entry["value"] not in ("CATALOG", "PRODUCT"):
                 self.assertNotIn(
-                    "disabled_reason", type_entry,
-                    f"{type_entry['value']} should not have disabled_reason"
+                    "disabled_reason", type_entry, f"{type_entry['value']} should not have disabled_reason"
                 )
 
     # ── Commerce enabled ──────────────────────────────────────────────
@@ -641,10 +652,7 @@ class TestCommerceManagerGating(TemplateTestBase):
         self._set_commerce_enabled(True)
         resp = self.client.get(self.types_url)
         for type_entry in resp.data:
-            self.assertTrue(
-                type_entry["enabled"],
-                f"{type_entry['value']} should be enabled"
-            )
+            self.assertTrue(type_entry["enabled"], f"{type_entry['value']} should be enabled")
 
     # ── Response structure ────────────────────────────────────────────
 

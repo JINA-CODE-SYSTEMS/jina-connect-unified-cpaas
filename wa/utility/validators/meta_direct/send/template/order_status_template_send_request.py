@@ -11,7 +11,7 @@ and other order status changes with dynamic information.
 import re
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Parameter Models
@@ -20,12 +20,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class BodyTextParameter(BaseModel):
     """Body parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the body parameter")
 
 
 class BodyCurrencyParameter(BaseModel):
     """Body parameter with currency"""
+
     type: Literal["currency"] = "currency"
     currency: dict = Field(
         ...,
@@ -35,6 +37,7 @@ class BodyCurrencyParameter(BaseModel):
 
 class BodyDateTimeParameter(BaseModel):
     """Body parameter with date_time"""
+
     type: Literal["date_time"] = "date_time"
     date_time: dict = Field(..., description="DateTime object with fallback_value")
 
@@ -45,12 +48,14 @@ BodyParameter = Union[BodyTextParameter, BodyCurrencyParameter, BodyDateTimePara
 
 class HeaderTextParameter(BaseModel):
     """Header parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the header parameter")
 
 
 class HeaderImageParameter(BaseModel):
     """Header parameter with image"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -60,6 +65,7 @@ class HeaderImageParameter(BaseModel):
 
 class HeaderDocumentParameter(BaseModel):
     """Header parameter with document"""
+
     type: Literal["document"] = "document"
     document: dict = Field(
         ...,
@@ -68,9 +74,7 @@ class HeaderDocumentParameter(BaseModel):
 
 
 # Union type for header parameters
-HeaderParameter = Union[
-    HeaderTextParameter, HeaderImageParameter, HeaderDocumentParameter
-]
+HeaderParameter = Union[HeaderTextParameter, HeaderImageParameter, HeaderDocumentParameter]
 
 
 # ============================================================================
@@ -80,6 +84,7 @@ HeaderParameter = Union[
 
 class ShippingAddressSend(BaseModel):
     """Shipping address for send request"""
+
     name: str = Field(..., description="Recipient name")
     address: str = Field(..., description="Street address")
     city: str = Field(..., description="City")
@@ -90,17 +95,17 @@ class ShippingAddressSend(BaseModel):
 
 class ShippingInfoSend(BaseModel):
     """Shipping information for send request"""
+
     carrier: Optional[str] = Field(None, description="Shipping carrier name")
     tracking_number: Optional[str] = Field(None, description="Tracking number")
     tracking_url: Optional[str] = Field(None, description="Tracking URL")
     estimated_delivery: Optional[str] = Field(None, description="Estimated delivery")
-    shipping_address: Optional[ShippingAddressSend] = Field(
-        None, description="Delivery address"
-    )
+    shipping_address: Optional[ShippingAddressSend] = Field(None, description="Delivery address")
 
 
 class OrderStatusDetailsSend(BaseModel):
     """Order status details for send request"""
+
     reference_id: str = Field(
         ...,
         min_length=1,
@@ -127,6 +132,7 @@ class OrderStatusDetailsSend(BaseModel):
 
 class OrderStatusActionSend(BaseModel):
     """Action containing order status details for send request"""
+
     name: Literal["order_status"] = Field(
         "order_status",
         description="Action name for order status",
@@ -144,6 +150,7 @@ class OrderStatusActionSend(BaseModel):
 
 class URLButtonParameter(BaseModel):
     """Button parameter for URL buttons with dynamic suffix"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Dynamic URL suffix value")
 
@@ -155,22 +162,21 @@ class URLButtonParameter(BaseModel):
 
 class HeaderComponentSend(BaseModel):
     """Header component for sending template message"""
+
     type: Literal["header"] = "header"
-    parameters: List[HeaderParameter] = Field(
-        ..., min_length=1, max_length=1, description="Header parameters"
-    )
+    parameters: List[HeaderParameter] = Field(..., min_length=1, max_length=1, description="Header parameters")
 
 
 class BodyComponentSend(BaseModel):
     """Body component for sending template message"""
+
     type: Literal["body"] = "body"
-    parameters: List[BodyParameter] = Field(
-        ..., min_length=1, description="Body parameters"
-    )
+    parameters: List[BodyParameter] = Field(..., min_length=1, description="Body parameters")
 
 
 class OrderStatusComponentSend(BaseModel):
     """Order status component for send request"""
+
     type: Literal["order_status"] = "order_status"
     action: OrderStatusActionSend = Field(
         ...,
@@ -180,12 +186,11 @@ class OrderStatusComponentSend(BaseModel):
 
 class URLButtonComponentSend(BaseModel):
     """URL button component for send request"""
+
     type: Literal["button"] = "button"
     sub_type: Literal["url"] = "url"
     index: int = Field(..., ge=0, le=2, description="Button index (0-based)")
-    parameters: List[URLButtonParameter] = Field(
-        ..., min_length=1, max_length=1, description="URL button parameters"
-    )
+    parameters: List[URLButtonParameter] = Field(..., min_length=1, max_length=1, description="URL button parameters")
 
 
 # Union type for send components
@@ -204,6 +209,7 @@ SendOrderStatusTemplateComponent = Union[
 
 class LanguageInput(BaseModel):
     """Language input for template request"""
+
     code: str = Field(
         ...,
         min_length=2,
@@ -226,6 +232,7 @@ class LanguageInput(BaseModel):
 
 class OrderStatusTemplateSendBody(BaseModel):
     """Template body for order status template send request"""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -279,17 +286,11 @@ class OrderStatusTemplateSendBody(BaseModel):
                                 elif param_type == "image":
                                     parsed_params.append(HeaderImageParameter(**param))
                                 elif param_type == "document":
-                                    parsed_params.append(
-                                        HeaderDocumentParameter(**param)
-                                    )
+                                    parsed_params.append(HeaderDocumentParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown header parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown header parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(HeaderComponentSend(**comp))
                 elif comp_type == "body":
@@ -308,34 +309,24 @@ class OrderStatusTemplateSendBody(BaseModel):
                                 elif param_type == "date_time":
                                     parsed_params.append(BodyDateTimeParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown body parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown body parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(BodyComponentSend(**comp))
                 elif comp_type == "order_status":
                     # Parse order status action
                     if "action" in comp and isinstance(comp["action"], dict):
                         action_data = comp["action"]
-                        if "parameters" in action_data and isinstance(
-                            action_data["parameters"], dict
-                        ):
+                        if "parameters" in action_data and isinstance(action_data["parameters"], dict):
                             params = action_data["parameters"]
                             # Parse shipping info if present
-                            if "shipping" in params and isinstance(
-                                params["shipping"], dict
-                            ):
+                            if "shipping" in params and isinstance(params["shipping"], dict):
                                 shipping_data = params["shipping"]
                                 if "shipping_address" in shipping_data and isinstance(
                                     shipping_data["shipping_address"], dict
                                 ):
-                                    shipping_data[
-                                        "shipping_address"
-                                    ] = ShippingAddressSend(
+                                    shipping_data["shipping_address"] = ShippingAddressSend(
                                         **shipping_data["shipping_address"]
                                     )
                                 params["shipping"] = ShippingInfoSend(**shipping_data)
@@ -353,17 +344,11 @@ class OrderStatusTemplateSendBody(BaseModel):
                                 elif isinstance(param, dict):
                                     param_type = param.get("type")
                                     if param_type == "text":
-                                        parsed_params.append(
-                                            URLButtonParameter(**param)
-                                        )
+                                        parsed_params.append(URLButtonParameter(**param))
                                     else:
-                                        raise ValueError(
-                                            f"Unknown URL button parameter type: {param_type}"
-                                        )
+                                        raise ValueError(f"Unknown URL button parameter type: {param_type}")
                                 else:
-                                    raise ValueError(
-                                        f"Parameter must be a dictionary, got {type(param)}"
-                                    )
+                                    raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                             comp["parameters"] = parsed_params
                         parsed.append(URLButtonComponentSend(**comp))
                     else:
@@ -427,16 +412,10 @@ class OrderStatusTemplateSendRequestValidator(BaseModel):
         >>> request = OrderStatusTemplateSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["template"] = Field(
-        "template", description="Message type (must be 'template')"
-    )
+    type: Literal["template"] = Field("template", description="Message type (must be 'template')")
     template: OrderStatusTemplateSendBody = Field(..., description="Template details")
 
     @field_validator("to")
@@ -448,9 +427,7 @@ class OrderStatusTemplateSendRequestValidator(BaseModel):
         cleaned = re.sub(r"[^\d+]", "", v)
         # Validate phone number format
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

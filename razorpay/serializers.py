@@ -1,15 +1,15 @@
-from abstract.serializers import BaseSerializer
 from django.conf import settings
 from djmoney.contrib.django_rest_framework import MoneyField
 from djmoney.money import Money
-from razorpay.models import (RazorPayOrder, RazorPayStatusChoices,
-                             RazorPayWebhook)
-from razorpay.utility.razor_pay_order import create_razorpay_order
 from rest_framework import serializers
+
+from abstract.serializers import BaseSerializer
+from razorpay.models import RazorPayOrder, RazorPayStatusChoices, RazorPayWebhook
+from razorpay.utility.razor_pay_order import create_razorpay_order
 
 
 class RazorPayOrderSerializer(BaseSerializer):
-    amount = MoneyField(max_digits=14, decimal_places=2, default_currency='INR')
+    amount = MoneyField(max_digits=14, decimal_places=2, default_currency="INR")
 
     class Meta:
         model = RazorPayOrder
@@ -40,8 +40,7 @@ class RazorPayOrderSerializer(BaseSerializer):
                 "amount": int(numeric_amount * 100),
                 "currency": currency_code,
                 "status": "created",
-            }    
-
+            }
 
         # Save to DB
         validated_data["order_id"] = razorpay_response["id"]
@@ -56,24 +55,20 @@ class PaymentVerificationSerializer(serializers.Serializer):
     Serializer for verifying Razorpay payment from frontend.
     After successful checkout, frontend sends these values for verification.
     """
-    razorpay_order_id = serializers.CharField(
-        help_text="Razorpay order ID (e.g., order_xxxxx)"
-    )
-    razorpay_payment_id = serializers.CharField(
-        help_text="Razorpay payment ID (e.g., pay_xxxxx)"
-    )
-    razorpay_signature = serializers.CharField(
-        help_text="Razorpay signature for verification"
-    )
+
+    razorpay_order_id = serializers.CharField(help_text="Razorpay order ID (e.g., order_xxxxx)")
+    razorpay_payment_id = serializers.CharField(help_text="Razorpay payment ID (e.g., pay_xxxxx)")
+    razorpay_signature = serializers.CharField(help_text="Razorpay signature for verification")
 
 
 class PaymentStatusSerializer(serializers.ModelSerializer):
     """Serializer for returning payment status."""
-    amount = MoneyField(max_digits=14, decimal_places=2, default_currency='INR')
-    
+
+    amount = MoneyField(max_digits=14, decimal_places=2, default_currency="INR")
+
     class Meta:
         model = RazorPayOrder
-        fields = ['id', 'order_id', 'amount', 'status', 'created_at', 'updated_at']
+        fields = ["id", "order_id", "amount", "status", "created_at", "updated_at"]
         read_only_fields = fields
 
 

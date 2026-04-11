@@ -6,7 +6,6 @@ Endpoints:
     GET  /wa/rate-card/recent-changes/    Only rows where rate changed vs previous period
     GET  /wa/rate-card/summary/           Aggregated stats
 """
-from decimal import Decimal
 
 from django.db.models import Avg, Count, Max, Min
 from django.utils import timezone
@@ -14,10 +13,10 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
 from tenants.permission_classes import TenantRolePermission
 from wa.models import MessageTypeChoices, TenantRateCard
-from wa.serializers.rate_card import (TenantRateCardSerializer,
-                                      TenantRateCardSummarySerializer)
+from wa.serializers.rate_card import TenantRateCardSerializer
 from wa.services.rate_card_service import RateCardService
 
 
@@ -94,6 +93,7 @@ class RateCardViewSet(viewsets.ReadOnlyModelViewSet):
         effective_from = request.query_params.get("effective_from")
         if effective_from:
             from django.utils.dateparse import parse_date
+
             effective_from = parse_date(effective_from)
         else:
             today = timezone.now().date()

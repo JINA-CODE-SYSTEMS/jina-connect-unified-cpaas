@@ -7,6 +7,7 @@ class TenantTagsViewSet(BaseTenantModelViewSet):
     """
     A viewset for managing tenant tags.
     """
+
     queryset = TenantTags.objects.all()
     serializer_class = TenantTagsSerializer
     required_permissions = {

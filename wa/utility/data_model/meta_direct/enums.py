@@ -7,12 +7,14 @@ from enum import Enum
 
 class ParameterFormat(str, Enum):
     """Parameter format types supported by META"""
+
     NAMED = "NAMED"
     POSITIONAL = "POSITIONAL"
 
 
 class HeaderFormat(str, Enum):
     """Header format types"""
+
     TEXT = "TEXT"
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"
@@ -22,6 +24,7 @@ class HeaderFormat(str, Enum):
 
 class ButtonType(str, Enum):
     """Button types supported in utility templates"""
+
     URL = "url"
     PHONE_NUMBER = "phone_number"
     QUICK_REPLY = "quick_reply"
@@ -32,6 +35,7 @@ class ButtonType(str, Enum):
 
 class ComponentType(str, Enum):
     """Component types in a template"""
+
     HEADER = "HEADER"
     BODY = "BODY"
     FOOTER = "FOOTER"
@@ -41,6 +45,7 @@ class ComponentType(str, Enum):
 
 class TemplateCategory(str, Enum):
     """Template category types"""
+
     AUTHENTICATION = "AUTHENTICATION"
     MARKETING = "MARKETING"
     UTILITY = "UTILITY"
@@ -49,12 +54,13 @@ class TemplateCategory(str, Enum):
 class TemplateType(str, Enum):
     """
     Internal template type for UI/storage purposes.
-    
-    This is NOT sent to META API - it's for internal tracking of 
+
+    This is NOT sent to META API - it's for internal tracking of
     what kind of media/content the template uses.
-    
+
     Maps to legacy TemplateTypeChoices in wa/models.py
     """
+
     TEXT = "TEXT"
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"

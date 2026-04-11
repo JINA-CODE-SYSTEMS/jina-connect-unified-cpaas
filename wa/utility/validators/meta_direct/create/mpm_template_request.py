@@ -11,13 +11,11 @@ catalog in a single message.
 from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample)
-from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
 from wa.utility.data_model.meta_direct.footer import FooterComponent
-from wa.utility.data_model.meta_direct.header import (HeaderComponent,
-                                                      HeaderHandleExample,
-                                                      HeaderTextExample)
+from wa.utility.data_model.meta_direct.header import HeaderComponent, HeaderHandleExample, HeaderTextExample
+from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
 # ============================================================================
 # Product Section Models
@@ -26,6 +24,7 @@ from wa.utility.data_model.meta_direct.header import (HeaderComponent,
 
 class ProductItem(BaseModel):
     """A product item in the MPM template"""
+
     product_retailer_id: str = Field(
         ...,
         min_length=1,
@@ -35,6 +34,7 @@ class ProductItem(BaseModel):
 
 class ProductSection(BaseModel):
     """A section containing products in the MPM template"""
+
     title: Optional[str] = Field(
         None,
         max_length=24,
@@ -50,6 +50,7 @@ class ProductSection(BaseModel):
 
 class MPMAction(BaseModel):
     """Action configuration for MPM template"""
+
     thumbnail_product_retailer_id: Optional[str] = Field(
         None,
         description="Product ID to use as thumbnail",
@@ -66,14 +67,13 @@ class MPMAction(BaseModel):
         """Validate total products across all sections"""
         total_products = sum(len(section.product_items) for section in self.sections)
         if total_products > 30:
-            raise ValueError(
-                f"Total products across all sections cannot exceed 30. Got {total_products}"
-            )
+            raise ValueError(f"Total products across all sections cannot exceed 30. Got {total_products}")
         return self
 
 
 class MPMComponent(BaseModel):
     """Multi-Product Message component"""
+
     type: Literal["product_list", "PRODUCT_LIST"] = "product_list"
     action: MPMAction = Field(
         ...,
@@ -186,15 +186,11 @@ class MPMTemplateRequestValidator(BaseTemplateValidator):
                                             elif isinstance(item, dict):
                                                 parsed_items.append(ProductItem(**item))
                                             else:
-                                                raise ValueError(
-                                                    f"Product item must be a dictionary, got {type(item)}"
-                                                )
+                                                raise ValueError(f"Product item must be a dictionary, got {type(item)}")
                                         section["product_items"] = parsed_items
                                     parsed_sections.append(ProductSection(**section))
                                 else:
-                                    raise ValueError(
-                                        f"Section must be a dictionary, got {type(section)}"
-                                    )
+                                    raise ValueError(f"Section must be a dictionary, got {type(section)}")
                             action_data["sections"] = parsed_sections
                         comp["action"] = MPMAction(**action_data)
                     parsed.append(MPMComponent(**comp))
@@ -234,14 +230,11 @@ class MPMTemplateRequestValidator(BaseTemplateValidator):
         # Validate component order: header -> body -> footer -> product_list
         expected_order = ["header", "body", "footer", "product_list"]
         current_order = [t for t in expected_order if t in component_types]
-        actual_order = [
-            t.lower() for t in component_types if t.lower() in expected_order
-        ]
+        actual_order = [t.lower() for t in component_types if t.lower() in expected_order]
 
         if current_order != actual_order:
             raise ValueError(
-                f"Components must be in order: header -> body -> footer -> product_list. "
-                f"Got: {actual_order}"
+                f"Components must be in order: header -> body -> footer -> product_list. Got: {actual_order}"
             )
 
         return self

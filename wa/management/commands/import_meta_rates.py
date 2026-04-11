@@ -18,6 +18,7 @@ Expected CSV format:
 - ``message_type`` — MARKETING | UTILITY | AUTHENTICATION
 - ``rate`` — USD decimal (Meta's billing currency)
 """
+
 import csv
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -26,6 +27,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
+
 from wa.models import MessageTypeChoices, MetaBaseRate
 
 VALID_MESSAGE_TYPES = set(MessageTypeChoices.values)
@@ -87,8 +89,7 @@ class Command(BaseCommand):
         created, updated = self._import_rates(rows, effective_from)
         self.stdout.write(
             self.style.SUCCESS(
-                f"Done: {created} created, {updated} updated, "
-                f"{len(rows)} total rows for {effective_from}"
+                f"Done: {created} created, {updated} updated, {len(rows)} total rows for {effective_from}"
             )
         )
 
@@ -103,10 +104,7 @@ class Command(BaseCommand):
             # Validate headers
             required = {"destination_country", "message_type", "rate"}
             if not required.issubset(set(reader.fieldnames or [])):
-                raise CommandError(
-                    f"CSV must have columns: {', '.join(sorted(required))}. "
-                    f"Found: {reader.fieldnames}"
-                )
+                raise CommandError(f"CSV must have columns: {', '.join(sorted(required))}. Found: {reader.fieldnames}")
 
             for i, row in enumerate(reader, start=2):  # start=2 accounts for header
                 country = (row.get("destination_country") or "").strip().upper()

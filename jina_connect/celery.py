@@ -3,7 +3,6 @@ import os
 from celery import Celery
 from celery.schedules import crontab
 from celery.signals import worker_ready
-from django.conf import settings
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jina_connect.settings")
@@ -14,7 +13,7 @@ app = Celery("jina_connect")
 # the configuration object to child processes.
 # - namespace='CELERY' means all celery-related configuration keys
 #   should have a `CELERY_` prefix.
-app.config_from_object(f"django.conf:settings", namespace="CELERY")
+app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # Load task modules from all registered Django apps.
 app.autodiscover_tasks()
@@ -37,6 +36,7 @@ def on_worker_ready(**kwargs):
     """
     # Import signals to ensure they're registered
     import team_inbox.signals  # noqa: F401
+
     print("📡 Celery worker: team_inbox signals loaded")
 
 

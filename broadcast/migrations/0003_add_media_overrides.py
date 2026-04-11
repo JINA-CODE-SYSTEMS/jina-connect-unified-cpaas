@@ -4,20 +4,27 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('broadcast', '0002_initial'),
+        ("broadcast", "0002_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='broadcast',
-            name='media_overrides',
-            field=models.JSONField(blank=True, default=dict, help_text='Override template media at send time. Format: {"header": <TenantMedia id>} for single-media templates, {"cards": {"0": <TenantMedia id>, "1": <TenantMedia id>, ...}} for carousels.'),
+            model_name="broadcast",
+            name="media_overrides",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text='Override template media at send time. Format: {"header": <TenantMedia id>} for single-media templates, {"cards": {"0": <TenantMedia id>, "1": <TenantMedia id>, ...}} for carousels.',
+            ),
         ),
         migrations.AddField(
-            model_name='historicalbroadcast',
-            name='media_overrides',
-            field=models.JSONField(blank=True, default=dict, help_text='Override template media at send time. Format: {"header": <TenantMedia id>} for single-media templates, {"cards": {"0": <TenantMedia id>, "1": <TenantMedia id>, ...}} for carousels.'),
+            model_name="historicalbroadcast",
+            name="media_overrides",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text='Override template media at send time. Format: {"header": <TenantMedia id>} for single-media templates, {"cards": {"0": <TenantMedia id>, "1": <TenantMedia id>, ...}} for carousels.',
+            ),
         ),
     ]

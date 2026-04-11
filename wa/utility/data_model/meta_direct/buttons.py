@@ -10,12 +10,11 @@ from pydantic import BaseModel, Field, field_validator
 
 class URLButton(BaseModel):
     """URL button component"""
+
     type: Literal["url"] = "url"
     text: str = Field(..., min_length=1, max_length=25, description="Button label text")
     url: str = Field(..., description="URL to open when button is clicked")
-    example: Optional[List[str]] = Field(
-        None, description="Example URL values for dynamic parameters"
-    )
+    example: Optional[List[str]] = Field(None, description="Example URL values for dynamic parameters")
 
     @field_validator("text")
     @classmethod
@@ -37,6 +36,7 @@ class URLButton(BaseModel):
 
 class PhoneNumberButton(BaseModel):
     """Phone number button component"""
+
     type: Literal["phone_number"] = "phone_number"
     text: str = Field(..., min_length=1, max_length=25, description="Button label text")
     phone_number: str = Field(..., description="Phone number in international format")
@@ -56,14 +56,13 @@ class PhoneNumberButton(BaseModel):
         # Basic phone validation - should start with + and contain digits
         cleaned = re.sub(r"[\s\-\(\)]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Use international format (e.g., +919876543210)"
-            )
+            raise ValueError("Invalid phone number format. Use international format (e.g., +919876543210)")
         return v
 
 
 class QuickReplyButton(BaseModel):
     """Quick reply button component"""
+
     type: Literal["quick_reply"] = "quick_reply"
     text: str = Field(..., min_length=1, max_length=25, description="Button label text")
 
@@ -77,29 +76,32 @@ class QuickReplyButton(BaseModel):
 
 class CopyCodeButton(BaseModel):
     """Copy code button component (for OTP/codes)"""
+
     type: Literal["copy_code"] = "copy_code"
     example: str = Field(..., description="Example code to copy")
 
 
 class FlowButton(BaseModel):
     """Flow button component"""
+
     type: Literal["flow"] = "flow"
     text: str = Field(..., min_length=1, max_length=25, description="Button label text")
     flow_id: str = Field(..., description="Flow ID to trigger")
     flow_action: Optional[str] = Field("navigate", description="Flow action type")
     navigate_screen: Optional[str] = Field(None, description="Screen to navigate to")
 
+
 class CallPermissionButton(BaseModel):
     """Call Permission button component"""
+
     type: Literal["call_permission"] = "call_permission_request"
 
 
 class CatalogButton(BaseModel):
     """Catalog button component for product catalog templates"""
+
     type: Literal["CATALOG"] = "CATALOG"
-    text: str = Field(
-        ..., min_length=1, max_length=25, description="Button label text (e.g., 'View catalog')"
-    )
+    text: str = Field(..., min_length=1, max_length=25, description="Button label text (e.g., 'View catalog')")
 
     @field_validator("text")
     @classmethod
@@ -116,10 +118,13 @@ class OrderDetailsButton(BaseModel):
     - UTILITY category: text must be "Review and Pay"
     - MARKETING category: text must be "Buy now"
     """
+
     type: Literal["ORDER_DETAILS", "order_details"] = "ORDER_DETAILS"
     text: str = Field(
-        ..., min_length=1, max_length=25,
-        description="Button label text ('Review and Pay' for UTILITY, 'Buy now' for MARKETING)"
+        ...,
+        min_length=1,
+        max_length=25,
+        description="Button label text ('Review and Pay' for UTILITY, 'Buy now' for MARKETING)",
     )
 
     @field_validator("text")
@@ -130,9 +135,7 @@ class OrderDetailsButton(BaseModel):
         v = v.strip()
         allowed = ("Review and Pay", "Buy now")
         if v not in allowed:
-            raise ValueError(
-                f"Order details button text must be one of {allowed}, got '{v}'"
-            )
+            raise ValueError(f"Order details button text must be one of {allowed}, got '{v}'")
         return v
 
 

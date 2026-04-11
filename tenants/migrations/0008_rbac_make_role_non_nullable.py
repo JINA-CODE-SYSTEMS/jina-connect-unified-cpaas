@@ -7,8 +7,8 @@ default AGENT role to any that slipped through (e.g. via the access-key login
 path before the fix in #253).
 """
 
-from django.db import migrations, models
 import django.db.models.deletion
+from django.db import migrations, models
 
 
 def backfill_null_roles(apps, schema_editor):
@@ -24,9 +24,7 @@ def backfill_null_roles(apps, schema_editor):
         # Prefer the "agent" role; fall back to lowest-priority role
         fallback_role = (
             TenantRole.objects.filter(tenant=tu.tenant, slug="agent").first()
-            or TenantRole.objects.filter(tenant=tu.tenant)
-            .order_by("priority")
-            .first()
+            or TenantRole.objects.filter(tenant=tu.tenant).order_by("priority").first()
         )
         if fallback_role is None:
             raise Exception(
@@ -39,7 +37,6 @@ def backfill_null_roles(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tenants", "0007_add_history_to_role_permission_tenantuser"),
     ]

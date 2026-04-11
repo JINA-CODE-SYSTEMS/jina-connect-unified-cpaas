@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class FooterComponent(BaseModel):
     """Footer component - optional"""
+
     type: Literal["footer"] = "footer"
     text: str = Field(..., min_length=1, max_length=60, description="Footer text")
 

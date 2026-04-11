@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -32,6 +33,7 @@ class InteractiveBody(BaseModel):
 
 class LocationRequestAction(BaseModel):
     """Action for location request interactive message"""
+
     name: Literal["send_location"] = "send_location"
 
 
@@ -42,15 +44,15 @@ class LocationRequestAction(BaseModel):
 
 class InteractiveLocationRequestContent(BaseModel):
     """Interactive location request content"""
+
     type: Literal["location_request_message"] = "location_request_message"
     body: InteractiveBody = Field(..., description="Message body (required)")
-    action: LocationRequestAction = Field(
-        ..., description="Location request action"
-    )
+    action: LocationRequestAction = Field(..., description="Location request action")
 
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -76,22 +78,12 @@ class InteractiveLocationRequestMessageSendRequestValidator(BaseModel):
         >>> request = InteractiveLocationRequestMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type (must be 'interactive')"
-    )
-    interactive: InteractiveLocationRequestContent = Field(
-        ..., description="Interactive location request content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    type: Literal["interactive"] = Field("interactive", description="Message type (must be 'interactive')")
+    interactive: InteractiveLocationRequestContent = Field(..., description="Interactive location request content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -100,9 +92,7 @@ class InteractiveLocationRequestMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:
@@ -128,9 +118,7 @@ class InteractiveLocationRequestMessageSendRequestValidator(BaseModel):
                     "type": "interactive",
                     "interactive": {
                         "type": "location_request_message",
-                        "body": {
-                            "text": "To deliver your order, please share your current location."
-                        },
+                        "body": {"text": "To deliver your order, please share your current location."},
                         "action": {"name": "send_location"},
                     },
                 },
@@ -141,9 +129,7 @@ class InteractiveLocationRequestMessageSendRequestValidator(BaseModel):
                     "type": "interactive",
                     "interactive": {
                         "type": "location_request_message",
-                        "body": {
-                            "text": "Share your location so we can find stores near you."
-                        },
+                        "body": {"text": "Share your location so we can find stores near you."},
                         "action": {"name": "send_location"},
                     },
                 },

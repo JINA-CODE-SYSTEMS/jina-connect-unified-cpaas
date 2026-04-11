@@ -20,12 +20,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class BodyTextParameter(BaseModel):
     """Body parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the body parameter")
 
 
 class BodyCurrencyParameter(BaseModel):
     """Body parameter with currency"""
+
     type: Literal["currency"] = "currency"
     currency: dict = Field(
         ...,
@@ -35,6 +37,7 @@ class BodyCurrencyParameter(BaseModel):
 
 class BodyDateTimeParameter(BaseModel):
     """Body parameter with date_time"""
+
     type: Literal["date_time"] = "date_time"
     date_time: dict = Field(..., description="DateTime object with fallback_value")
 
@@ -45,12 +48,14 @@ BodyParameter = Union[BodyTextParameter, BodyCurrencyParameter, BodyDateTimePara
 
 class HeaderTextParameter(BaseModel):
     """Header parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the header parameter")
 
 
 class HeaderImageParameter(BaseModel):
     """Header parameter with image"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -69,6 +74,7 @@ class HeaderImageParameter(BaseModel):
 
 class HeaderVideoParameter(BaseModel):
     """Header parameter with video"""
+
     type: Literal["video"] = "video"
     video: dict = Field(
         ...,
@@ -96,6 +102,7 @@ HeaderParameter = Union[HeaderTextParameter, HeaderImageParameter, HeaderVideoPa
 
 class ProductItemSend(BaseModel):
     """A product item in the MPM send request"""
+
     product_retailer_id: str = Field(
         ...,
         min_length=1,
@@ -105,6 +112,7 @@ class ProductItemSend(BaseModel):
 
 class ProductSectionSend(BaseModel):
     """A section containing products in the MPM send request"""
+
     title: Optional[str] = Field(
         None,
         max_length=24,
@@ -120,6 +128,7 @@ class ProductSectionSend(BaseModel):
 
 class MPMActionSend(BaseModel):
     """Action configuration for MPM send request"""
+
     catalog_id: str = Field(
         ...,
         description="The catalog ID containing the products",
@@ -140,9 +149,7 @@ class MPMActionSend(BaseModel):
         """Validate total products across all sections"""
         total_products = sum(len(section.product_items) for section in self.sections)
         if total_products > 30:
-            raise ValueError(
-                f"Total products across all sections cannot exceed 30. Got {total_products}"
-            )
+            raise ValueError(f"Total products across all sections cannot exceed 30. Got {total_products}")
         return self
 
 
@@ -153,22 +160,21 @@ class MPMActionSend(BaseModel):
 
 class HeaderComponentSend(BaseModel):
     """Header component for sending MPM template message"""
+
     type: Literal["header"] = "header"
-    parameters: List[HeaderParameter] = Field(
-        ..., min_length=1, max_length=1, description="Header parameters"
-    )
+    parameters: List[HeaderParameter] = Field(..., min_length=1, max_length=1, description="Header parameters")
 
 
 class BodyComponentSend(BaseModel):
     """Body component for sending MPM template message"""
+
     type: Literal["body"] = "body"
-    parameters: List[BodyParameter] = Field(
-        ..., min_length=1, description="Body parameters"
-    )
+    parameters: List[BodyParameter] = Field(..., min_length=1, description="Body parameters")
 
 
 class MPMComponentSend(BaseModel):
     """Multi-Product Message component for send request"""
+
     type: Literal["product_list"] = "product_list"
     action: MPMActionSend = Field(
         ...,
@@ -177,9 +183,7 @@ class MPMComponentSend(BaseModel):
 
 
 # Union type for send components
-SendMPMTemplateComponent = Union[
-    HeaderComponentSend, BodyComponentSend, MPMComponentSend
-]
+SendMPMTemplateComponent = Union[HeaderComponentSend, BodyComponentSend, MPMComponentSend]
 
 
 # ============================================================================
@@ -189,6 +193,7 @@ SendMPMTemplateComponent = Union[
 
 class LanguageInput(BaseModel):
     """Language input for template request"""
+
     code: str = Field(
         ...,
         min_length=2,
@@ -211,6 +216,7 @@ class LanguageInput(BaseModel):
 
 class MPMTemplateSendBody(BaseModel):
     """Template body for MPM template send request"""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -266,13 +272,9 @@ class MPMTemplateSendBody(BaseModel):
                                 elif param_type == "video":
                                     parsed_params.append(HeaderVideoParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown header parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown header parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(HeaderComponentSend(**comp))
                 elif comp_type == "body":
@@ -291,13 +293,9 @@ class MPMTemplateSendBody(BaseModel):
                                 elif param_type == "date_time":
                                     parsed_params.append(BodyDateTimeParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown body parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown body parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(BodyComponentSend(**comp))
                 elif comp_type == "product_list":
@@ -318,19 +316,13 @@ class MPMTemplateSendBody(BaseModel):
                                             if isinstance(item, BaseModel):
                                                 parsed_items.append(item)
                                             elif isinstance(item, dict):
-                                                parsed_items.append(
-                                                    ProductItemSend(**item)
-                                                )
+                                                parsed_items.append(ProductItemSend(**item))
                                             else:
-                                                raise ValueError(
-                                                    f"Product item must be a dictionary, got {type(item)}"
-                                                )
+                                                raise ValueError(f"Product item must be a dictionary, got {type(item)}")
                                         section["product_items"] = parsed_items
                                     parsed_sections.append(ProductSectionSend(**section))
                                 else:
-                                    raise ValueError(
-                                        f"Section must be a dictionary, got {type(section)}"
-                                    )
+                                    raise ValueError(f"Section must be a dictionary, got {type(section)}")
                             action_data["sections"] = parsed_sections
                         comp["action"] = MPMActionSend(**action_data)
                     parsed.append(MPMComponentSend(**comp))
@@ -387,16 +379,10 @@ class MPMTemplateSendRequestValidator(BaseModel):
         >>> request = MPMTemplateSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["template"] = Field(
-        "template", description="Message type (must be 'template')"
-    )
+    type: Literal["template"] = Field("template", description="Message type (must be 'template')")
     template: MPMTemplateSendBody = Field(..., description="Template details")
 
     @field_validator("to")
@@ -408,9 +394,7 @@ class MPMTemplateSendRequestValidator(BaseModel):
         cleaned = re.sub(r"[^\d+]", "", v)
         # Validate phone number format
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

@@ -6,13 +6,14 @@ reaction message sending requests during the 24-hour session window.
 """
 
 import re
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class ReactionContent(BaseModel):
     """Reaction content for the message"""
+
     message_id: str = Field(
         ...,
         description="The message ID to react to",
@@ -53,16 +54,10 @@ class ReactionMessageSendRequestValidator(BaseModel):
         >>> request = ReactionMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["reaction"] = Field(
-        "reaction", description="Message type (must be 'reaction')"
-    )
+    type: Literal["reaction"] = Field("reaction", description="Message type (must be 'reaction')")
     reaction: ReactionContent = Field(..., description="Reaction content")
 
     @field_validator("to")
@@ -72,9 +67,7 @@ class ReactionMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

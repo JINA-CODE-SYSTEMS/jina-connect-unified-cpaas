@@ -6,16 +6,14 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from .buttons import (CopyCodeButton, FlowButton, PhoneNumberButton,
-                      QuickReplyButton, TemplateButton, URLButton)
+from .buttons import PhoneNumberButton, QuickReplyButton, TemplateButton, URLButton
 
 
 class ButtonsComponent(BaseModel):
     """Buttons component - optional"""
+
     type: Literal["buttons"] = "buttons"
-    buttons: List[TemplateButton] = Field(
-        ..., min_length=1, max_length=10, description="List of buttons"
-    )
+    buttons: List[TemplateButton] = Field(..., min_length=1, max_length=10, description="List of buttons")
 
     @field_validator("buttons")
     @classmethod
@@ -26,23 +24,14 @@ class ButtonsComponent(BaseModel):
             raise ValueError("Maximum 10 buttons allowed per template")
 
         # Count button types for validation
-        url_count = sum(
-            1
-            for b in v
-            if isinstance(b, URLButton)
-            or (isinstance(b, dict) and b.get("type") == "url")
-        )
+        url_count = sum(1 for b in v if isinstance(b, URLButton) or (isinstance(b, dict) and b.get("type") == "url"))
         phone_count = sum(
             1
             for b in v
-            if isinstance(b, PhoneNumberButton)
-            or (isinstance(b, dict) and b.get("type") == "phone_number")
+            if isinstance(b, PhoneNumberButton) or (isinstance(b, dict) and b.get("type") == "phone_number")
         )
         quick_reply_count = sum(
-            1
-            for b in v
-            if isinstance(b, QuickReplyButton)
-            or (isinstance(b, dict) and b.get("type") == "quick_reply")
+            1 for b in v if isinstance(b, QuickReplyButton) or (isinstance(b, dict) and b.get("type") == "quick_reply")
         )
 
         # META limits: max 2 URL buttons, max 1 phone button

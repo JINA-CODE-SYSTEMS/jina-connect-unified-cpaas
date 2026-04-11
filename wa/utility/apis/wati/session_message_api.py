@@ -67,9 +67,7 @@ class SessionMessageAPI(WAAPI):
         """URL for retrieving messages by WhatsApp number."""
         return self.v1_url(f"getMessages/{whatsapp_number}")
 
-    def _get_message_url(
-        self, phone_number: str, local_message_id: str
-    ) -> str:
+    def _get_message_url(self, phone_number: str, local_message_id: str) -> str:
         """URL for retrieving a specific message by phone number and local message ID."""
         return self.v1_url(f"whatsApp/messages/{phone_number}/{local_message_id}")
 
@@ -273,9 +271,7 @@ class SessionMessageAPI(WAAPI):
         }
         return self.make_json_request(request_data)
 
-    def get_message(
-        self, phone_number: str, local_message_id: str
-    ) -> dict:
+    def get_message(self, phone_number: str, local_message_id: str) -> dict:
         """
         Get a specific message by phone number and local message ID.
 

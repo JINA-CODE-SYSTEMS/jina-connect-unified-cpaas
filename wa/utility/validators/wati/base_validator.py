@@ -12,16 +12,19 @@ Reference: https://docs.wati.io/reference/post_api-v1-whatsapp-templates
 """
 
 import re
-from typing import Any, Dict, List, Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.wati.template_input import (WATIButtonsType,
-                                                       WATICreationMethod,
-                                                       WATIHeaderFormat,
-                                                       WATITemplateButton,
-                                                       WATITemplateCustomParam,
-                                                       WATITemplateHeader,
-                                                       WATITemplateSubCategory)
+
+from wa.utility.data_model.wati.template_input import (
+    WATIButtonsType,
+    WATICreationMethod,
+    WATIHeaderFormat,
+    WATITemplateButton,
+    WATITemplateCustomParam,
+    WATITemplateHeader,
+    WATITemplateSubCategory,
+)
 
 
 class BaseTemplateValidator(BaseModel):
@@ -46,8 +49,12 @@ class BaseTemplateValidator(BaseModel):
     # Core fields
     type: str = Field(default="template", description="Template type")
     category: Literal[
-        "AUTHENTICATION", "MARKETING", "UTILITY",
-        "authentication", "marketing", "utility",
+        "AUTHENTICATION",
+        "MARKETING",
+        "UTILITY",
+        "authentication",
+        "marketing",
+        "utility",
     ]
     subCategory: Optional[WATITemplateSubCategory] = Field(
         default=WATITemplateSubCategory.STANDARD,
@@ -78,18 +85,14 @@ class BaseTemplateValidator(BaseModel):
         max_length=60,
         description="Footer text of the template",
     )
-    header: Optional[WATITemplateHeader] = Field(
-        None, description="Header configuration"
-    )
+    header: Optional[WATITemplateHeader] = Field(None, description="Header configuration")
 
     # Buttons
     buttonsType: WATIButtonsType = Field(
         default=WATIButtonsType.NONE,
         description="Type of buttons configuration",
     )
-    buttons: Optional[List[WATITemplateButton]] = Field(
-        None, description="List of button configurations"
-    )
+    buttons: Optional[List[WATITemplateButton]] = Field(None, description="List of button configurations")
 
     # Parameters
     customParams: Optional[List[WATITemplateCustomParam]] = Field(
@@ -114,9 +117,7 @@ class BaseTemplateValidator(BaseModel):
             raise ValueError("Template name cannot be empty")
         v = v.strip().lower()
         if not re.match(r"^[a-z0-9_]+$", v):
-            raise ValueError(
-                "Template name must contain only lowercase letters, numbers, and underscores"
-            )
+            raise ValueError("Template name must contain only lowercase letters, numbers, and underscores")
         return v
 
     @field_validator("language")
@@ -127,9 +128,7 @@ class BaseTemplateValidator(BaseModel):
             raise ValueError("Language code cannot be empty")
         valid_pattern = r"^[a-z]{2}(_[A-Z]{2})?$"
         if not re.match(valid_pattern, v):
-            raise ValueError(
-                "Language code must be in format 'xx' or 'xx_XX' (e.g., 'en', 'en_US')"
-            )
+            raise ValueError("Language code must be in format 'xx' or 'xx_XX' (e.g., 'en', 'en_US')")
         return v
 
     @field_validator("body")
@@ -161,9 +160,7 @@ class BaseTemplateValidator(BaseModel):
                     except Exception as e:
                         raise ValueError(f"Invalid button data: {e}")
                 else:
-                    raise ValueError(
-                        f"Button must be a dict or WATITemplateButton, got {type(btn)}"
-                    )
+                    raise ValueError(f"Button must be a dict or WATITemplateButton, got {type(btn)}")
             return parsed_buttons
 
         raise ValueError(f"Buttons must be a list, got {type(v)}")
@@ -179,14 +176,11 @@ class BaseTemplateValidator(BaseModel):
 
         if self.buttonsType == WATIButtonsType.NONE and has_buttons:
             raise ValueError(
-                "buttonsType is NONE but buttons were provided. "
-                "Set buttonsType to match the button types used."
+                "buttonsType is NONE but buttons were provided. Set buttonsType to match the button types used."
             )
 
         if self.buttonsType != WATIButtonsType.NONE and not has_buttons:
-            raise ValueError(
-                f"buttonsType is '{self.buttonsType.value}' but no buttons were provided."
-            )
+            raise ValueError(f"buttonsType is '{self.buttonsType.value}' but no buttons were provided.")
 
         return self
 
@@ -196,14 +190,17 @@ class BaseTemplateValidator(BaseModel):
         if self.header:
             if self.header.format == WATIHeaderFormat.TEXT and not self.header.text:
                 raise ValueError("Header text is required for TEXT header format")
-            if self.header.format in (
-                WATIHeaderFormat.IMAGE,
-                WATIHeaderFormat.VIDEO,
-                WATIHeaderFormat.DOCUMENT,
-            ) and not self.header.media_url and not self.header.example:
-                raise ValueError(
-                    f"Media URL or example handle is required for {self.header.format.value} header"
+            if (
+                self.header.format
+                in (
+                    WATIHeaderFormat.IMAGE,
+                    WATIHeaderFormat.VIDEO,
+                    WATIHeaderFormat.DOCUMENT,
                 )
+                and not self.header.media_url
+                and not self.header.example
+            ):
+                raise ValueError(f"Media URL or example handle is required for {self.header.format.value} header")
         return self
 
     @model_validator(mode="after")
@@ -246,13 +243,9 @@ class BaseTemplateValidator(BaseModel):
         if self.header:
             payload["header"] = self.header.model_dump(exclude_none=True)
         if self.buttons:
-            payload["buttons"] = [
-                btn.model_dump(exclude_none=True) for btn in self.buttons
-            ]
+            payload["buttons"] = [btn.model_dump(exclude_none=True) for btn in self.buttons]
         if self.customParams:
-            payload["customParams"] = [
-                p.model_dump(exclude_none=True) for p in self.customParams
-            ]
+            payload["customParams"] = [p.model_dump(exclude_none=True) for p in self.customParams]
         return payload
 
     @classmethod

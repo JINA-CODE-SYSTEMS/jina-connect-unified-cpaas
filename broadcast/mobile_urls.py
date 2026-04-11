@@ -6,8 +6,8 @@ from .viewsets.mobile_messages import MobileBroadcastMessageViewSet
 
 router = DefaultRouter()
 
-router.register(r'messages', MobileBroadcastMessageViewSet, basename='mobile-broadcast-messages')
-router.register(r'', MobileBroadcastViewSet, basename='mobile-tenant-broadcasts')
+router.register(r"messages", MobileBroadcastMessageViewSet, basename="mobile-broadcast-messages")
+router.register(r"", MobileBroadcastViewSet, basename="mobile-tenant-broadcasts")
 
 urlpatterns = [
     path("", include(router.urls)),

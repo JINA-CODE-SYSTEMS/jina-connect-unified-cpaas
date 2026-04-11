@@ -3,6 +3,7 @@ Order Service — single entry point for order lifecycle operations.
 
 Created: BE-12 (send_order_status), BE-13 (lookup_payment, initiate_refund)
 """
+
 import logging
 
 import requests
@@ -34,22 +35,17 @@ class OrderService:
         Returns:
             WAMessage instance that was created.
         """
-        from wa.models import (MessageDirection, MessageStatus, WAMessage,
-                               WAOrder)
+        from wa.models import MessageDirection, MessageStatus, WAMessage
 
         # 1. Validate transition
         if not wa_order.can_transition_to(new_status):
-            raise ValidationError(
-                f"Cannot transition from '{wa_order.order_status}' to '{new_status}'"
-            )
+            raise ValidationError(f"Cannot transition from '{wa_order.order_status}' to '{new_status}'")
         if new_status == "canceled" and not wa_order.can_cancel():
-            raise ValidationError(
-                "Cannot cancel: order already has a successful payment"
-            )
+            raise ValidationError("Cannot cancel: order already has a successful payment")
 
         # 2. Build order_status Cloud API payload
-        phone = getattr(wa_order.contact, 'wa_number', '') if wa_order.contact else ''
-        phone_str = str(phone).lstrip('+') if phone else ''
+        phone = getattr(wa_order.contact, "wa_number", "") if wa_order.contact else ""
+        phone_str = str(phone).lstrip("+") if phone else ""
 
         raw_payload = {
             "messaging_product": "whatsapp",
@@ -89,7 +85,9 @@ class OrderService:
 
         logger.info(
             "Order %s status updated to %s (WAMessage %s)",
-            wa_order.reference_id, new_status, wa_message.pk,
+            wa_order.reference_id,
+            new_status,
+            wa_message.pk,
         )
         return wa_message
 
@@ -130,10 +128,7 @@ class OrderService:
         wa_app = wa_order.wa_app
         token = OrderService._get_access_token(wa_app)
 
-        url = (
-            f"https://graph.facebook.com/v21.0/"
-            f"{wa_app.phone_number_id}/payments_refund"
-        )
+        url = f"https://graph.facebook.com/v21.0/{wa_app.phone_number_id}/payments_refund"
         payload = {
             "reference_id": wa_order.reference_id,
             "speed": speed,
@@ -162,7 +157,8 @@ class OrderService:
 
         logger.info(
             "Refund initiated for order %s (speed=%s)",
-            wa_order.reference_id, speed,
+            wa_order.reference_id,
+            speed,
         )
         return result
 
@@ -172,9 +168,7 @@ class OrderService:
     def _get_access_token(wa_app) -> str:
         """Resolve META Graph API access token from WAApp credentials."""
         creds = wa_app.bsp_credentials or {}
-        token = creds.get("access_token") or getattr(
-            settings, "META_PERM_TOKEN", None
-        )
+        token = creds.get("access_token") or getattr(settings, "META_PERM_TOKEN", None)
         if not token:
             raise ValidationError(
                 "META access token not configured. Set "

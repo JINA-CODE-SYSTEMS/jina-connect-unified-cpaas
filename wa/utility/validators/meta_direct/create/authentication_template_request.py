@@ -33,9 +33,6 @@ import re
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.enums import (ParameterFormat,
-                                                     TemplateCategory,
-                                                     TemplateType)
 
 # =============================================================================
 # Guardrails constant — machine-readable rules for authentication templates
@@ -73,12 +70,13 @@ AUTHENTICATION_GUARDRAILS: Dict[str, Any] = {
 class AuthBodyComponent(BaseModel):
     """
     Authentication body component.
-    
+
     Unlike marketing/utility body components, authentication body does NOT
     contain user-provided text. META auto-generates the body message.
     The only option is `add_security_recommendation` which appends a
     "Do not share this code" type message.
     """
+
     type: Literal["body"] = "body"
     add_security_recommendation: Optional[bool] = Field(
         default=None,
@@ -92,11 +90,12 @@ class AuthBodyComponent(BaseModel):
 class AuthFooterComponent(BaseModel):
     """
     Authentication footer component.
-    
+
     Unlike marketing/utility footer components, authentication footer does NOT
     contain user-provided text. The only option is `code_expiration_minutes`
     which tells the user how long the code is valid.
     """
+
     type: Literal["footer"] = "footer"
     code_expiration_minutes: Optional[int] = Field(
         default=None,
@@ -109,9 +108,10 @@ class AuthFooterComponent(BaseModel):
 class SupportedApp(BaseModel):
     """
     Supported app for one_tap and zero_tap OTP buttons.
-    
+
     Identifies the Android app that can auto-fill or zero-tap the OTP.
     """
+
     package_name: str = Field(
         ...,
         min_length=1,
@@ -127,9 +127,10 @@ class SupportedApp(BaseModel):
 class OTPCopyCodeButton(BaseModel):
     """
     Copy Code OTP button — user taps to copy the OTP to clipboard.
-    
+
     This is the simplest OTP button type. Recommended for most use cases.
     """
+
     type: Literal["otp"] = "otp"
     otp_type: Literal["copy_code"] = "copy_code"
     text: Optional[str] = Field(
@@ -142,10 +143,11 @@ class OTPCopyCodeButton(BaseModel):
 class OTPOneTapButton(BaseModel):
     """
     One Tap OTP button — auto-fills the OTP in the companion Android app.
-    
+
     Requires `supported_apps` to identify the Android app and its signature.
     Falls back to copy_code if the user doesn't have the app or is on iOS.
     """
+
     type: Literal["otp"] = "otp"
     otp_type: Literal["one_tap"] = "one_tap"
     text: Optional[str] = Field(
@@ -168,10 +170,11 @@ class OTPOneTapButton(BaseModel):
 class OTPZeroTapButton(BaseModel):
     """
     Zero Tap OTP button — automatically fills the OTP without user interaction.
-    
+
     Requires `supported_apps` and explicit `zero_tap_terms_accepted`.
     Falls back to one_tap → copy_code if conditions aren't met.
     """
+
     type: Literal["otp"] = "otp"
     otp_type: Literal["zero_tap"] = "zero_tap"
     text: Optional[str] = Field(
@@ -202,10 +205,11 @@ OTPButton = Union[OTPCopyCodeButton, OTPOneTapButton, OTPZeroTapButton]
 class AuthButtonsComponent(BaseModel):
     """
     Authentication buttons component.
-    
+
     Unlike marketing/utility buttons, authentication templates only support
     OTP buttons with type "otp". Maximum 1 button allowed.
     """
+
     type: Literal["buttons"] = "buttons"
     buttons: List[OTPButton] = Field(
         ...,
@@ -232,9 +236,7 @@ class AuthButtonsComponent(BaseModel):
 
             btn_type = btn.get("type", "")
             if btn_type != "otp":
-                raise ValueError(
-                    f"Authentication templates only support 'otp' buttons, got '{btn_type}'"
-                )
+                raise ValueError(f"Authentication templates only support 'otp' buttons, got '{btn_type}'")
 
             otp_type = btn.get("otp_type", "")
             try:
@@ -245,10 +247,7 @@ class AuthButtonsComponent(BaseModel):
                 elif otp_type == "zero_tap":
                     parsed.append(OTPZeroTapButton(**btn))
                 else:
-                    raise ValueError(
-                        f"Invalid otp_type '{otp_type}'. "
-                        f"Must be one of: copy_code, one_tap, zero_tap"
-                    )
+                    raise ValueError(f"Invalid otp_type '{otp_type}'. Must be one of: copy_code, one_tap, zero_tap")
             except Exception as e:
                 raise ValueError(f"Error parsing OTP button: {e}")
 
@@ -256,9 +255,7 @@ class AuthButtonsComponent(BaseModel):
 
 
 # Union type for all authentication template components
-AuthenticationTemplateComponent = Union[
-    AuthBodyComponent, AuthFooterComponent, AuthButtonsComponent
-]
+AuthenticationTemplateComponent = Union[AuthBodyComponent, AuthFooterComponent, AuthButtonsComponent]
 
 
 # =============================================================================
@@ -367,9 +364,7 @@ class AuthenticationTemplateRequestValidator(BaseModel):
             raise ValueError("Template name cannot be empty")
         v = v.strip().lower()
         if not re.match(r"^[a-z0-9_]+$", v):
-            raise ValueError(
-                "Template name must contain only lowercase letters, numbers, and underscores"
-            )
+            raise ValueError("Template name must contain only lowercase letters, numbers, and underscores")
         return v
 
     @field_validator("language")
@@ -379,9 +374,7 @@ class AuthenticationTemplateRequestValidator(BaseModel):
         if not v or not v.strip():
             raise ValueError("Language code cannot be empty")
         if not re.match(r"^[a-z]{2}(_[A-Z]{2})?$", v):
-            raise ValueError(
-                "Language code must be in format 'xx' or 'xx_XX' (e.g., 'en', 'en_US')"
-            )
+            raise ValueError("Language code must be in format 'xx' or 'xx_XX' (e.g., 'en', 'en_US')")
         return v
 
     @field_validator("components", mode="before")
@@ -449,10 +442,7 @@ class AuthenticationTemplateRequestValidator(BaseModel):
         correct_order = [t for t in expected_order if t in component_types]
 
         if actual_order != correct_order:
-            raise ValueError(
-                f"Components must be in order: body → footer → buttons. "
-                f"Got: {actual_order}"
-            )
+            raise ValueError(f"Components must be in order: body → footer → buttons. Got: {actual_order}")
 
         # Validate TTL
         ttl_rules = AUTHENTICATION_GUARDRAILS["ttl"]
@@ -481,9 +471,7 @@ class AuthenticationTemplateRequestValidator(BaseModel):
             "name": self.name,
             "language": self.language,
             "category": self.category.lower(),
-            "components": [
-                comp.model_dump(exclude_none=True) for comp in self.components
-            ],
+            "components": [comp.model_dump(exclude_none=True) for comp in self.components],
         }
         if self.message_send_ttl_seconds is not None:
             payload["message_send_ttl_seconds"] = self.message_send_ttl_seconds
@@ -527,5 +515,6 @@ def validate_authentication_template_json(
         ValueError: If validation fails
     """
     import json
+
     data = json.loads(json_str)
     return validate_authentication_template(data)

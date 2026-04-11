@@ -10,7 +10,7 @@ SPM templates display a single product from a connected catalog.
 import re
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Parameter Models
@@ -19,12 +19,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class BodyTextParameter(BaseModel):
     """Body parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the body parameter")
 
 
 class BodyCurrencyParameter(BaseModel):
     """Body parameter with currency"""
+
     type: Literal["currency"] = "currency"
     currency: dict = Field(
         ...,
@@ -34,6 +36,7 @@ class BodyCurrencyParameter(BaseModel):
 
 class BodyDateTimeParameter(BaseModel):
     """Body parameter with date_time"""
+
     type: Literal["date_time"] = "date_time"
     date_time: dict = Field(..., description="DateTime object with fallback_value")
 
@@ -49,6 +52,7 @@ BodyParameter = Union[BodyTextParameter, BodyCurrencyParameter, BodyDateTimePara
 
 class ProductActionSend(BaseModel):
     """Action configuration for SPM send request"""
+
     catalog_id: str = Field(
         ...,
         description="The catalog ID containing the product",
@@ -67,14 +71,14 @@ class ProductActionSend(BaseModel):
 
 class BodyComponentSend(BaseModel):
     """Body component for sending SPM template message"""
+
     type: Literal["body"] = "body"
-    parameters: List[BodyParameter] = Field(
-        ..., min_length=1, description="Body parameters"
-    )
+    parameters: List[BodyParameter] = Field(..., min_length=1, description="Body parameters")
 
 
 class SPMComponentSend(BaseModel):
     """Single Product Message component for send request"""
+
     type: Literal["product"] = "product"
     action: ProductActionSend = Field(
         ...,
@@ -93,6 +97,7 @@ SendSPMTemplateComponent = Union[BodyComponentSend, SPMComponentSend]
 
 class LanguageInput(BaseModel):
     """Language input for template request"""
+
     code: str = Field(
         ...,
         min_length=2,
@@ -115,6 +120,7 @@ class LanguageInput(BaseModel):
 
 class SPMTemplateSendBody(BaseModel):
     """Template body for SPM template send request"""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -170,13 +176,9 @@ class SPMTemplateSendBody(BaseModel):
                                 elif param_type == "date_time":
                                     parsed_params.append(BodyDateTimeParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown body parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown body parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(BodyComponentSend(**comp))
                 elif comp_type == "product":
@@ -232,16 +234,10 @@ class SPMTemplateSendRequestValidator(BaseModel):
         >>> request = SPMTemplateSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["template"] = Field(
-        "template", description="Message type (must be 'template')"
-    )
+    type: Literal["template"] = Field("template", description="Message type (must be 'template')")
     template: SPMTemplateSendBody = Field(..., description="Template details")
 
     @field_validator("to")
@@ -253,9 +249,7 @@ class SPMTemplateSendRequestValidator(BaseModel):
         cleaned = re.sub(r"[^\d+]", "", v)
         # Validate phone number format
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

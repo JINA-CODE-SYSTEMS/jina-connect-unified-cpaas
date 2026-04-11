@@ -7,9 +7,10 @@ class TenantUserViewSet(BaseTenantModelViewSet):
     """
     A viewset for managing tenant users.
     """
+
     queryset = TenantUser.objects.all()
     serializer_class = TenantUserSerializer
-    search_fields = ["user__email", "user__first_name", "user__last_name","user__username"]
+    search_fields = ["user__email", "user__first_name", "user__last_name", "user__username"]
     required_permissions = {
         "list": "users.view",
         "retrieve": "users.view",
@@ -21,5 +22,5 @@ class TenantUserViewSet(BaseTenantModelViewSet):
         "tenant": ["exact", "in"],
         "created_by": ["exact", "in"],
         "updated_by": ["exact", "in"],
-        "is_active": ["exact"],        
+        "is_active": ["exact"],
     }

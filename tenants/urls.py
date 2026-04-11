@@ -15,20 +15,19 @@ from .viewsets.waba_info import WABAInfoViewSet
 
 router = DefaultRouter()
 
-router.register(r'onboarding-options', OnboardingOptionsViewSet, basename='onboarding-options')
-router.register(r'tenant-gupshup', TenantGupshupAppsViewSet, basename='tenantgupshup')
-router.register(r'host-wallet', HostWalletViewSet, basename='hostwallet')
-router.register(r'tenant-media', TenantMediaViewSet, basename='tenantmedia')
-router.register(r'tenant-tags', TenantTagsViewSet, basename='tenanttags')
-router.register(r'waba-info', WABAInfoViewSet, basename='wabainfo')
-router.register(r'users', TenantUserViewSet, basename='tenantuser')
-router.register(r'branding', BrandingSettingsViewSet, basename='branding')
-router.register(r'members', MemberManagementViewSet, basename='member')
-router.register(r'roles', RoleManagementViewSet, basename='role')
-router.register(r'', TenantViewSet, basename='tenant')
+router.register(r"onboarding-options", OnboardingOptionsViewSet, basename="onboarding-options")
+router.register(r"tenant-gupshup", TenantGupshupAppsViewSet, basename="tenantgupshup")
+router.register(r"host-wallet", HostWalletViewSet, basename="hostwallet")
+router.register(r"tenant-media", TenantMediaViewSet, basename="tenantmedia")
+router.register(r"tenant-tags", TenantTagsViewSet, basename="tenanttags")
+router.register(r"waba-info", WABAInfoViewSet, basename="wabainfo")
+router.register(r"users", TenantUserViewSet, basename="tenantuser")
+router.register(r"branding", BrandingSettingsViewSet, basename="branding")
+router.register(r"members", MemberManagementViewSet, basename="member")
+router.register(r"roles", RoleManagementViewSet, basename="role")
+router.register(r"", TenantViewSet, basename="tenant")
 
 
 urlpatterns = [
     path("", include(router.urls)),
 ]
-

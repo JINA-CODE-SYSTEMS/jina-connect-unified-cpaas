@@ -8,13 +8,13 @@ SPM templates display a single product from a connected catalog with
 product details (image, title, price, description) pulled automatically.
 """
 
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample)
-from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
 from wa.utility.data_model.meta_direct.footer import FooterComponent
+from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
 # ============================================================================
 # Product Models
@@ -23,6 +23,7 @@ from wa.utility.data_model.meta_direct.footer import FooterComponent
 
 class ProductAction(BaseModel):
     """Action configuration for SPM template - references a single product"""
+
     thumbnail_product_retailer_id: str = Field(
         ...,
         min_length=1,
@@ -32,6 +33,7 @@ class ProductAction(BaseModel):
 
 class SPMComponent(BaseModel):
     """Single Product Message component"""
+
     type: Literal["product", "PRODUCT"] = "product"
     action: ProductAction = Field(
         ...,
@@ -148,15 +150,10 @@ class SPMTemplateRequestValidator(BaseTemplateValidator):
         # Validate component order: body -> footer -> product
         expected_order = ["body", "footer", "product"]
         current_order = [t for t in expected_order if t in component_types]
-        actual_order = [
-            t.lower() for t in component_types if t.lower() in expected_order
-        ]
+        actual_order = [t.lower() for t in component_types if t.lower() in expected_order]
 
         if current_order != actual_order:
-            raise ValueError(
-                f"Components must be in order: body -> footer -> product. "
-                f"Got: {actual_order}"
-            )
+            raise ValueError(f"Components must be in order: body -> footer -> product. Got: {actual_order}")
 
         return self
 

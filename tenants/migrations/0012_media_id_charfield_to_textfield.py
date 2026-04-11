@@ -4,15 +4,16 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0011_rbac_seed_voice_permissions'),
+        ("tenants", "0010_add_commerce_manager_to_wa_app"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tenantmedia',
-            name='media_id',
-            field=models.TextField(blank=True, help_text='Media ID returned by WhatsApp (Gupshup) after media upload.', null=True),
+            model_name="tenantmedia",
+            name="media_id",
+            field=models.TextField(
+                blank=True, help_text="Media ID returned by WhatsApp (Gupshup) after media upload.", null=True
+            ),
         ),
     ]

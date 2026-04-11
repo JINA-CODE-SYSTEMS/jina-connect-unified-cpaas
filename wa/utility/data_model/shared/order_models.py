@@ -14,10 +14,9 @@ Reference:
   https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-order-details-messages
 """
 
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
-
 
 # ============================================================================
 # Core Monetary Model

@@ -1,4 +1,3 @@
-
 from django.db import models
 
 
@@ -12,7 +11,6 @@ class BaseTenantModelForFilterUserManager(models.Manager):
         'filter_by_user_tenant_fk' attribute as the foreign key. Raises a ValueError if the attribute
         is not defined on the model.
     """
-    
 
     def filter_by_user_tenant(self, user):
         fk = self.model.filter_by_user_tenant_fk

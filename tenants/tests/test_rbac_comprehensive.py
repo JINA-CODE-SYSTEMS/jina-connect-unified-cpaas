@@ -48,6 +48,7 @@ User = get_user_model()
 # Shared helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class _FakeView:
     """Minimal viewset stand-in for permission class tests."""
 
@@ -58,8 +59,11 @@ class _FakeView:
 
 def _make_user(username, email, mobile, **kwargs):
     return User.objects.create_user(
-        username=username, email=email, mobile=mobile,
-        password="testpass123", **kwargs,
+        username=username,
+        email=email,
+        mobile=mobile,
+        password="testpass123",
+        **kwargs,
     )
 
 
@@ -93,14 +97,12 @@ class PermissionRegistryTests(TestCase):
 
     def test_default_roles_have_entries(self):
         for slug in DefaultRoleSlugs.values:
-            self.assertIn(slug, DEFAULT_ROLE_PERMISSIONS,
-                          f"Missing DEFAULT_ROLE_PERMISSIONS for '{slug}'")
+            self.assertIn(slug, DEFAULT_ROLE_PERMISSIONS, f"Missing DEFAULT_ROLE_PERMISSIONS for '{slug}'")
 
     def test_owner_has_all_permissions_true(self):
         owner_perms = DEFAULT_ROLE_PERMISSIONS["owner"]
         for perm in ALL_PERMISSIONS:
-            self.assertTrue(owner_perms.get(perm, False),
-                            f"OWNER should have '{perm}' = True")
+            self.assertTrue(owner_perms.get(perm, False), f"OWNER should have '{perm}' = True")
 
     def test_admin_denied_ownership_ops(self):
         admin_perms = DEFAULT_ROLE_PERMISSIONS["admin"]
@@ -113,8 +115,7 @@ class PermissionRegistryTests(TestCase):
         for perm in ALL_PERMISSIONS:
             if perm in admin_denied:
                 continue
-            self.assertTrue(admin_perms.get(perm, False),
-                            f"ADMIN should have '{perm}' = True")
+            self.assertTrue(admin_perms.get(perm, False), f"ADMIN should have '{perm}' = True")
 
     def test_viewer_only_has_view_permissions(self):
         viewer_perms = DEFAULT_ROLE_PERMISSIONS["viewer"]
@@ -127,11 +128,18 @@ class PermissionRegistryTests(TestCase):
 
     def test_manager_has_no_user_management_or_billing_manage(self):
         mgr = DEFAULT_ROLE_PERMISSIONS["manager"]
-        for perm in ("users.invite", "users.change_role", "users.remove",
-                      "billing.manage", "wa_app.manage", "rate_card.manage",
-                      "tenant.edit", "tenant.delete", "tenant.transfer"):
-            self.assertFalse(mgr.get(perm, False),
-                             f"MANAGER should not have '{perm}'")
+        for perm in (
+            "users.invite",
+            "users.change_role",
+            "users.remove",
+            "billing.manage",
+            "wa_app.manage",
+            "rate_card.manage",
+            "tenant.edit",
+            "tenant.delete",
+            "tenant.transfer",
+        ):
+            self.assertFalse(mgr.get(perm, False), f"MANAGER should not have '{perm}'")
 
     def test_agent_subset_of_manager(self):
         """Every permission granted to AGENT should also be granted to MANAGER."""
@@ -139,8 +147,7 @@ class PermissionRegistryTests(TestCase):
         manager = DEFAULT_ROLE_PERMISSIONS["manager"]
         for perm, allowed in agent.items():
             if allowed:
-                self.assertTrue(manager.get(perm, False),
-                                f"AGENT has '{perm}' but MANAGER does not")
+                self.assertTrue(manager.get(perm, False), f"AGENT has '{perm}' but MANAGER does not")
 
     def test_permission_descriptions_match_all_permissions(self):
         self.assertEqual(set(PERMISSION_DESCRIPTIONS.keys()), set(ALL_PERMISSIONS))
@@ -148,15 +155,13 @@ class PermissionRegistryTests(TestCase):
     def test_permission_descriptions_are_non_empty(self):
         for perm, desc in PERMISSION_DESCRIPTIONS.items():
             self.assertIsInstance(desc, str)
-            self.assertTrue(len(desc) > 5,
-                            f"Description for '{perm}' too short: '{desc}'")
+            self.assertTrue(len(desc) > 5, f"Description for '{perm}' too short: '{desc}'")
 
     def test_default_role_permissions_no_unknown_keys(self):
         perm_set = set(ALL_PERMISSIONS)
         for slug, perms in DEFAULT_ROLE_PERMISSIONS.items():
             for key in perms:
-                self.assertIn(key, perm_set,
-                              f"Unknown perm key '{key}' in role '{slug}'")
+                self.assertIn(key, perm_set, f"Unknown perm key '{key}' in role '{slug}'")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -175,14 +180,12 @@ class HasPermissionFunctionTests(TestCase):
 
     def test_owner_has_all_permissions(self):
         for perm in ALL_PERMISSIONS:
-            self.assertTrue(has_permission(self.owner_role, perm),
-                            f"OWNER should have '{perm}'")
+            self.assertTrue(has_permission(self.owner_role, perm), f"OWNER should have '{perm}'")
 
     def test_viewer_denied_create_permissions(self):
         for perm in ALL_PERMISSIONS:
             if not perm.endswith(".view") and perm != "billing.view":
-                self.assertFalse(has_permission(self.viewer_role, perm),
-                                 f"VIEWER should NOT have '{perm}'")
+                self.assertFalse(has_permission(self.viewer_role, perm), f"VIEWER should NOT have '{perm}'")
 
     def test_unknown_permission_denied(self):
         self.assertFalse(has_permission(self.owner_role, "nonexistent.action"))
@@ -207,16 +210,17 @@ class SeedDefaultRolesTests(TestCase):
         roles = TenantRole.objects.filter(tenant=tenant, is_system=True)
         self.assertEqual(roles.count(), 5)
         for slug in DefaultRoleSlugs.values:
-            self.assertTrue(roles.filter(slug=slug).exists(),
-                            f"Missing seeded role '{slug}'")
+            self.assertTrue(roles.filter(slug=slug).exists(), f"Missing seeded role '{slug}'")
 
     def test_seeded_roles_have_all_permission_rows(self):
         tenant = Tenant.objects.create(name="Perm Rows Tenant")
         for role in TenantRole.objects.filter(tenant=tenant, is_system=True):
             perm_count = RolePermission.objects.filter(role=role).count()
-            self.assertEqual(perm_count, len(ALL_PERMISSIONS),
-                             f"Role '{role.slug}' has {perm_count} perms, "
-                             f"expected {len(ALL_PERMISSIONS)}")
+            self.assertEqual(
+                perm_count,
+                len(ALL_PERMISSIONS),
+                f"Role '{role.slug}' has {perm_count} perms, expected {len(ALL_PERMISSIONS)}",
+            )
 
     def test_seeded_owner_is_not_editable(self):
         tenant = Tenant.objects.create(name="Editable Check Tenant")
@@ -232,7 +236,8 @@ class SeedDefaultRolesTests(TestCase):
         # Signal already seeded. Call again manually.
         seed_default_roles(tenant)
         self.assertEqual(
-            TenantRole.objects.filter(tenant=tenant, is_system=True).count(), 5,
+            TenantRole.objects.filter(tenant=tenant, is_system=True).count(),
+            5,
         )
         owner_role = TenantRole.objects.get(tenant=tenant, slug="owner")
         self.assertEqual(
@@ -245,8 +250,7 @@ class SeedDefaultRolesTests(TestCase):
         expected = {"owner": 100, "admin": 80, "manager": 60, "agent": 40, "viewer": 20}
         for slug, priority in expected.items():
             role = TenantRole.objects.get(tenant=tenant, slug=slug)
-            self.assertEqual(role.priority, priority,
-                             f"Role '{slug}' priority should be {priority}")
+            self.assertEqual(role.priority, priority, f"Role '{slug}' priority should be {priority}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -285,18 +289,19 @@ class RBACIntegrationBase(TestCase):
         # Extra users
         counter += 1
         cls.no_role_user = _make_user(
-            username="int_norole", email="int_norole@test.com",
+            username="int_norole",
+            email="int_norole@test.com",
             mobile=f"+91900000{counter:04d}",
         )
         # #253: After migration 0008, role is NOT NULL. Give lowest role.
-        TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.no_role_user, role=cls.roles["viewer"]
-        )
+        TenantUser.objects.create(tenant=cls.tenant, user=cls.no_role_user, role=cls.roles["viewer"])
 
         counter += 1
         cls.superuser = User.objects.create_superuser(
-            username="int_super", email="int_super@test.com",
-            mobile=f"+91900000{counter:04d}", password="testpass123",
+            username="int_super",
+            email="int_super@test.com",
+            mobile=f"+91900000{counter:04d}",
+            password="testpass123",
         )
 
     def _client(self, role_slug):
@@ -319,8 +324,7 @@ class MyPermissionsEndpointTests(RBACIntegrationBase):
         perms = resp.data["permissions"]
         for perm in ALL_PERMISSIONS:
             expected = DEFAULT_ROLE_PERMISSIONS["viewer"].get(perm, False)
-            self.assertEqual(perms[perm], expected,
-                             f"VIEWER '{perm}' should be {expected}")
+            self.assertEqual(perms[perm], expected, f"VIEWER '{perm}' should be {expected}")
 
     def test_unauthenticated_denied(self):
         resp = APIClient().get("/tenants/my-permissions/")
@@ -346,9 +350,9 @@ class MyPermissionsEndpointTests(RBACIntegrationBase):
             expected = DEFAULT_ROLE_PERMISSIONS[slug]
             for perm in ALL_PERMISSIONS:
                 self.assertEqual(
-                    perms[perm], expected.get(perm, False),
-                    f"{slug}: '{perm}' expected {expected.get(perm, False)}, "
-                    f"got {perms[perm]}",
+                    perms[perm],
+                    expected.get(perm, False),
+                    f"{slug}: '{perm}' expected {expected.get(perm, False)}, got {perms[perm]}",
                 )
 
 
@@ -366,26 +370,35 @@ class MemberManagementEndpointTests(RBACIntegrationBase):
 
     def test_invite_allowed_for_admin(self):
         invitee = _make_user("invite_target", "invite_target@test.com", "+919000009000")
-        resp = self._client("admin").post("/tenants/members/add/", {
-            "email": invitee.email,
-            "role_id": self.roles["agent"].pk,
-        })
+        resp = self._client("admin").post(
+            "/tenants/members/add/",
+            {
+                "email": invitee.email,
+                "role_id": self.roles["agent"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 201)
 
     def test_invite_denied_for_viewer(self):
         invitee = _make_user("invite_denied", "invite_denied@test.com", "+919000009001")
-        resp = self._client("viewer").post("/tenants/members/add/", {
-            "email": invitee.email,
-            "role_id": self.roles["agent"].pk,
-        })
+        resp = self._client("viewer").post(
+            "/tenants/members/add/",
+            {
+                "email": invitee.email,
+                "role_id": self.roles["agent"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_invite_denied_for_agent(self):
         invitee = _make_user("invite_agent_deny", "invite_agent_deny@test.com", "+919000009002")
-        resp = self._client("agent").post("/tenants/members/add/", {
-            "email": invitee.email,
-            "role_id": self.roles["viewer"].pk,
-        })
+        resp = self._client("agent").post(
+            "/tenants/members/add/",
+            {
+                "email": invitee.email,
+                "role_id": self.roles["viewer"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_change_role_allowed_for_admin(self):
@@ -408,7 +421,9 @@ class MemberManagementEndpointTests(RBACIntegrationBase):
     def test_remove_member_allowed_for_admin(self):
         removable = _make_user("removable", "removable@test.com", "+919000009003")
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=removable, role=self.roles["viewer"],
+            tenant=self.tenant,
+            user=removable,
+            role=self.roles["viewer"],
         )
         resp = self._client("admin").delete(f"/tenants/members/{tu.pk}/")
         self.assertEqual(resp.status_code, 204)
@@ -416,7 +431,9 @@ class MemberManagementEndpointTests(RBACIntegrationBase):
     def test_remove_denied_for_viewer(self):
         removable2 = _make_user("removable2", "removable2@test.com", "+919000009004")
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=removable2, role=self.roles["viewer"],
+            tenant=self.tenant,
+            user=removable2,
+            role=self.roles["viewer"],
         )
         resp = self._client("viewer").delete(f"/tenants/members/{tu.pk}/")
         self.assertEqual(resp.status_code, 403)
@@ -430,7 +447,8 @@ class MemberManagementEndpointTests(RBACIntegrationBase):
         """Direct PATCH /members/{id}/ should be blocked."""
         viewer_tu = TenantUser.objects.get(tenant=self.tenant, user=self.users["viewer"])
         resp = self._client("admin").patch(
-            f"/tenants/members/{viewer_tu.pk}/", {"name": "nope"},
+            f"/tenants/members/{viewer_tu.pk}/",
+            {"name": "nope"},
         )
         self.assertEqual(resp.status_code, 405)
 
@@ -438,13 +456,18 @@ class MemberManagementEndpointTests(RBACIntegrationBase):
         """Inviting a deactivated member should reactivate them."""
         deactivated = _make_user("deactivated", "deactivated@test.com", "+919000009005")
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=deactivated,
-            role=self.roles["viewer"], is_active=False,
+            tenant=self.tenant,
+            user=deactivated,
+            role=self.roles["viewer"],
+            is_active=False,
         )
-        resp = self._client("admin").post("/tenants/members/add/", {
-            "email": deactivated.email,
-            "role_id": self.roles["agent"].pk,
-        })
+        resp = self._client("admin").post(
+            "/tenants/members/add/",
+            {
+                "email": deactivated.email,
+                "role_id": self.roles["agent"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 201)
         tu.refresh_from_db()
         self.assertTrue(tu.is_active)
@@ -455,9 +478,12 @@ class TransferOwnershipEndpointTests(RBACIntegrationBase):
     """Tests for POST /tenants/transfer-ownership/."""
 
     def test_owner_can_transfer_to_admin(self):
-        resp = self._client("owner").post("/tenants/transfer-ownership/", {
-            "target_user_id": self.users["admin"].pk,
-        })
+        resp = self._client("owner").post(
+            "/tenants/transfer-ownership/",
+            {
+                "target_user_id": self.users["admin"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("Ownership transferred", resp.data["detail"])
 
@@ -477,23 +503,32 @@ class TransferOwnershipEndpointTests(RBACIntegrationBase):
         admin_tu.save(update_fields=["role"])
 
     def test_admin_cannot_transfer(self):
-        resp = self._client("admin").post("/tenants/transfer-ownership/", {
-            "target_user_id": self.users["manager"].pk,
-        })
+        resp = self._client("admin").post(
+            "/tenants/transfer-ownership/",
+            {
+                "target_user_id": self.users["manager"].pk,
+            },
+        )
         # Should be denied by TenantRolePermission (tenant.transfer is False for admin)
         self.assertEqual(resp.status_code, 403)
 
     def test_cannot_transfer_to_non_admin(self):
         """Transfer target must be ADMIN role."""
-        resp = self._client("owner").post("/tenants/transfer-ownership/", {
-            "target_user_id": self.users["manager"].pk,
-        })
+        resp = self._client("owner").post(
+            "/tenants/transfer-ownership/",
+            {
+                "target_user_id": self.users["manager"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 400)
 
     def test_cannot_transfer_to_nonexistent_user(self):
-        resp = self._client("owner").post("/tenants/transfer-ownership/", {
-            "target_user_id": 99999,
-        })
+        resp = self._client("owner").post(
+            "/tenants/transfer-ownership/",
+            {
+                "target_user_id": 99999,
+            },
+        )
         self.assertEqual(resp.status_code, 400)
 
 
@@ -511,11 +546,15 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
         self.assertEqual(resp.status_code, 200)
 
     def test_create_role_allowed_for_admin(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Test Custom Role",
-            "priority": 35,
-            "permissions": {"tenant.view": True, "broadcast.view": True},
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Test Custom Role",
+                "priority": 35,
+                "permissions": {"tenant.view": True, "broadcast.view": True},
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.data["name"], "Test Custom Role")
         self.assertFalse(resp.data["is_system"])
@@ -526,10 +565,14 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
         TenantRole.objects.filter(slug="test-custom-role", tenant=self.tenant).delete()
 
     def test_create_role_denied_for_viewer(self):
-        resp = self._client("viewer").post("/tenants/roles/", {
-            "name": "Viewer Role",
-            "priority": 10,
-        }, format="json")
+        resp = self._client("viewer").post(
+            "/tenants/roles/",
+            {
+                "name": "Viewer Role",
+                "priority": 10,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_retrieve_role_detail(self):
@@ -542,13 +585,16 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
 
     def test_edit_role_name(self):
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="Editable", slug="editable-test",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="Editable",
+            slug="editable-test",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
-        RolePermission.objects.bulk_create([
-            RolePermission(role=custom, permission=p, allowed=False)
-            for p in ALL_PERMISSIONS
-        ])
+        RolePermission.objects.bulk_create(
+            [RolePermission(role=custom, permission=p, allowed=False) for p in ALL_PERMISSIONS]
+        )
         resp = self._client("admin").patch(
             f"/tenants/roles/{custom.pk}/",
             {"name": "Renamed Role"},
@@ -560,13 +606,16 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
 
     def test_edit_role_permissions(self):
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="PermEdit", slug="permedit-test",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="PermEdit",
+            slug="permedit-test",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
-        RolePermission.objects.bulk_create([
-            RolePermission(role=custom, permission=p, allowed=False)
-            for p in ALL_PERMISSIONS
-        ])
+        RolePermission.objects.bulk_create(
+            [RolePermission(role=custom, permission=p, allowed=False) for p in ALL_PERMISSIONS]
+        )
         resp = self._client("admin").patch(
             f"/tenants/roles/{custom.pk}/",
             {"permissions": {"contact.view": True, "contact.create": True}},
@@ -580,8 +629,12 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
 
     def test_delete_custom_role_no_members(self):
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="Deletable", slug="deletable-test",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="Deletable",
+            slug="deletable-test",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
         resp = self._client("admin").delete(f"/tenants/roles/{custom.pk}/")
         self.assertEqual(resp.status_code, 204)
@@ -594,8 +647,12 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
 
     def test_delete_role_with_active_members_blocked(self):
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="HasMembers", slug="hasmembers-test",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="HasMembers",
+            slug="hasmembers-test",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
         member = _make_user("member_del", "member_del@test.com", "+919000009010")
         TenantUser.objects.create(tenant=self.tenant, user=member, role=custom)
@@ -628,7 +685,8 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
         admin_role = self.roles["admin"]
         # Tamper: set tenant.view to False
         RolePermission.objects.filter(
-            role=admin_role, permission="tenant.view",
+            role=admin_role,
+            permission="tenant.view",
         ).update(allowed=False)
 
         resp = self._client("owner").post(
@@ -641,42 +699,61 @@ class RoleCRUDEndpointTests(RBACIntegrationBase):
 
     def test_reset_custom_role_blocked(self):
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="NoReset", slug="noreset-test",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="NoReset",
+            slug="noreset-test",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
         resp = self._client("admin").post(f"/tenants/roles/{custom.pk}/reset/")
         self.assertEqual(resp.status_code, 400)
         custom.delete()
 
     def test_create_role_auto_generates_slug(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Campaign Manager",
-            "priority": 35,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Campaign Manager",
+                "priority": 35,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.data["slug"], "campaign-manager")
         TenantRole.objects.filter(slug="campaign-manager", tenant=self.tenant).delete()
 
     def test_create_role_explicit_slug(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Custom Name",
-            "slug": "my-custom-slug",
-            "priority": 30,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Custom Name",
+                "slug": "my-custom-slug",
+                "priority": 30,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.data["slug"], "my-custom-slug")
         TenantRole.objects.filter(slug="my-custom-slug", tenant=self.tenant).delete()
 
     def test_create_role_duplicate_slug_rejected(self):
         TenantRole.objects.create(
-            tenant=self.tenant, name="Dup", slug="dup-slug",
-            priority=25, is_system=False,
+            tenant=self.tenant,
+            name="Dup",
+            slug="dup-slug",
+            priority=25,
+            is_system=False,
         )
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Another",
-            "slug": "dup-slug",
-            "priority": 30,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Another",
+                "slug": "dup-slug",
+                "priority": 30,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
         TenantRole.objects.filter(slug="dup-slug", tenant=self.tenant).delete()
 
@@ -696,24 +773,31 @@ class CustomRoleEndToEndTests(RBACIntegrationBase):
     def test_full_custom_role_lifecycle(self):
         """E2E: create → assign → verify access → edit → re-verify → delete."""
         # 1. Create custom role with contact.view + tenant.view + users.view
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Field Rep",
-            "priority": 35,
-            "permissions": {
-                "contact.view": True,
-                "tenant.view": True,
-                "users.view": True,
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Field Rep",
+                "priority": 35,
+                "permissions": {
+                    "contact.view": True,
+                    "tenant.view": True,
+                    "users.view": True,
+                },
             },
-        }, format="json")
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         custom_role_id = resp.data["id"]
 
         # 2. Create a user and assign the custom role via change-role
         lifecycle_user = _make_user(
-            "lifecycle_user", "lifecycle@test.com", "+919000009320",
+            "lifecycle_user",
+            "lifecycle@test.com",
+            "+919000009320",
         )
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=lifecycle_user,
+            tenant=self.tenant,
+            user=lifecycle_user,
             role=self.roles["viewer"],
         )
         resp = self._client("admin").patch(
@@ -741,7 +825,8 @@ class CustomRoleEndToEndTests(RBACIntegrationBase):
         # 5. Re-verify: user now passes the permission check on POST
         resp = client.post("/contacts/", {}, format="json")
         self.assertNotEqual(
-            resp.status_code, 403,
+            resp.status_code,
+            403,
             "After granting contact.create, user should pass permission check",
         )
 
@@ -761,20 +846,29 @@ class CustomRoleEndToEndTests(RBACIntegrationBase):
 
     def test_custom_role_assignment_via_invite(self):
         """Create custom role → invite user with that role → verify assignment."""
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Invite Target Role",
-            "priority": 25,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Invite Target Role",
+                "priority": 25,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         role_id = resp.data["id"]
 
         inv_user = _make_user(
-            "inv_custom", "inv_custom@test.com", "+919000009321",
+            "inv_custom",
+            "inv_custom@test.com",
+            "+919000009321",
         )
-        resp = self._client("admin").post("/tenants/members/add/", {
-            "email": inv_user.email,
-            "role_id": role_id,
-        })
+        resp = self._client("admin").post(
+            "/tenants/members/add/",
+            {
+                "email": inv_user.email,
+                "role_id": role_id,
+            },
+        )
         self.assertEqual(resp.status_code, 201)
 
         tu = TenantUser.objects.get(tenant=self.tenant, user=inv_user)
@@ -786,10 +880,14 @@ class CustomRoleEndToEndTests(RBACIntegrationBase):
 
     def test_create_role_with_priority_gte_own_rejected(self):
         """Attempting to create a role at own priority level → 400."""
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "EqualPrio",
-            "priority": 80,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "EqualPrio",
+                "priority": 80,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
 
 
@@ -801,21 +899,28 @@ class CustomRoleAccessTests(RBACIntegrationBase):
         super().setUpTestData()
         # Create a custom role with only broadcast.view + contact.view
         cls.custom_role = TenantRole.objects.create(
-            tenant=cls.tenant, name="Broadcast Viewer",
-            slug="broadcast-viewer", priority=30,
-            is_system=False, is_editable=True,
+            tenant=cls.tenant,
+            name="Broadcast Viewer",
+            slug="broadcast-viewer",
+            priority=30,
+            is_system=False,
+            is_editable=True,
         )
         for perm in ALL_PERMISSIONS:
             RolePermission.objects.create(
-                role=cls.custom_role, permission=perm,
-                allowed=perm in ("broadcast.view", "contact.view",
-                                 "tenant.view", "users.view"),
+                role=cls.custom_role,
+                permission=perm,
+                allowed=perm in ("broadcast.view", "contact.view", "tenant.view", "users.view"),
             )
         cls.custom_user = _make_user(
-            "custom_role_user", "custom_role@test.com", "+919000009020",
+            "custom_role_user",
+            "custom_role@test.com",
+            "+919000009020",
         )
         TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.custom_user, role=cls.custom_role,
+            tenant=cls.tenant,
+            user=cls.custom_user,
+            role=cls.custom_role,
         )
 
     def test_custom_role_can_list_members(self):
@@ -826,18 +931,25 @@ class CustomRoleAccessTests(RBACIntegrationBase):
     def test_custom_role_cannot_invite(self):
         """Custom role lacks users.invite."""
         invitee = _make_user("cust_inv", "cust_inv@test.com", "+919000009021")
-        resp = _api_client(self.custom_user).post("/tenants/members/add/", {
-            "email": invitee.email,
-            "role_id": self.roles["viewer"].pk,
-        })
+        resp = _api_client(self.custom_user).post(
+            "/tenants/members/add/",
+            {
+                "email": invitee.email,
+                "role_id": self.roles["viewer"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_custom_role_cannot_create_role(self):
         """Custom role lacks users.change_role."""
-        resp = _api_client(self.custom_user).post("/tenants/roles/", {
-            "name": "Nope",
-            "priority": 10,
-        }, format="json")
+        resp = _api_client(self.custom_user).post(
+            "/tenants/roles/",
+            {
+                "name": "Nope",
+                "priority": 10,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_custom_role_my_permissions_accurate(self):
@@ -860,47 +972,66 @@ class EscalationPreventionTests(RBACIntegrationBase):
 
     def test_cannot_create_role_with_priority_gte_own(self):
         """Admin (priority=80) cannot create a role with priority >= 80."""
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "HighPrio",
-            "priority": 80,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "HighPrio",
+                "priority": 80,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
 
     def test_cannot_create_role_with_priority_above_own(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "TooHigh",
-            "priority": 95,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "TooHigh",
+                "priority": 95,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
 
     def test_can_create_role_with_priority_below_own(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "LowPrio",
-            "priority": 50,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "LowPrio",
+                "priority": 50,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         TenantRole.objects.filter(slug="lowprio", tenant=self.tenant).delete()
 
     def test_cannot_grant_permission_you_dont_have(self):
         """Admin cannot grant tenant.transfer (which admin doesn't have)."""
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Escalated",
-            "priority": 30,
-            "permissions": {"tenant.transfer": True},
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Escalated",
+                "priority": 30,
+                "permissions": {"tenant.transfer": True},
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("tenant.transfer", str(resp.data))
 
     def test_cannot_edit_permissions_to_escalate(self):
         """Admin edits a role to grant tenant.delete — should be blocked."""
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="EscTest", slug="esc-test",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="EscTest",
+            slug="esc-test",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
-        RolePermission.objects.bulk_create([
-            RolePermission(role=custom, permission=p, allowed=False)
-            for p in ALL_PERMISSIONS
-        ])
+        RolePermission.objects.bulk_create(
+            [RolePermission(role=custom, permission=p, allowed=False) for p in ALL_PERMISSIONS]
+        )
         resp = self._client("admin").patch(
             f"/tenants/roles/{custom.pk}/",
             {"permissions": {"tenant.delete": True}},
@@ -936,7 +1067,8 @@ class EscalationPreventionTests(RBACIntegrationBase):
         self.assertEqual(resp.status_code, 403)
         # Restore
         RolePermission.objects.filter(
-            role=self.roles["manager"], permission="users.change_role",
+            role=self.roles["manager"],
+            permission="users.change_role",
         ).update(allowed=False)
 
     def test_cannot_delete_higher_priority_role(self):
@@ -947,27 +1079,35 @@ class EscalationPreventionTests(RBACIntegrationBase):
             defaults={"allowed": True},
         )
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="HighCustom", slug="high-custom",
-            priority=70, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="HighCustom",
+            slug="high-custom",
+            priority=70,
+            is_system=False,
+            is_editable=True,
         )
         resp = self._client("manager").delete(f"/tenants/roles/{custom.pk}/")
         self.assertEqual(resp.status_code, 403)
         # Cleanup
         custom.delete()
         RolePermission.objects.filter(
-            role=self.roles["manager"], permission="users.change_role",
+            role=self.roles["manager"],
+            permission="users.change_role",
         ).update(allowed=False)
 
     def test_cannot_set_priority_gte_own_on_edit(self):
         """Admin (80) editing a custom role cannot set priority >= 80."""
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="PrioEdit", slug="prio-edit",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="PrioEdit",
+            slug="prio-edit",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
-        RolePermission.objects.bulk_create([
-            RolePermission(role=custom, permission=p, allowed=False)
-            for p in ALL_PERMISSIONS
-        ])
+        RolePermission.objects.bulk_create(
+            [RolePermission(role=custom, permission=p, allowed=False) for p in ALL_PERMISSIONS]
+        )
         resp = self._client("admin").patch(
             f"/tenants/roles/{custom.pk}/",
             {"priority": 80},
@@ -1005,7 +1145,9 @@ class EscalationPreventionTests(RBACIntegrationBase):
         """Admin cannot change another admin's role."""
         extra_admin = _make_user("extra_admin", "extra_admin@test.com", "+919000009030")
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=extra_admin, role=self.roles["admin"],
+            tenant=self.tenant,
+            user=extra_admin,
+            role=self.roles["admin"],
         )
         resp = self._client("admin").patch(
             f"/tenants/members/{tu.pk}/role/",
@@ -1027,15 +1169,20 @@ class EscalationPreventionTests(RBACIntegrationBase):
         self.assertEqual(resp.status_code, 403)
         # Restore
         RolePermission.objects.filter(
-            role=self.roles["manager"], permission="users.remove",
+            role=self.roles["manager"],
+            permission="users.remove",
         ).update(allowed=False)
 
     def test_unknown_permission_key_rejected(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "BadPerms",
-            "priority": 30,
-            "permissions": {"nonexistent.perm": True},
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "BadPerms",
+                "priority": 30,
+                "permissions": {"nonexistent.perm": True},
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Unknown", str(resp.data))
 
@@ -1044,15 +1191,23 @@ class EscalationPreventionTests(RBACIntegrationBase):
         created = []
         for i in range(20):
             r = TenantRole.objects.create(
-                tenant=self.tenant, name=f"Limit{i}", slug=f"limit-{i}",
-                priority=10, is_system=False, is_editable=True,
+                tenant=self.tenant,
+                name=f"Limit{i}",
+                slug=f"limit-{i}",
+                priority=10,
+                is_system=False,
+                is_editable=True,
             )
             created.append(r)
 
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "TooMany",
-            "priority": 10,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "TooMany",
+                "priority": 10,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("20", str(resp.data))
 
@@ -1062,7 +1217,8 @@ class EscalationPreventionTests(RBACIntegrationBase):
     def test_admin_cannot_remove_owner(self):
         """#368-4: ADMIN cannot remove the OWNER."""
         owner_tu = TenantUser.objects.get(
-            tenant=self.tenant, user=self.users["owner"],
+            tenant=self.tenant,
+            user=self.users["owner"],
         )
         resp = self._client("admin").delete(
             f"/tenants/members/{owner_tu.pk}/",
@@ -1075,42 +1231,66 @@ class EscalationPreventionTests(RBACIntegrationBase):
         cannot create another role at priority >= 50.
         """
         custom_50 = TenantRole.objects.create(
-            tenant=self.tenant, name="MidTier", slug="mid-tier",
-            priority=50, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="MidTier",
+            slug="mid-tier",
+            priority=50,
+            is_system=False,
+            is_editable=True,
         )
         for perm in ALL_PERMISSIONS:
             RolePermission.objects.create(
-                role=custom_50, permission=perm,
-                allowed=perm in (
-                    "users.change_role", "users.view", "tenant.view",
+                role=custom_50,
+                permission=perm,
+                allowed=perm
+                in (
+                    "users.change_role",
+                    "users.view",
+                    "tenant.view",
                 ),
             )
         mid_user = _make_user(
-            "mid_tier", "mid_tier@test.com", "+919000009350",
+            "mid_tier",
+            "mid_tier@test.com",
+            "+919000009350",
         )
         TenantUser.objects.create(
-            tenant=self.tenant, user=mid_user, role=custom_50,
+            tenant=self.tenant,
+            user=mid_user,
+            role=custom_50,
         )
 
         # Same priority → rejected
-        resp = _api_client(mid_user).post("/tenants/roles/", {
-            "name": "SamePrio",
-            "priority": 50,
-        }, format="json")
+        resp = _api_client(mid_user).post(
+            "/tenants/roles/",
+            {
+                "name": "SamePrio",
+                "priority": 50,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
 
         # Above own → rejected
-        resp = _api_client(mid_user).post("/tenants/roles/", {
-            "name": "HigherPrio",
-            "priority": 60,
-        }, format="json")
+        resp = _api_client(mid_user).post(
+            "/tenants/roles/",
+            {
+                "name": "HigherPrio",
+                "priority": 60,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
 
         # Below own → allowed
-        resp = _api_client(mid_user).post("/tenants/roles/", {
-            "name": "LowerPrio50",
-            "priority": 30,
-        }, format="json")
+        resp = _api_client(mid_user).post(
+            "/tenants/roles/",
+            {
+                "name": "LowerPrio50",
+                "priority": 30,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
 
         # Cleanup — delete TenantUser first (role is PROTECT)
@@ -1122,19 +1302,27 @@ class EscalationPreventionTests(RBACIntegrationBase):
 
     def test_agent_cannot_create_any_role(self):
         """#368-1: AGENT lacks users.change_role → 403 on role creation."""
-        resp = self._client("agent").post("/tenants/roles/", {
-            "name": "AgentAttempt",
-            "priority": 10,
-        }, format="json")
+        resp = self._client("agent").post(
+            "/tenants/roles/",
+            {
+                "name": "AgentAttempt",
+                "priority": 10,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_manager_cannot_create_role_with_billing_manage(self):
         """#368-2: MANAGER lacks users.change_role → 403 (and doesn't have billing.manage)."""
-        resp = self._client("manager").post("/tenants/roles/", {
-            "name": "ManagerBilling",
-            "priority": 10,
-            "permissions": {"billing.manage": True},
-        }, format="json")
+        resp = self._client("manager").post(
+            "/tenants/roles/",
+            {
+                "name": "ManagerBilling",
+                "priority": 10,
+                "permissions": {"billing.manage": True},
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_unauthenticated_denied_on_all_endpoints(self):
@@ -1165,10 +1353,7 @@ class TenantCreationSignalTests(TestCase):
 
     def test_new_tenant_roles_have_correct_slugs(self):
         tenant = Tenant.objects.create(name="Slug Tenant")
-        slugs = set(
-            TenantRole.objects.filter(tenant=tenant, is_system=True)
-            .values_list("slug", flat=True)
-        )
+        slugs = set(TenantRole.objects.filter(tenant=tenant, is_system=True).values_list("slug", flat=True))
         self.assertEqual(slugs, {"owner", "admin", "manager", "agent", "viewer"})
 
     def test_new_tenant_owner_role_priority_100(self):
@@ -1180,17 +1365,13 @@ class TenantCreationSignalTests(TestCase):
         tenant = Tenant.objects.create(name="PermRow Tenant")
         for role in TenantRole.objects.filter(tenant=tenant, is_system=True):
             count = RolePermission.objects.filter(role=role).count()
-            self.assertEqual(count, len(ALL_PERMISSIONS),
-                             f"Role {role.slug} has {count} perms")
+            self.assertEqual(count, len(ALL_PERMISSIONS), f"Role {role.slug} has {count} perms")
 
     def test_new_tenant_owner_all_perms_true(self):
         tenant = Tenant.objects.create(name="AllTrue Tenant")
         owner = TenantRole.objects.get(tenant=tenant, slug="owner")
-        false_perms = RolePermission.objects.filter(
-            role=owner, allowed=False
-        ).values_list("permission", flat=True)
-        self.assertEqual(list(false_perms), [],
-                         "OWNER should have all permissions True")
+        false_perms = RolePermission.objects.filter(role=owner, allowed=False).values_list("permission", flat=True)
+        self.assertEqual(list(false_perms), [], "OWNER should have all permissions True")
 
     def test_new_tenant_admin_denied_transfer_and_delete(self):
         tenant = Tenant.objects.create(name="AdminDeny Tenant")
@@ -1238,15 +1419,15 @@ class RoleEndpointMatrixTests(RBACIntegrationBase):
 
         if expected == "allow":
             self.assertNotEqual(
-                resp.status_code, 403,
-                f"{role_slug} should NOT get 403 on {method.upper()} {url} "
-                f"(got {resp.status_code})",
+                resp.status_code,
+                403,
+                f"{role_slug} should NOT get 403 on {method.upper()} {url} (got {resp.status_code})",
             )
         else:
             self.assertEqual(
-                resp.status_code, 403,
-                f"{role_slug} should get 403 on {method.upper()} {url} "
-                f"(got {resp.status_code})",
+                resp.status_code,
+                403,
+                f"{role_slug} should get 403 on {method.upper()} {url} (got {resp.status_code})",
             )
 
     def test_members_list_by_role(self):
@@ -1261,31 +1442,28 @@ class RoleEndpointMatrixTests(RBACIntegrationBase):
 
     def test_roles_create_by_role(self):
         """Only owner & admin have users.change_role → can create roles."""
-        self._assert_access("owner", "post", "/tenants/roles/",
-                            "allow", {"name": "MatrixOwner", "priority": 10})
+        self._assert_access("owner", "post", "/tenants/roles/", "allow", {"name": "MatrixOwner", "priority": 10})
         TenantRole.objects.filter(slug="matrixowner", tenant=self.tenant).delete()
 
-        self._assert_access("admin", "post", "/tenants/roles/",
-                            "allow", {"name": "MatrixAdmin", "priority": 10})
+        self._assert_access("admin", "post", "/tenants/roles/", "allow", {"name": "MatrixAdmin", "priority": 10})
         TenantRole.objects.filter(slug="matrixadmin", tenant=self.tenant).delete()
 
         for slug in ("manager", "agent", "viewer"):
-            self._assert_access(slug, "post", "/tenants/roles/", "deny",
-                                {"name": f"Matrix{slug}", "priority": 10})
+            self._assert_access(slug, "post", "/tenants/roles/", "deny", {"name": f"Matrix{slug}", "priority": 10})
 
     def test_invite_by_role(self):
         """Only owner & admin have users.invite."""
         # Owner and Admin should be allowed (won't actually get 403)
         # Manager, Agent, Viewer should be denied
         for slug in ("manager", "agent", "viewer"):
-            self._assert_access(slug, "post", "/tenants/members/add/", "deny",
-                                {"email": "nobody@test.com", "role_id": 1})
+            self._assert_access(
+                slug, "post", "/tenants/members/add/", "deny", {"email": "nobody@test.com", "role_id": 1}
+            )
 
     def test_transfer_ownership_by_role(self):
         """Only OWNER has tenant.transfer."""
         for slug in ("admin", "manager", "agent", "viewer"):
-            self._assert_access(slug, "post", "/tenants/transfer-ownership/",
-                                "deny", {"target_user_id": 1})
+            self._assert_access(slug, "post", "/tenants/transfer-ownership/", "deny", {"target_user_id": 1})
 
 
 class CrossModuleEndpointMatrixTests(RBACIntegrationBase):
@@ -1309,15 +1487,15 @@ class CrossModuleEndpointMatrixTests(RBACIntegrationBase):
 
         if expected == "allow":
             self.assertNotEqual(
-                resp.status_code, 403,
-                f"{role_slug} should NOT get 403 on {method.upper()} {url} "
-                f"(got {resp.status_code})",
+                resp.status_code,
+                403,
+                f"{role_slug} should NOT get 403 on {method.upper()} {url} (got {resp.status_code})",
             )
         else:
             self.assertEqual(
-                resp.status_code, 403,
-                f"{role_slug} should get 403 on {method.upper()} {url} "
-                f"(got {resp.status_code})",
+                resp.status_code,
+                403,
+                f"{role_slug} should get 403 on {method.upper()} {url} (got {resp.status_code})",
             )
 
     # --- Broadcast (all 5 roles have broadcast.view) ---
@@ -1396,7 +1574,8 @@ class CrossModuleEndpointMatrixTests(RBACIntegrationBase):
     def test_change_role_denied_for_low_privilege(self):
         """manager/agent/viewer lack users.change_role → 403."""
         viewer_tu = TenantUser.objects.get(
-            tenant=self.tenant, user=self.users["viewer"],
+            tenant=self.tenant,
+            user=self.users["viewer"],
         )
         for slug in ("manager", "agent", "viewer"):
             resp = self._client(slug).patch(
@@ -1404,7 +1583,8 @@ class CrossModuleEndpointMatrixTests(RBACIntegrationBase):
                 {"role_id": self.roles["viewer"].pk},
             )
             self.assertEqual(
-                resp.status_code, 403,
+                resp.status_code,
+                403,
                 f"{slug} should get 403 on change-role",
             )
 
@@ -1415,16 +1595,19 @@ class CrossModuleEndpointMatrixTests(RBACIntegrationBase):
         for slug in ("manager", "agent", "viewer"):
             counter += 1
             removable = _make_user(
-                f"rem_mat_{slug}", f"rem_mat_{slug}@test.com",
+                f"rem_mat_{slug}",
+                f"rem_mat_{slug}@test.com",
                 f"+91900000{counter:04d}",
             )
             tu = TenantUser.objects.create(
-                tenant=self.tenant, user=removable,
+                tenant=self.tenant,
+                user=removable,
                 role=self.roles["viewer"],
             )
             resp = self._client(slug).delete(f"/tenants/members/{tu.pk}/")
             self.assertEqual(
-                resp.status_code, 403,
+                resp.status_code,
+                403,
                 f"{slug} should get 403 on remove-member",
             )
             TenantUser.objects.filter(user=removable).delete()
@@ -1449,29 +1632,39 @@ class WebSocketPermissionTests(TestCase):
 
         cls.owner_user = _make_user("ws_owner", "ws_owner@test.com", "+919000009040")
         TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.owner_user, role=cls.owner_role,
+            tenant=cls.tenant,
+            user=cls.owner_user,
+            role=cls.owner_role,
         )
 
         cls.viewer_user = _make_user("ws_viewer", "ws_viewer@test.com", "+919000009041")
         TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.viewer_user, role=cls.viewer_role,
+            tenant=cls.tenant,
+            user=cls.viewer_user,
+            role=cls.viewer_role,
         )
 
         cls.no_member = _make_user("ws_no_member", "ws_no_member@test.com", "+919000009042")
 
         # Custom role WITHOUT inbox.view
         cls.no_inbox_role = TenantRole.objects.create(
-            tenant=cls.tenant, name="NoInbox", slug="no-inbox",
-            priority=30, is_system=False,
+            tenant=cls.tenant,
+            name="NoInbox",
+            slug="no-inbox",
+            priority=30,
+            is_system=False,
         )
         for perm in ALL_PERMISSIONS:
             RolePermission.objects.create(
-                role=cls.no_inbox_role, permission=perm,
+                role=cls.no_inbox_role,
+                permission=perm,
                 allowed=perm != "inbox.view",
             )
         cls.no_inbox_user = _make_user("ws_noinbox", "ws_noinbox@test.com", "+919000009043")
         TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.no_inbox_user, role=cls.no_inbox_role,
+            tenant=cls.tenant,
+            user=cls.no_inbox_user,
+            role=cls.no_inbox_role,
         )
 
     def _sync_validate(self, user, tenant_id):
@@ -1480,9 +1673,15 @@ class WebSocketPermissionTests(TestCase):
 
         if not tenant_id:
             return False
-        tenant_user = TenantUser.objects.filter(
-            user=user, tenant_id=tenant_id, is_active=True,
-        ).select_related("role").first()
+        tenant_user = (
+            TenantUser.objects.filter(
+                user=user,
+                tenant_id=tenant_id,
+                is_active=True,
+            )
+            .select_related("role")
+            .first()
+        )
         if not tenant_user:
             return False
         return _hp(tenant_user.role, "inbox.view")
@@ -1511,7 +1710,9 @@ class WebSocketPermissionTests(TestCase):
         agent_role = TenantRole.objects.get(tenant=self.tenant, slug="agent")
         agent_user = _make_user("ws_agent", "ws_agent@test.com", "+919000009340")
         TenantUser.objects.create(
-            tenant=self.tenant, user=agent_user, role=agent_role,
+            tenant=self.tenant,
+            user=agent_user,
+            role=agent_role,
         )
         # Can connect
         self.assertTrue(self._sync_validate(agent_user, self.tenant.pk))
@@ -1529,10 +1730,14 @@ class WebSocketPermissionTests(TestCase):
         the next reconnect validation fails.
         """
         revoke_user = _make_user(
-            "ws_revoke", "ws_revoke@test.com", "+919000009341",
+            "ws_revoke",
+            "ws_revoke@test.com",
+            "+919000009341",
         )
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=revoke_user, role=self.owner_role,
+            tenant=self.tenant,
+            user=revoke_user,
+            role=self.owner_role,
         )
         self.assertTrue(self._sync_validate(revoke_user, self.tenant.pk))
 
@@ -1549,10 +1754,14 @@ class WebSocketPermissionTests(TestCase):
     def test_deactivated_user_denied_ws(self):
         """#367: Deactivated TenantUser → ws validation fails."""
         deact_user = _make_user(
-            "ws_deact", "ws_deact@test.com", "+919000009342",
+            "ws_deact",
+            "ws_deact@test.com",
+            "+919000009342",
         )
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=deact_user, role=self.owner_role,
+            tenant=self.tenant,
+            user=deact_user,
+            role=self.owner_role,
         )
         self.assertTrue(self._sync_validate(deact_user, self.tenant.pk))
 
@@ -1585,8 +1794,10 @@ class EdgeCaseTests(RBACIntegrationBase):
         """Deactivated TenantUser should get 403 on protected endpoints."""
         inactive = _make_user("inactive_api", "inactive_api@test.com", "+919000009050")
         TenantUser.objects.create(
-            tenant=self.tenant, user=inactive,
-            role=self.roles["admin"], is_active=False,
+            tenant=self.tenant,
+            user=inactive,
+            role=self.roles["admin"],
+            is_active=False,
         )
         resp = _api_client(inactive).get("/tenants/members/")
         self.assertIn(resp.status_code, (403,))
@@ -1598,36 +1809,52 @@ class EdgeCaseTests(RBACIntegrationBase):
         self.assertIn(resp.status_code, (403,))
 
     def test_role_with_priority_1_is_valid(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Lowest",
-            "priority": 1,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Lowest",
+                "priority": 1,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         TenantRole.objects.filter(slug="lowest", tenant=self.tenant).delete()
 
     def test_role_with_priority_99_by_owner(self):
-        resp = self._client("owner").post("/tenants/roles/", {
-            "name": "Highest Custom",
-            "priority": 99,
-        }, format="json")
+        resp = self._client("owner").post(
+            "/tenants/roles/",
+            {
+                "name": "Highest Custom",
+                "priority": 99,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         TenantRole.objects.filter(slug="highest-custom", tenant=self.tenant).delete()
 
     def test_role_with_priority_100_rejected(self):
         """Priority 100 is OWNER — even OWNER can't create another 100."""
-        resp = self._client("owner").post("/tenants/roles/", {
-            "name": "Fake Owner",
-            "priority": 100,
-        }, format="json")
+        resp = self._client("owner").post(
+            "/tenants/roles/",
+            {
+                "name": "Fake Owner",
+                "priority": 100,
+            },
+            format="json",
+        )
         # priority >= own (100) → rejected
         self.assertEqual(resp.status_code, 400)
 
     def test_empty_permissions_dict_creates_all_false(self):
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "No Perms",
-            "priority": 15,
-            "permissions": {},
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "No Perms",
+                "priority": 15,
+                "permissions": {},
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         for perm, val in resp.data["permissions"].items():
             self.assertFalse(val, f"'{perm}' should be False with empty perms dict")
@@ -1636,32 +1863,48 @@ class EdgeCaseTests(RBACIntegrationBase):
     def test_auto_slug_collision_handling(self):
         """If slug already exists, auto-slug appends counter."""
         TenantRole.objects.create(
-            tenant=self.tenant, name="Collide", slug="collide",
-            priority=10, is_system=False,
+            tenant=self.tenant,
+            name="Collide",
+            slug="collide",
+            priority=10,
+            is_system=False,
         )
-        resp = self._client("admin").post("/tenants/roles/", {
-            "name": "Collide",
-            "priority": 15,
-        }, format="json")
+        resp = self._client("admin").post(
+            "/tenants/roles/",
+            {
+                "name": "Collide",
+                "priority": 15,
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.data["slug"], "collide-1")
         TenantRole.objects.filter(
-            slug__startswith="collide", tenant=self.tenant, is_system=False,
+            slug__startswith="collide",
+            tenant=self.tenant,
+            is_system=False,
         ).delete()
 
     def test_partial_permission_update_preserves_others(self):
         """PATCH with partial permissions dict should not wipe unspecified keys."""
         custom = TenantRole.objects.create(
-            tenant=self.tenant, name="Partial", slug="partial-test",
-            priority=25, is_system=False, is_editable=True,
+            tenant=self.tenant,
+            name="Partial",
+            slug="partial-test",
+            priority=25,
+            is_system=False,
+            is_editable=True,
         )
-        RolePermission.objects.bulk_create([
-            RolePermission(
-                role=custom, permission=p,
-                allowed=(p == "tenant.view"),
-            )
-            for p in ALL_PERMISSIONS
-        ])
+        RolePermission.objects.bulk_create(
+            [
+                RolePermission(
+                    role=custom,
+                    permission=p,
+                    allowed=(p == "tenant.view"),
+                )
+                for p in ALL_PERMISSIONS
+            ]
+        )
         # Patch only contact.view
         resp = self._client("admin").patch(
             f"/tenants/roles/{custom.pk}/",
@@ -1669,17 +1912,17 @@ class EdgeCaseTests(RBACIntegrationBase):
             format="json",
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.data["permissions"]["tenant.view"],
-                        "Unmodified tenant.view should still be True")
-        self.assertTrue(resp.data["permissions"]["contact.view"],
-                        "Newly set contact.view should be True")
+        self.assertTrue(resp.data["permissions"]["tenant.view"], "Unmodified tenant.view should still be True")
+        self.assertTrue(resp.data["permissions"]["contact.view"], "Newly set contact.view should be True")
         custom.delete()
 
     def test_self_removal_blocked(self):
         """A member cannot remove themselves — must be removed by higher-priority member."""
         self_remove_user = _make_user("selfrem", "selfrem@test.com", "+919000009060")
         tu = TenantUser.objects.create(
-            tenant=self.tenant, user=self_remove_user, role=self.roles["admin"],
+            tenant=self.tenant,
+            user=self_remove_user,
+            role=self.roles["admin"],
         )
         resp = _api_client(self_remove_user).delete(f"/tenants/members/{tu.pk}/")
         self.assertEqual(resp.status_code, 400)
@@ -1705,25 +1948,33 @@ class TenantRolePermissionDirectTests(TestCase):
 
         cls.owner_user = _make_user("pc_owner", "pc_owner@test.com", "+919000009070")
         TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.owner_user, role=cls.owner_role,
+            tenant=cls.tenant,
+            user=cls.owner_user,
+            role=cls.owner_role,
         )
 
         cls.viewer_user = _make_user("pc_viewer", "pc_viewer@test.com", "+919000009071")
         TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.viewer_user, role=cls.viewer_role,
+            tenant=cls.tenant,
+            user=cls.viewer_user,
+            role=cls.viewer_role,
         )
 
         cls.no_role_user = _make_user("pc_norole", "pc_norole@test.com", "+919000009072")
         # #253: After migration 0008, role is NOT NULL. Give lowest role.
         TenantUser.objects.create(
-            tenant=cls.tenant, user=cls.no_role_user, role=cls.viewer_role,
+            tenant=cls.tenant,
+            user=cls.no_role_user,
+            role=cls.viewer_role,
         )
 
         cls.no_tenant_user = _make_user("pc_notenant", "pc_notenant@test.com", "+919000009073")
 
         cls.superuser = User.objects.create_superuser(
-            username="pc_super", email="pc_super@test.com",
-            mobile="+919000009074", password="testpass123",
+            username="pc_super",
+            email="pc_super@test.com",
+            mobile="+919000009074",
+            password="testpass123",
         )
 
     def _make_request(self, user):
@@ -1733,6 +1984,7 @@ class TenantRolePermissionDirectTests(TestCase):
 
     def test_unauthenticated_denied(self):
         from django.contrib.auth.models import AnonymousUser
+
         req = self.factory.get("/fake/")
         req.user = AnonymousUser()
         perm = TenantRolePermission()
@@ -1756,9 +2008,12 @@ class TenantRolePermissionDirectTests(TestCase):
         """Unmapped action falls back to 'default' key."""
         req = self._make_request(self.owner_user)
         perm = TenantRolePermission()
-        view = _FakeView(action="unmapped_action", required_permissions={
-            "default": "broadcast.view",
-        })
+        view = _FakeView(
+            action="unmapped_action",
+            required_permissions={
+                "default": "broadcast.view",
+            },
+        )
         self.assertTrue(perm.has_permission(req, view))
 
     def test_action_fallback_to_method_when_action_none(self):
@@ -1833,8 +2088,10 @@ class PriorityShortcutTests(TestCase):
 
         counter += 1
         cls.superuser = User.objects.create_superuser(
-            username="ps_super", email="ps_super@test.com",
-            mobile=f"+91900000{counter:04d}", password="testpass123",
+            username="ps_super",
+            email="ps_super@test.com",
+            mobile=f"+91900000{counter:04d}",
+            password="testpass123",
         )
 
     def _make_request(self, user):
@@ -1847,9 +2104,9 @@ class PriorityShortcutTests(TestCase):
         perm = perm_class()
         view = _FakeView()
         result = perm.has_permission(req, view)
-        self.assertEqual(result, expected,
-                         f"{perm_class.__name__} for {user.username}: "
-                         f"expected {expected}, got {result}")
+        self.assertEqual(
+            result, expected, f"{perm_class.__name__} for {user.username}: expected {expected}, got {result}"
+        )
 
     # --- IsOwner ---
     def test_is_owner_allows_owner(self):
@@ -1920,12 +2177,12 @@ class PriorityShortcutTests(TestCase):
     # --- Unauthenticated ---
     def test_priority_shortcut_denies_unauthenticated(self):
         from django.contrib.auth.models import AnonymousUser
+
         req = self.factory.get("/fake/")
         req.user = AnonymousUser()
         for klass in (IsOwner, IsAdminOrAbove, IsManagerOrAbove, IsAgentOrAbove):
             perm = klass()
-            self.assertFalse(perm.has_permission(req, _FakeView()),
-                             f"{klass.__name__} should deny anonymous")
+            self.assertFalse(perm.has_permission(req, _FakeView()), f"{klass.__name__} should deny anonymous")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1993,14 +2250,22 @@ class RoleScopedQuerysetTests(RBACIntegrationBase):
         cls.msg_admin = Messages.objects.create(contact=cls.contact_admin, **_msg_defaults)
         cls.msg_bot = Messages.objects.create(contact=cls.contact_bot, **_msg_defaults)
 
-        cls.all_contact_ids = sorted([
-            cls.contact_agent.id, cls.contact_unassigned.id,
-            cls.contact_admin.id, cls.contact_bot.id,
-        ])
-        cls.all_msg_ids = sorted([
-            cls.msg_agent.id, cls.msg_unassigned.id,
-            cls.msg_admin.id, cls.msg_bot.id,
-        ])
+        cls.all_contact_ids = sorted(
+            [
+                cls.contact_agent.id,
+                cls.contact_unassigned.id,
+                cls.contact_admin.id,
+                cls.contact_bot.id,
+            ]
+        )
+        cls.all_msg_ids = sorted(
+            [
+                cls.msg_agent.id,
+                cls.msg_unassigned.id,
+                cls.msg_admin.id,
+                cls.msg_bot.id,
+            ]
+        )
 
     # ── helpers ────────────────────────────────────────────────────
 
@@ -2111,6 +2376,7 @@ class RoleAwareSerializerTests(RBACIntegrationBase):
         super().setUpTestData()
 
         from djmoney.money import Money
+
         from tenants.models import TenantWAApp
         from wa.models import WABroadcast
 
@@ -2140,9 +2406,14 @@ class RoleAwareSerializerTests(RBACIntegrationBase):
 
     # ── TENANT SERIALIZER ─────────────────────────────────────────
 
-    _TENANT_FINANCIAL_KEYS = {"balance", "balance_currency",
-                               "credit_line", "credit_line_currency",
-                               "threshold_alert", "threshold_alert_currency"}
+    _TENANT_FINANCIAL_KEYS = {
+        "balance",
+        "balance_currency",
+        "credit_line",
+        "credit_line_currency",
+        "threshold_alert",
+        "threshold_alert_currency",
+    }
 
     def _tenant_data(self, role_slug):
         resp = self._client(role_slug).get("/tenants/")
@@ -2234,8 +2505,7 @@ class RoleAwareSerializerTests(RBACIntegrationBase):
 
     # ── BROADCAST SERIALIZER ──────────────────────────────────────
 
-    _BROADCAST_COST_KEYS = {"initial_cost", "initial_cost_currency",
-                             "refund_amount", "refund_amount_currency"}
+    _BROADCAST_COST_KEYS = {"initial_cost", "initial_cost_currency", "refund_amount", "refund_amount_currency"}
 
     def _broadcast_data(self, role_slug):
         resp = self._client(role_slug).get(f"/wa/broadcast/{self.broadcast.id}/")
@@ -2304,9 +2574,7 @@ class RoleAssignmentOnCreationTests(TestCase):
         # The registration path is already tested elsewhere; just confirm the
         # seed + role assignment pattern works.
         user = _make_user("reg_owner", "reg@test.com", "+919999900001")
-        tu = TenantUser.objects.create(
-            tenant=self.tenant, user=user, role=self.owner_role
-        )
+        tu = TenantUser.objects.create(tenant=self.tenant, user=user, role=self.owner_role)
         self.assertEqual(tu.role.slug, "owner")
 
     # ── Access-key login path ────────────────────────────────────────
@@ -2338,18 +2606,14 @@ class RoleAssignmentOnCreationTests(TestCase):
 
         user = _make_user("ak_null", "aknull@test.com", "+919999900003")
         with self.assertRaises(IntegrityError):
-            TenantUser.objects.create(
-                tenant=self.tenant, user=user, role=None
-            )
+            TenantUser.objects.create(tenant=self.tenant, user=user, role=None)
 
     def test_access_key_login_does_not_change_existing_role(self):
         """#253: Existing user with a role keeps that role on repeat login."""
         from users.serializers import LoginPatchUserSerializer
 
         user = _make_user("ak_keep", "akkeep@test.com", "+919999900004")
-        TenantUser.objects.create(
-            tenant=self.tenant, user=user, role=self.owner_role
-        )
+        TenantUser.objects.create(tenant=self.tenant, user=user, role=self.owner_role)
 
         serializer = LoginPatchUserSerializer(
             data={
@@ -2364,14 +2628,14 @@ class RoleAssignmentOnCreationTests(TestCase):
         serializer.save()
 
         tu = TenantUser.objects.get(tenant=self.tenant, user=user)
-        self.assertEqual(tu.role.slug, "owner",
-                         "Existing role should NOT be overwritten")
+        self.assertEqual(tu.role.slug, "owner", "Existing role should NOT be overwritten")
 
     # ── Model-level enforcement ──────────────────────────────────────
 
     def test_tenant_user_role_is_required_at_db_level(self):
         """#253: TenantUser.role is NOT NULL in the schema after migration 0008."""
         from django.db import connection
+
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT is_nullable FROM information_schema.columns "
@@ -2386,9 +2650,7 @@ class RoleAssignmentOnCreationTests(TestCase):
         from django.db.models import ProtectedError
 
         user = _make_user("prot_user", "prot@test.com", "+919999900005")
-        TenantUser.objects.create(
-            tenant=self.tenant, user=user, role=self.agent_role
-        )
+        TenantUser.objects.create(tenant=self.tenant, user=user, role=self.agent_role)
         with self.assertRaises(ProtectedError):
             self.agent_role.delete()
 
@@ -2397,9 +2659,8 @@ class RoleAssignmentOnCreationTests(TestCase):
     def test_migration_backfill_function_exists(self):
         """#253: Migration 0008 backfill function is importable and callable."""
         import importlib
-        mod = importlib.import_module(
-            "tenants.migrations.0008_rbac_make_role_non_nullable"
-        )
+
+        mod = importlib.import_module("tenants.migrations.0008_rbac_make_role_non_nullable")
         self.assertTrue(callable(mod.backfill_null_roles))
 
 
@@ -2441,15 +2702,15 @@ class InfrastructureLockdownTests(RBACIntegrationBase):
             raise
         if expected == "allow":
             self.assertNotEqual(
-                resp.status_code, 403,
-                f"{role_slug} should NOT get 403 on {method.upper()} {url} "
-                f"(got {resp.status_code})",
+                resp.status_code,
+                403,
+                f"{role_slug} should NOT get 403 on {method.upper()} {url} (got {resp.status_code})",
             )
         else:
             self.assertEqual(
-                resp.status_code, 403,
-                f"{role_slug} should get 403 on {method.upper()} {url} "
-                f"(got {resp.status_code})",
+                resp.status_code,
+                403,
+                f"{role_slug} should get 403 on {method.upper()} {url} (got {resp.status_code})",
             )
 
     # ── New permission keys exist in registry ────────────────────────
@@ -2481,8 +2742,7 @@ class InfrastructureLockdownTests(RBACIntegrationBase):
         admin = DEFAULT_ROLE_PERMISSIONS["admin"]
         self.assertTrue(admin.get("webhook.view"))
         self.assertTrue(admin.get("webhook.manage"))
-        self.assertFalse(admin.get("wa_app.delete"),
-                         "ADMIN should NOT have wa_app.delete")
+        self.assertFalse(admin.get("wa_app.delete"), "ADMIN should NOT have wa_app.delete")
 
     def test_lower_roles_denied_new_permissions(self):
         """#254: MANAGER/AGENT/VIEWER have all 3 new keys denied (not in dict → False)."""
@@ -2501,22 +2761,23 @@ class InfrastructureLockdownTests(RBACIntegrationBase):
         for key in ("wa_app.delete", "webhook.view", "webhook.manage"):
             # OWNER role should have it allowed
             owner_perm = RolePermission.objects.get(
-                role=self.roles["owner"], permission=key,
+                role=self.roles["owner"],
+                permission=key,
             )
-            self.assertTrue(owner_perm.allowed,
-                            f"OWNER seeded perm {key} should be allowed")
+            self.assertTrue(owner_perm.allowed, f"OWNER seeded perm {key} should be allowed")
 
             # VIEWER should NOT have it
             viewer_perm = RolePermission.objects.get(
-                role=self.roles["viewer"], permission=key,
+                role=self.roles["viewer"],
+                permission=key,
             )
-            self.assertFalse(viewer_perm.allowed,
-                             f"VIEWER seeded perm {key} should be denied")
+            self.assertFalse(viewer_perm.allowed, f"VIEWER seeded perm {key} should be denied")
 
     def test_admin_seeded_wa_app_delete_denied(self):
         """#254: ADMIN role should have wa_app.delete = False after seed."""
         admin_perm = RolePermission.objects.get(
-            role=self.roles["admin"], permission="wa_app.delete",
+            role=self.roles["admin"],
+            permission="wa_app.delete",
         )
         self.assertFalse(admin_perm.allowed)
 
@@ -2524,7 +2785,8 @@ class InfrastructureLockdownTests(RBACIntegrationBase):
         """#254: ADMIN should have webhook.view and webhook.manage = True."""
         for key in ("webhook.view", "webhook.manage"):
             perm = RolePermission.objects.get(
-                role=self.roles["admin"], permission=key,
+                role=self.roles["admin"],
+                permission=key,
             )
             self.assertTrue(perm.allowed, f"ADMIN should have {key}")
 
@@ -2557,19 +2819,16 @@ class InfrastructureLockdownTests(RBACIntegrationBase):
     def test_wa_app_delete_owner_allowed(self):
         """#254: OWNER can DELETE a WA app (wa_app.delete)."""
         # Use a non-existent PK — we only care about permission gate, not 404
-        self._assert_access("owner", "delete",
-                            "/wa/v2/apps/99999/", "allow")
+        self._assert_access("owner", "delete", "/wa/v2/apps/99999/", "allow")
 
     def test_wa_app_delete_admin_denied(self):
         """#254: ADMIN cannot DELETE a WA app (wa_app.delete denied)."""
-        self._assert_access("admin", "delete",
-                            "/wa/v2/apps/99999/", "deny")
+        self._assert_access("admin", "delete", "/wa/v2/apps/99999/", "deny")
 
     def test_wa_app_delete_lower_roles_denied(self):
         """#254: MANAGER/AGENT/VIEWER cannot DELETE a WA app."""
         for slug in ("manager", "agent", "viewer"):
-            self._assert_access(slug, "delete",
-                                "/wa/v2/apps/99999/", "deny")
+            self._assert_access(slug, "delete", "/wa/v2/apps/99999/", "deny")
 
     # ── WA App view still works for all roles ────────────────────────
 
@@ -2634,9 +2893,8 @@ class InfrastructureLockdownTests(RBACIntegrationBase):
     def test_migration_0009_importable(self):
         """#254: Migration 0009 is importable."""
         import importlib
-        mod = importlib.import_module(
-            "tenants.migrations.0009_rbac_add_webhook_wa_delete_permissions"
-        )
+
+        mod = importlib.import_module("tenants.migrations.0009_rbac_add_webhook_wa_delete_permissions")
         self.assertTrue(callable(mod.seed_new_permissions))
 
 
@@ -2711,18 +2969,17 @@ class PreProductionSweepTests(RBACIntegrationBase):
         #255: AllowAny should only appear on login, register, token,
         webhook receivers, and onboarding options.
         """
-        import ast
         import os
 
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         allowed_files = {
-            "users/viewsets/user_login_patch.py",   # Login
-            "users/viewsets/token.py",               # JWT token
-            "tenants/viewsets/tenants.py",            # Register, forgot-password
-            "tenants/viewsets/tenant_gupshup.py",     # Webhook receivers
+            "users/viewsets/user_login_patch.py",  # Login
+            "users/viewsets/token.py",  # JWT token
+            "tenants/viewsets/tenants.py",  # Register, forgot-password
+            "tenants/viewsets/tenant_gupshup.py",  # Webhook receivers
             "tenants/viewsets/branding_settings.py",  # Public branding
             "tenants/viewsets/onboarding_options.py",  # Public registration data
-            "jina_connect/urls.py",                   # Swagger config (commented out)
+            "jina_connect/urls.py",  # Swagger config (commented out)
         }
 
         for dirpath, _dirnames, filenames in os.walk(root):
@@ -2740,7 +2997,8 @@ class PreProductionSweepTests(RBACIntegrationBase):
                     continue
                 if "AllowAny" in content:
                     self.assertIn(
-                        rel, allowed_files,
+                        rel,
+                        allowed_files,
                         f"Unexpected AllowAny in {rel}",
                     )
 
@@ -2767,8 +3025,8 @@ class PreProductionSweepTests(RBACIntegrationBase):
 
     def test_jwt_token_graceful_without_role(self):
         """#255: JWT token does not crash when user has no TenantUser."""
-        from users.serializers import JwtUserSerializer
         from tenants.models import Tenant as T
+        from users.serializers import JwtUserSerializer
 
         orphan = _make_user("jwt_orphan", "jwt_orphan@test.com", "+919000099990")
         # No TenantUser for this user in any tenant
@@ -2786,8 +3044,9 @@ class PreProductionSweepTests(RBACIntegrationBase):
 
     def test_razorpay_queryset_scoped_by_tenant(self):
         """#255: RazorPayViewSet.get_queryset() filters by user's tenant."""
-        from razorpay.viewsets.razor_pay import RazorPayViewSet
         from rest_framework.test import APIRequestFactory
+
+        from razorpay.viewsets.razor_pay import RazorPayViewSet
 
         factory = APIRequestFactory()
         req = factory.get("/razorpay/razor-pay/")
@@ -2807,8 +3066,9 @@ class PreProductionSweepTests(RBACIntegrationBase):
 
     def test_chatflow_node_queryset_scoped_by_tenant(self):
         """#255: ChatFlowNodeViewSet.get_queryset() filters by flow__tenant."""
-        from chat_flow.viewsets.chat_flow_node import ChatFlowNodeViewSet
         from unittest.mock import MagicMock
+
+        from chat_flow.viewsets.chat_flow_node import ChatFlowNodeViewSet
 
         user = self.users["owner"]
         mock_request = MagicMock()
@@ -2828,8 +3088,9 @@ class PreProductionSweepTests(RBACIntegrationBase):
 
     def test_chatflow_edge_queryset_scoped_by_tenant(self):
         """#255: ChatFlowEdgeViewSet.get_queryset() filters by flow__tenant."""
-        from chat_flow.viewsets.chat_flow_edge import ChatFlowEdgeViewSet
         from unittest.mock import MagicMock
+
+        from chat_flow.viewsets.chat_flow_edge import ChatFlowEdgeViewSet
 
         user = self.users["owner"]
         mock_request = MagicMock()
@@ -2864,7 +3125,8 @@ class PreProductionSweepTests(RBACIntegrationBase):
             role = self.roles[slug]
             count = RolePermission.objects.filter(role=role).count()
             self.assertEqual(
-                count, len(ALL_PERMISSIONS),
+                count,
+                len(ALL_PERMISSIONS),
                 f"Role '{slug}' has {count} permissions, expected {len(ALL_PERMISSIONS)}",
             )
 
@@ -2873,6 +3135,7 @@ class PreProductionSweepTests(RBACIntegrationBase):
     def test_migration_chain_complete(self):
         """#255: Migration chain 0005 through 0009 is importable."""
         import importlib
+
         migration_names = [
             "tenants.migrations.0005_rbac_add_tenantrole_rolepermission",
             "tenants.migrations.0006_rbac_seed_default_roles_assign_owner",
@@ -2889,6 +3152,7 @@ class PreProductionSweepTests(RBACIntegrationBase):
     def test_no_tenantuser_without_role(self):
         """#255: Database-level check — role_id column is NOT NULL."""
         from django.db import connection
+
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT is_nullable FROM information_schema.columns "
@@ -2907,9 +3171,13 @@ class PreProductionSweepTests(RBACIntegrationBase):
 
     def test_viewer_cannot_invite(self):
         """#255: VIEWER cannot POST /tenants/members/add/ (users.invite denied)."""
-        resp = self._client("viewer").post("/tenants/members/add/", {
-            "email": "hack@test.com", "role_id": self.roles["viewer"].pk,
-        })
+        resp = self._client("viewer").post(
+            "/tenants/members/add/",
+            {
+                "email": "hack@test.com",
+                "role_id": self.roles["viewer"].pk,
+            },
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_owner_role_not_editable(self):
@@ -2921,16 +3189,17 @@ class PreProductionSweepTests(RBACIntegrationBase):
     def test_swagger_schema_generates(self):
         """#255: GET /swagger/?format=openapi returns 200 or requires auth."""
         from rest_framework.test import APIClient
+
         client = APIClient()
         resp = client.get("/swagger/?format=openapi")
         # Swagger may require auth (401) or redirect (301/302) or work (200)
-        self.assertIn(resp.status_code, (200, 301, 302, 401),
-                       "Swagger schema endpoint should exist")
+        self.assertIn(resp.status_code, (200, 301, 302, 401), "Swagger schema endpoint should exist")
 
     # ── 10. WebSocket auth check exists ────────────────────────────────
 
     def test_websocket_security_module_exists(self):
         """#255: team_inbox/security.py has WebSocketSecurityManager with validate_tenant_access."""
         from team_inbox.security import WebSocketSecurityManager
+
         mgr = WebSocketSecurityManager()
         self.assertTrue(callable(getattr(mgr, "validate_tenant_access", None)))

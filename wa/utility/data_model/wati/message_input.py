@@ -27,6 +27,7 @@ class WATIMessageInput(BaseModel):
 
     This model normalizes these fields for internal processing.
     """
+
     # Core message fields
     message_id: Optional[str] = Field(None, description="WhatsApp message ID (wamid)")
     wa_id: Optional[str] = Field(None, description="Sender's WhatsApp ID")
@@ -34,9 +35,7 @@ class WATIMessageInput(BaseModel):
     timestamp: Optional[str] = Field(None, description="Message timestamp")
 
     # Content
-    message_type: Optional[str] = Field(
-        None, description="Message type (text, image, video, audio, document, etc.)"
-    )
+    message_type: Optional[str] = Field(None, description="Message type (text, image, video, audio, document, etc.)")
     text: Optional[str] = Field(None, description="Text content of the message")
     caption: Optional[str] = Field(None, description="Caption for media messages")
 
@@ -52,22 +51,14 @@ class WATIMessageInput(BaseModel):
     location_address: Optional[str] = Field(None, description="Location address")
 
     # Contact
-    contacts: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Contact card data for contact messages"
-    )
+    contacts: Optional[List[Dict[str, Any]]] = Field(None, description="Contact card data for contact messages")
 
     # Status
-    status: Optional[str] = Field(
-        None, description="Message status (sent, delivered, read, failed)"
-    )
-    status_message_id: Optional[str] = Field(
-        None, description="Message ID for status updates"
-    )
+    status: Optional[str] = Field(None, description="Message status (sent, delivered, read, failed)")
+    status_message_id: Optional[str] = Field(None, description="Message ID for status updates")
 
     # Channel info
-    channel_phone_number: Optional[str] = Field(
-        None, description="Business phone number that received the message"
-    )
+    channel_phone_number: Optional[str] = Field(None, description="Business phone number that received the message")
 
     # Raw payload for debugging
     raw_payload: Optional[Dict[str, Any]] = Field(None, description="Raw webhook payload")

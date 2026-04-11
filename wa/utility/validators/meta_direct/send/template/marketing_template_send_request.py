@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class ImageParameter(BaseModel):
     """Image parameter for header component"""
+
     id: Optional[str] = Field(None, description="Media ID for the image")
     link: Optional[str] = Field(None, description="URL link for the image")
 
@@ -38,6 +39,7 @@ class ImageParameter(BaseModel):
 
 class VideoParameter(BaseModel):
     """Video parameter for header component"""
+
     id: Optional[str] = Field(None, description="Media ID for the video")
     link: Optional[str] = Field(None, description="URL link for the video")
 
@@ -52,6 +54,7 @@ class VideoParameter(BaseModel):
 
 class DocumentParameter(BaseModel):
     """Document parameter for header component"""
+
     id: Optional[str] = Field(None, description="Media ID for the document")
     link: Optional[str] = Field(None, description="URL link for the document")
     filename: Optional[str] = Field(None, description="Filename for the document")
@@ -67,6 +70,7 @@ class DocumentParameter(BaseModel):
 
 class LocationParameter(BaseModel):
     """Location parameter for header component"""
+
     latitude: float = Field(..., description="Latitude of the location")
     longitude: float = Field(..., description="Longitude of the location")
     name: Optional[str] = Field(None, description="Name of the location")
@@ -75,30 +79,35 @@ class LocationParameter(BaseModel):
 
 class HeaderImageParameter(BaseModel):
     """Header parameter with image"""
+
     type: Literal["image"] = "image"
     image: ImageParameter
 
 
 class HeaderVideoParameter(BaseModel):
     """Header parameter with video"""
+
     type: Literal["video"] = "video"
     video: VideoParameter
 
 
 class HeaderDocumentParameter(BaseModel):
     """Header parameter with document"""
+
     type: Literal["document"] = "document"
     document: DocumentParameter
 
 
 class HeaderTextParameter(BaseModel):
     """Header parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the header parameter")
 
 
 class HeaderLocationParameter(BaseModel):
     """Header parameter with location"""
+
     type: Literal["location"] = "location"
     location: LocationParameter
 
@@ -115,19 +124,17 @@ HeaderParameter = Union[
 
 class BodyTextParameter(BaseModel):
     """Body parameter with text (named parameter format)"""
+
     type: Literal["text"] = "text"
-    parameter_name: Optional[str] = Field(
-        None, description="Parameter name for named parameters"
-    )
+    parameter_name: Optional[str] = Field(None, description="Parameter name for named parameters")
     text: str = Field(..., description="Text value for the body parameter")
 
 
 class BodyCurrencyParameter(BaseModel):
     """Body parameter with currency"""
+
     type: Literal["currency"] = "currency"
-    parameter_name: Optional[str] = Field(
-        None, description="Parameter name for named parameters"
-    )
+    parameter_name: Optional[str] = Field(None, description="Parameter name for named parameters")
     currency: dict = Field(
         ...,
         description="Currency object with fallback_value, code, and amount_1000",
@@ -136,13 +143,10 @@ class BodyCurrencyParameter(BaseModel):
 
 class BodyDateTimeParameter(BaseModel):
     """Body parameter with date_time"""
+
     type: Literal["date_time"] = "date_time"
-    parameter_name: Optional[str] = Field(
-        None, description="Parameter name for named parameters"
-    )
-    date_time: dict = Field(
-        ..., description="DateTime object with fallback_value"
-    )
+    parameter_name: Optional[str] = Field(None, description="Parameter name for named parameters")
+    date_time: dict = Field(..., description="DateTime object with fallback_value")
 
 
 # Union type for body parameters
@@ -151,6 +155,7 @@ BodyParameter = Union[BodyTextParameter, BodyCurrencyParameter, BodyDateTimePara
 
 class ButtonParameter(BaseModel):
     """Button parameter for dynamic URL buttons"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Dynamic URL suffix")
 
@@ -162,6 +167,7 @@ class ButtonParameter(BaseModel):
 
 class HeaderComponentSend(BaseModel):
     """Header component for sending template message"""
+
     type: Literal["header"] = "header"
     parameters: List[HeaderParameter] = Field(
         ..., min_length=1, max_length=1, description="Header parameters (exactly 1)"
@@ -170,28 +176,22 @@ class HeaderComponentSend(BaseModel):
 
 class BodyComponentSend(BaseModel):
     """Body component for sending template message"""
+
     type: Literal["body"] = "body"
-    parameters: List[BodyParameter] = Field(
-        ..., min_length=1, description="Body parameters"
-    )
+    parameters: List[BodyParameter] = Field(..., min_length=1, description="Body parameters")
 
 
 class ButtonComponentSend(BaseModel):
     """Button component for sending template message (for dynamic URL buttons)"""
+
     type: Literal["button"] = "button"
-    sub_type: Literal["url", "quick_reply"] = Field(
-        ..., description="Button sub-type"
-    )
+    sub_type: Literal["url", "quick_reply"] = Field(..., description="Button sub-type")
     index: int = Field(..., ge=0, le=9, description="Button index (0-based)")
-    parameters: List[ButtonParameter] = Field(
-        ..., min_length=1, max_length=1, description="Button parameters"
-    )
+    parameters: List[ButtonParameter] = Field(..., min_length=1, max_length=1, description="Button parameters")
 
 
 # Union type for send components
-SendTemplateComponent = Union[
-    HeaderComponentSend, BodyComponentSend, ButtonComponentSend
-]
+SendTemplateComponent = Union[HeaderComponentSend, BodyComponentSend, ButtonComponentSend]
 
 
 # ============================================================================
@@ -201,6 +201,7 @@ SendTemplateComponent = Union[
 
 class LanguageInput(BaseModel):
     """Language input for template request"""
+
     code: str = Field(
         ...,
         min_length=2,
@@ -223,6 +224,7 @@ class LanguageInput(BaseModel):
 
 class MarketingTemplateSendBody(BaseModel):
     """Template body for marketing template send request"""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -272,43 +274,27 @@ class MarketingTemplateSendBody(BaseModel):
                             elif isinstance(param, dict):
                                 param_type = param.get("type")
                                 if param_type == "image":
-                                    if "image" in param and isinstance(
-                                        param["image"], dict
-                                    ):
+                                    if "image" in param and isinstance(param["image"], dict):
                                         param["image"] = ImageParameter(**param["image"])
                                     parsed_params.append(HeaderImageParameter(**param))
                                 elif param_type == "video":
-                                    if "video" in param and isinstance(
-                                        param["video"], dict
-                                    ):
+                                    if "video" in param and isinstance(param["video"], dict):
                                         param["video"] = VideoParameter(**param["video"])
                                     parsed_params.append(HeaderVideoParameter(**param))
                                 elif param_type == "document":
-                                    if "document" in param and isinstance(
-                                        param["document"], dict
-                                    ):
-                                        param["document"] = DocumentParameter(
-                                            **param["document"]
-                                        )
+                                    if "document" in param and isinstance(param["document"], dict):
+                                        param["document"] = DocumentParameter(**param["document"])
                                     parsed_params.append(HeaderDocumentParameter(**param))
                                 elif param_type == "text":
                                     parsed_params.append(HeaderTextParameter(**param))
                                 elif param_type == "location":
-                                    if "location" in param and isinstance(
-                                        param["location"], dict
-                                    ):
-                                        param["location"] = LocationParameter(
-                                            **param["location"]
-                                        )
+                                    if "location" in param and isinstance(param["location"], dict):
+                                        param["location"] = LocationParameter(**param["location"])
                                     parsed_params.append(HeaderLocationParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown header parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown header parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(HeaderComponentSend(**comp))
                 elif comp_type == "body":
@@ -327,13 +313,9 @@ class MarketingTemplateSendBody(BaseModel):
                                 elif param_type == "date_time":
                                     parsed_params.append(BodyDateTimeParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown body parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown body parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(BodyComponentSend(**comp))
                 elif comp_type == "button":
@@ -346,9 +328,7 @@ class MarketingTemplateSendBody(BaseModel):
                             elif isinstance(param, dict):
                                 parsed_params.append(ButtonParameter(**param))
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(ButtonComponentSend(**comp))
                 else:
@@ -398,19 +378,11 @@ class MarketingTemplateSendRequestValidator(BaseModel):
         >>> request = MarketingTemplateSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["template"] = Field(
-        "template", description="Message type (must be 'template')"
-    )
-    template: MarketingTemplateSendBody = Field(
-        ..., description="Template details"
-    )
+    type: Literal["template"] = Field("template", description="Message type (must be 'template')")
+    template: MarketingTemplateSendBody = Field(..., description="Template details")
 
     @field_validator("to")
     @classmethod
@@ -421,9 +393,7 @@ class MarketingTemplateSendRequestValidator(BaseModel):
         cleaned = re.sub(r"[^\d+]", "", v)
         # Validate phone number format
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:
@@ -460,9 +430,7 @@ class MarketingTemplateSendRequestValidator(BaseModel):
                         "components": [
                             {
                                 "type": "header",
-                                "parameters": [
-                                    {"type": "image", "image": {"id": "123456789"}}
-                                ],
+                                "parameters": [{"type": "image", "image": {"id": "123456789"}}],
                             },
                             {
                                 "type": "body",

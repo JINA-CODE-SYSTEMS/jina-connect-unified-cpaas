@@ -11,8 +11,8 @@ from .chat_flow_edge import ChatFlowEdgeViewSet
 from .chat_flow_node import ChatFlowNodeViewSet
 
 __all__ = [
-    'ChatFlowViewSet',
-    'ChatFlowAnalyticsViewSet',
-    'ChatFlowNodeViewSet',
-    'ChatFlowEdgeViewSet',
+    "ChatFlowViewSet",
+    "ChatFlowAnalyticsViewSet",
+    "ChatFlowNodeViewSet",
+    "ChatFlowEdgeViewSet",
 ]

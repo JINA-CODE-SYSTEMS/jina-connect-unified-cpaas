@@ -13,7 +13,7 @@ Usage:
     from wa.utility.data_model.gupshup import TemplateInput, SessionMessageBase
     from wa.utility.data_model.meta_direct import SomeMetaModel
     from wa.utility.data_model.wati import WATITemplateInput, WATIMessageInput
-    
+
     # Or import specific modules
     from wa.utility.data_model.gupshup.template_button_input import parse_template_buttons
     from wa.utility.data_model.wati.template_input import WATITemplateInput

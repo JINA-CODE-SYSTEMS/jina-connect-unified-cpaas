@@ -13,13 +13,14 @@ Reference: https://docs.wati.io/reference/message-received
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
 
 class WATIWebhookEventType(str, Enum):
     """WATI webhook event types."""
+
     MESSAGE_RECEIVED = "message_received"
     MESSAGE_STATUS = "message_status"
     TEMPLATE_STATUS = "template_status"
@@ -35,11 +36,9 @@ class WATIWebhookEvent(BaseModel):
     This model provides a unified interface to determine the event type
     and extract relevant data.
     """
+
     # Event identification
-    event_type: WATIWebhookEventType = Field(
-        default=WATIWebhookEventType.UNKNOWN,
-        description="Type of webhook event"
-    )
+    event_type: WATIWebhookEventType = Field(default=WATIWebhookEventType.UNKNOWN, description="Type of webhook event")
 
     # Common fields
     timestamp: Optional[str] = Field(None, description="Event timestamp")
@@ -60,14 +59,10 @@ class WATIWebhookEvent(BaseModel):
     # Template status fields
     template_name: Optional[str] = Field(None, description="Template name")
     template_status: Optional[str] = Field(None, description="Template approval status")
-    template_rejection_reason: Optional[str] = Field(
-        None, description="Reason for template rejection"
-    )
+    template_rejection_reason: Optional[str] = Field(None, description="Reason for template rejection")
 
     # Raw data
-    raw_payload: Optional[Dict[str, Any]] = Field(
-        None, description="Raw webhook payload for debugging"
-    )
+    raw_payload: Optional[Dict[str, Any]] = Field(None, description="Raw webhook payload for debugging")
 
     @classmethod
     def from_webhook_payload(cls, payload: Dict[str, Any]) -> "WATIWebhookEvent":

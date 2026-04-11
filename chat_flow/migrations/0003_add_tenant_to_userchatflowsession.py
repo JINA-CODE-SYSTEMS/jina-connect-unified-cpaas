@@ -5,16 +5,22 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('chat_flow', '0002_initial'),
-        ('tenants', '0009_rbac_add_webhook_wa_delete_permissions'),
+        ("chat_flow", "0002_initial"),
+        ("tenants", "0009_rbac_add_webhook_wa_delete_permissions"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='userchatflowsession',
-            name='tenant',
-            field=models.ForeignKey(blank=True, help_text='The tenant this session belongs to (populated from flow.tenant)', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='chatflow_sessions', to='tenants.tenant'),
+            model_name="userchatflowsession",
+            name="tenant",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="The tenant this session belongs to (populated from flow.tenant)",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="chatflow_sessions",
+                to="tenants.tenant",
+            ),
         ),
     ]

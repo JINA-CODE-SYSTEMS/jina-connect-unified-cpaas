@@ -7,50 +7,99 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0004_add_open_session_rate_multiplier'),
+        ("tenants", "0004_add_open_session_rate_multiplier"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='TenantRole',
+            name="TenantRole",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('slug', models.SlugField(max_length=100)),
-                ('priority', models.PositiveIntegerField(default=20, help_text='0-100, higher = more powerful', validators=[django.core.validators.MaxValueValidator(100)])),
-                ('is_system', models.BooleanField(default=False, help_text='True for the 5 default roles, False for custom roles')),
-                ('is_editable', models.BooleanField(default=True, help_text='False only for OWNER role (permissions are locked)')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created_by', to=settings.AUTH_USER_MODEL)),
-                ('tenant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='roles', to='tenants.tenant')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated_by', to=settings.AUTH_USER_MODEL)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                ("slug", models.SlugField(max_length=100)),
+                (
+                    "priority",
+                    models.PositiveIntegerField(
+                        default=20,
+                        help_text="0-100, higher = more powerful",
+                        validators=[django.core.validators.MaxValueValidator(100)],
+                    ),
+                ),
+                (
+                    "is_system",
+                    models.BooleanField(
+                        default=False, help_text="True for the 5 default roles, False for custom roles"
+                    ),
+                ),
+                (
+                    "is_editable",
+                    models.BooleanField(default=True, help_text="False only for OWNER role (permissions are locked)"),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created_by",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "tenant",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name="roles", to="tenants.tenant"
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_updated_by",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-priority', 'name'],
-                'unique_together': {('tenant', 'slug')},
+                "ordering": ["-priority", "name"],
+                "unique_together": {("tenant", "slug")},
             },
         ),
         migrations.AddField(
-            model_name='tenantuser',
-            name='role',
-            field=models.ForeignKey(blank=True, help_text='RBAC role for this user within the tenant', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='members', to='tenants.tenantrole'),
+            model_name="tenantuser",
+            name="role",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="RBAC role for this user within the tenant",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="members",
+                to="tenants.tenantrole",
+            ),
         ),
         migrations.CreateModel(
-            name='RolePermission',
+            name="RolePermission",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('permission', models.CharField(db_index=True, max_length=100)),
-                ('allowed', models.BooleanField(default=False)),
-                ('role', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='permissions', to='tenants.tenantrole')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("permission", models.CharField(db_index=True, max_length=100)),
+                ("allowed", models.BooleanField(default=False)),
+                (
+                    "role",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name="permissions", to="tenants.tenantrole"
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('role', 'permission')},
+                "unique_together": {("role", "permission")},
             },
         ),
     ]

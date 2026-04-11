@@ -19,7 +19,7 @@ from django.views import View
 
 from broadcast.url_tracker.models import TrackedURL
 
-logger = logging.getLogger('broadcast.url_tracker')
+logger = logging.getLogger("broadcast.url_tracker")
 
 
 class TrackedURLRedirectView(View):
@@ -37,8 +37,8 @@ class TrackedURLRedirectView(View):
 
         # Extract click metadata
         ip_address = self._get_client_ip(request)
-        user_agent = request.META.get('HTTP_USER_AGENT', '')
-        referer = request.META.get('HTTP_REFERER', '')
+        user_agent = request.META.get("HTTP_USER_AGENT", "")
+        referer = request.META.get("HTTP_REFERER", "")
 
         # Record the click (async-safe: uses atomic F() update)
         try:
@@ -61,7 +61,7 @@ class TrackedURLRedirectView(View):
     @staticmethod
     def _get_client_ip(request) -> str:
         """Extract client IP, respecting X-Forwarded-For from reverse proxies."""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
         if x_forwarded_for:
-            return x_forwarded_for.split(',')[0].strip()
-        return request.META.get('REMOTE_ADDR', '')
+            return x_forwarded_for.split(",")[0].strip()
+        return request.META.get("REMOTE_ADDR", "")

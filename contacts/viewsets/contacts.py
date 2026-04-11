@@ -2,12 +2,6 @@ import csv
 import io
 import logging
 
-from abstract.viewsets.base import BaseTenantModelViewSet
-from contacts.filters import TenantContactFilter
-from contacts.models import AssigneeTypeChoices, ContactSource, TenantContact
-from contacts.serializers import (ContactAssignmentSerializer,
-                                  ContactCSVUploadSerializer,
-                                  TenantContactSerializer)
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.utils import timezone
@@ -18,32 +12,37 @@ from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from abstract.viewsets.base import BaseTenantModelViewSet
+from contacts.filters import TenantContactFilter
+from contacts.models import AssigneeTypeChoices, ContactSource, TenantContact
+from contacts.serializers import ContactAssignmentSerializer, ContactCSVUploadSerializer, TenantContactSerializer
+
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
 class ContactsViewSet(BaseTenantModelViewSet):
-
     """
     ViewSet for managing TenantContacts.
-    
+
     Supports keyword search via 'search' parameter that searches across:
     - first_name
     - last_name
     - phone
-    
+
     Example: /api/contacts/?search=john
-    
+
     CSV Import/Export:
     - GET /contacts/download-template/ - Download CSV template
     - POST /contacts/upload-csv/ - Upload CSV with contacts
-    
+
     Assignment Endpoints:
     - POST /contacts/{id}/assign/ - Assign contact to user/bot/chatflow
     - POST /contacts/{id}/unassign/ - Unassign contact
-    
+
     Assignment history is available via timeline (Event table with TICKET_ASSIGNED type).
     """
+
     queryset = TenantContact.objects.all()
     serializer_class = TenantContactSerializer
     filterset_class = TenantContactFilter
@@ -75,6 +74,7 @@ class ContactsViewSet(BaseTenantModelViewSet):
         contact = serializer.save(tenant=tenant_user.tenant)
         try:
             from notifications.signals import create_contact_added_notification
+
             create_contact_added_notification(contact)
         except Exception:
             pass
@@ -88,45 +88,45 @@ class ContactsViewSet(BaseTenantModelViewSet):
         return queryset.filter(assigned_to_user=user)
 
     # ==================== Assignment Endpoints ====================
-    
+
     @action(detail=True, methods=["post"], url_path="assign")
     def assign(self, request, pk=None):
         """
         Assign a contact to a user, bot, or chatflow.
-        
+
         Request body:
         {
             "assigned_to_type": "USER" | "BOT" | "CHATFLOW",
             "assigned_to_id": 123,
             "note": "Optional note for the assignee"
         }
-        
+
         Creates an Event entry (via signal) and broadcasts the change via WebSocket.
         """
         contact = self.get_object()
         serializer = ContactAssignmentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
-        assigned_to_type = serializer.validated_data['assigned_to_type']
-        assigned_to_id = serializer.validated_data.get('assigned_to_id')
-        note = serializer.validated_data.get('note', '')
-        
+
+        assigned_to_type = serializer.validated_data["assigned_to_type"]
+        assigned_to_id = serializer.validated_data.get("assigned_to_id")
+        note = serializer.validated_data.get("note", "")
+
         # Get the user being assigned to (if type is USER)
         assigned_to_user = None
         if assigned_to_type == AssigneeTypeChoices.USER and assigned_to_id:
             assigned_to_user = User.objects.filter(id=assigned_to_id).first()
-        
+
         # Determine who is making the assignment (assigned_by)
         assigned_by_type = AssigneeTypeChoices.USER
         assigned_by_id = request.user.id
         assigned_by_user = request.user
-        
+
         # Store metadata on instance for the signal to use
         contact._assignment_metadata = {
-            'ip_address': self._get_client_ip(request),
-            'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+            "ip_address": self._get_client_ip(request),
+            "user_agent": request.META.get("HTTP_USER_AGENT", ""),
         }
-        
+
         # Update the contact (signal will create the Event and broadcast automatically)
         contact.assigned_to_type = assigned_to_type
         contact.assigned_to_id = assigned_to_id
@@ -137,41 +137,44 @@ class ContactsViewSet(BaseTenantModelViewSet):
         contact.assigned_by_user = assigned_by_user
         contact.assignment_note = note
         contact.save()
-        
+
         # Return updated contact
         response_serializer = TenantContactSerializer(contact)
-        return Response({
-            'status': 'success',
-            'message': f'Contact assigned to {contact.assigned_to_name}',
-            'contact': response_serializer.data,
-        }, status=status.HTTP_200_OK)
-    
+        return Response(
+            {
+                "status": "success",
+                "message": f"Contact assigned to {contact.assigned_to_name}",
+                "contact": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=["post"], url_path="unassign")
     def unassign(self, request, pk=None):
         """
         Unassign a contact (remove current assignment).
-        
+
         Request body (optional):
         {
             "note": "Optional reason for unassigning"
         }
-        
+
         Creates an Event entry (via signal) and broadcasts the change via WebSocket.
         """
         contact = self.get_object()
-        note = request.data.get('note', '')
-        
+        note = request.data.get("note", "")
+
         # Determine who is making the assignment (assigned_by)
         assigned_by_type = AssigneeTypeChoices.USER
         assigned_by_id = request.user.id
         assigned_by_user = request.user
-        
+
         # Store metadata on instance for the signal to use
         contact._assignment_metadata = {
-            'ip_address': self._get_client_ip(request),
-            'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+            "ip_address": self._get_client_ip(request),
+            "user_agent": request.META.get("HTTP_USER_AGENT", ""),
         }
-        
+
         # Update the contact (signal will create the Event and broadcast automatically)
         contact.assigned_to_type = AssigneeTypeChoices.UNASSIGNED
         contact.assigned_to_id = None
@@ -182,118 +185,134 @@ class ContactsViewSet(BaseTenantModelViewSet):
         contact.assigned_by_user = assigned_by_user
         contact.assignment_note = note
         contact.save()
-        
+
         # Return updated contact
         response_serializer = TenantContactSerializer(contact)
-        return Response({
-            'status': 'success',
-            'message': 'Contact unassigned',
-            'contact': response_serializer.data,
-        }, status=status.HTTP_200_OK)
-    
+        return Response(
+            {
+                "status": "success",
+                "message": "Contact unassigned",
+                "contact": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request, pk=None):
         """
         Close a contact/ticket.
-        
+
         Request body:
         {
             "reason": "Optional reason for closing"
         }
-        
+
         Creates a TICKET_CLOSED Event entry (via signal) and broadcasts the change via WebSocket.
         """
         from contacts.models import TicketStatusChoices
-        
+
         contact = self.get_object()
-        reason = request.data.get('reason', '')
-        
+        reason = request.data.get("reason", "")
+
         # Check if already closed
         if contact.status == TicketStatusChoices.CLOSED:
-            return Response({
-                'status': 'error',
-                'message': 'Contact is already closed',
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Contact is already closed",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Store metadata on instance for the signal to use
         contact._status_changed_by_user = request.user
         contact._status_change_reason = reason
-        
+
         # Update the status (signal will create the Event and broadcast automatically)
         contact.status = TicketStatusChoices.CLOSED
         contact.save()
-        
+
         # Return updated contact
         response_serializer = TenantContactSerializer(contact)
-        return Response({
-            'status': 'success',
-            'message': 'Contact closed',
-            'contact': response_serializer.data,
-        }, status=status.HTTP_200_OK)
-    
+        return Response(
+            {
+                "status": "success",
+                "message": "Contact closed",
+                "contact": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=True, methods=["post"], url_path="reopen")
     def reopen(self, request, pk=None):
         """
         Reopen a closed contact/ticket.
-        
+
         Request body:
         {
             "reason": "Optional reason for reopening"
         }
-        
+
         Creates a TICKET_REOPENED Event entry (via signal) and broadcasts the change via WebSocket.
         """
         from contacts.models import TicketStatusChoices
-        
+
         contact = self.get_object()
-        reason = request.data.get('reason', '')
-        
+        reason = request.data.get("reason", "")
+
         # Check if already open
         if contact.status == TicketStatusChoices.OPEN:
-            return Response({
-                'status': 'error',
-                'message': 'Contact is already open',
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Contact is already open",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Store metadata on instance for the signal to use
         contact._status_changed_by_user = request.user
         contact._status_change_reason = reason
-        
+
         # Update the status (signal will create the Event and broadcast automatically)
         contact.status = TicketStatusChoices.OPEN
         contact.save()
-        
+
         # Return updated contact
         response_serializer = TenantContactSerializer(contact)
-        return Response({
-            'status': 'success',
-            'message': 'Contact reopened',
-            'contact': response_serializer.data,
-        }, status=status.HTTP_200_OK)
-    
-    
+        return Response(
+            {
+                "status": "success",
+                "message": "Contact reopened",
+                "contact": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     def _get_client_ip(self, request):
         """Get client IP address from request."""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
         if x_forwarded_for:
-            return x_forwarded_for.split(',')[0].strip()
-        return request.META.get('REMOTE_ADDR', '')
-    
+            return x_forwarded_for.split(",")[0].strip()
+        return request.META.get("REMOTE_ADDR", "")
+
     # ==================== Original Endpoints ====================
-    
+
     @action(detail=False, methods=["get"], url_path="reserve-keyword")
-    def reserve_keyword_list(self, request):        
+    def reserve_keyword_list(self, request):
         data = TenantContact.RESERVED_VARS
         return Response(data, status=200)
 
-    @action(detail=False, methods=["get"], url_path="contact-tags")    
+    @action(detail=False, methods=["get"], url_path="contact-tags")
     def contact_tags_list(self, request):
-        search = request.query_params.get('search', None)
-        tags_qs = TenantContact.objects.filter(tag__isnull=False).exclude(tag='').values_list('tag', flat=True).distinct()
-        
+        search = request.query_params.get("search", None)
+        tags_qs = (
+            TenantContact.objects.filter(tag__isnull=False).exclude(tag="").values_list("tag", flat=True).distinct()
+        )
+
         if search:
             tags_qs = tags_qs.filter(tag__icontains=search)
-        
+
         tags_list = list(tags_qs)
         page = self.paginate_queryset(tags_list)
         if page is not None:
@@ -304,53 +323,53 @@ class ContactsViewSet(BaseTenantModelViewSet):
     def download_template(self, request):
         """
         Download a CSV template for bulk contact import.
-        
+
         The template includes:
         - Required columns: phone
         - Optional columns: first_name, last_name, tag
         - Sample data row for reference
-        
+
         Returns: CSV file download
         """
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="contacts_template.csv"'
-        
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="contacts_template.csv"'
+
         writer = csv.writer(response)
-        
+
         # Header row
-        writer.writerow(['phone', 'first_name', 'last_name', 'tag'])
-        
+        writer.writerow(["phone", "first_name", "last_name", "tag"])
+
         # Sample data rows with instructions
-        writer.writerow(['+14155552671', 'John', 'Doe', 'customer'])
-        writer.writerow(['+919876543210', 'Jane', 'Smith', 'lead'])
-        writer.writerow(['+442071234567', 'Bob', '', 'partner'])
-        
+        writer.writerow(["+14155552671", "John", "Doe", "customer"])
+        writer.writerow(["+919876543210", "Jane", "Smith", "lead"])
+        writer.writerow(["+442071234567", "Bob", "", "partner"])
+
         # Add instructions as comments (will be ignored during import)
         writer.writerow([])
-        writer.writerow(['# Instructions:'])
-        writer.writerow(['# - phone: Required. Use international format with country code (e.g., +14155552671)'])
-        writer.writerow(['# - first_name: Optional. Contact first name'])
-        writer.writerow(['# - last_name: Optional. Contact last name'])
-        writer.writerow(['# - tag: Optional. Tag to categorize the contact'])
-        writer.writerow(['# - Delete sample rows before uploading your data'])
-        writer.writerow(['# - Lines starting with # are ignored'])
-        
+        writer.writerow(["# Instructions:"])
+        writer.writerow(["# - phone: Required. Use international format with country code (e.g., +14155552671)"])
+        writer.writerow(["# - first_name: Optional. Contact first name"])
+        writer.writerow(["# - last_name: Optional. Contact last name"])
+        writer.writerow(["# - tag: Optional. Tag to categorize the contact"])
+        writer.writerow(["# - Delete sample rows before uploading your data"])
+        writer.writerow(["# - Lines starting with # are ignored"])
+
         return response
 
     @action(detail=False, methods=["post"], url_path="upload-csv", parser_classes=[MultiPartParser, FormParser])
     def upload_csv(self, request):
         """
         Upload a CSV file to bulk import contacts.
-        
+
         Request:
         - file: CSV file with contacts (multipart/form-data)
         - skip_duplicates: Optional boolean (default: true) - Skip contacts with existing phone numbers
         - default_tag: Optional string - Default tag for contacts without a tag
-        
+
         CSV Format:
         - Required columns: phone
         - Optional columns: first_name, last_name, tag
-        
+
         Returns:
         - created_count: Number of contacts created
         - skipped_count: Number of contacts skipped (duplicates or invalid)
@@ -359,193 +378,179 @@ class ContactsViewSet(BaseTenantModelViewSet):
         serializer = ContactCSVUploadSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        csv_file = serializer.validated_data['file']
-        skip_duplicates = serializer.validated_data.get('skip_duplicates', True)
-        default_tag = serializer.validated_data.get('default_tag', '')
-        
+
+        csv_file = serializer.validated_data["file"]
+        skip_duplicates = serializer.validated_data.get("skip_duplicates", True)
+        default_tag = serializer.validated_data.get("default_tag", "")
+
         # Get tenant from request
         tenant = self._get_tenant(request)
         if not tenant:
             return Response(
-                {"error": "Could not determine tenant for this request"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Could not determine tenant for this request"}, status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Process CSV
         result = self._process_csv(csv_file, tenant, skip_duplicates, default_tag, request.user)
-        
-        return Response(result, status=status.HTTP_201_CREATED if result['created_count'] > 0 else status.HTTP_200_OK)
-    
+
+        return Response(result, status=status.HTTP_201_CREATED if result["created_count"] > 0 else status.HTTP_200_OK)
+
     def _get_tenant(self, request):
         """Get tenant from request user."""
         try:
-            if hasattr(request.user, 'user_tenants') and request.user.user_tenants.exists():
+            if hasattr(request.user, "user_tenants") and request.user.user_tenants.exists():
                 return request.user.user_tenants.first().tenant
         except Exception:
             pass
         return None
-    
+
     def _process_csv(self, csv_file, tenant, skip_duplicates, default_tag, user):
         """
         Process the uploaded CSV file and create contacts.
-        
+
         Returns a dict with created_count, skipped_count, updated_count, and errors.
         """
-        result = {
-            'created_count': 0,
-            'skipped_count': 0,
-            'updated_count': 0,
-            'total_rows': 0,
-            'errors': []
-        }
-        
+        result = {"created_count": 0, "skipped_count": 0, "updated_count": 0, "total_rows": 0, "errors": []}
+
         try:
             # Read CSV file
-            decoded_file = csv_file.read().decode('utf-8-sig')  # Handle BOM
+            decoded_file = csv_file.read().decode("utf-8-sig")  # Handle BOM
             csv_reader = csv.DictReader(io.StringIO(decoded_file))
-            
+
             # Normalize column names (strip whitespace, lowercase)
             if csv_reader.fieldnames:
                 csv_reader.fieldnames = [name.strip().lower() for name in csv_reader.fieldnames]
-            
+
             # Validate required columns
-            if 'phone' not in csv_reader.fieldnames:
-                result['errors'].append({
-                    'row': 0,
-                    'error': "Missing required column 'phone'. Found columns: " + ', '.join(csv_reader.fieldnames or [])
-                })
+            if "phone" not in csv_reader.fieldnames:
+                result["errors"].append(
+                    {
+                        "row": 0,
+                        "error": "Missing required column 'phone'. Found columns: "
+                        + ", ".join(csv_reader.fieldnames or []),
+                    }
+                )
                 return result
-            
+
             # Get existing phone numbers for this tenant (for duplicate checking)
             existing_phones = set()
             if skip_duplicates:
-                existing_phones = set(
-                    TenantContact.objects.filter(tenant=tenant)
-                    .values_list('phone', flat=True)
-                )
-            
+                existing_phones = set(TenantContact.objects.filter(tenant=tenant).values_list("phone", flat=True))
+
             contacts_to_create = []
-            
+
             for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 (1 is header)
-                result['total_rows'] += 1
-                
+                result["total_rows"] += 1
+
                 # Skip empty rows or comment rows
-                phone = row.get('phone', '').strip()
-                if not phone or phone.startswith('#'):
+                phone = row.get("phone", "").strip()
+                if not phone or phone.startswith("#"):
                     continue
-                
+
                 # Normalize phone number
-                if not phone.startswith('+'):
-                    phone = '+' + phone
-                
+                if not phone.startswith("+"):
+                    phone = "+" + phone
+
                 # Check for duplicates
                 if skip_duplicates and phone in existing_phones:
-                    result['skipped_count'] += 1
+                    result["skipped_count"] += 1
                     continue
-                
+
                 # Validate phone number format
                 try:
                     from phonenumber_field.phonenumber import PhoneNumber
+
                     parsed = PhoneNumber.from_string(phone)
                     if not parsed.is_valid():
-                        result['errors'].append({
-                            'row': row_num,
-                            'phone': phone,
-                            'error': 'Invalid phone number format'
-                        })
-                        result['skipped_count'] += 1
+                        result["errors"].append(
+                            {"row": row_num, "phone": phone, "error": "Invalid phone number format"}
+                        )
+                        result["skipped_count"] += 1
                         continue
                 except Exception as e:
-                    result['errors'].append({
-                        'row': row_num,
-                        'phone': phone,
-                        'error': f'Invalid phone number: {str(e)}'
-                    })
-                    result['skipped_count'] += 1
+                    result["errors"].append(
+                        {"row": row_num, "phone": phone, "error": f"Invalid phone number: {str(e)}"}
+                    )
+                    result["skipped_count"] += 1
                     continue
-                
+
                 # Create contact object
                 contact = TenantContact(
                     phone=phone,
-                    first_name=row.get('first_name', '').strip()[:255],
-                    last_name=row.get('last_name', '').strip()[:255],
-                    tag=row.get('tag', '').strip()[:255] or default_tag,
+                    first_name=row.get("first_name", "").strip()[:255],
+                    last_name=row.get("last_name", "").strip()[:255],
+                    tag=row.get("tag", "").strip()[:255] or default_tag,
                     tenant=tenant,
                     source=ContactSource.MANUAL,
                     created_by=user,
                 )
-                
+
                 contacts_to_create.append(contact)
                 existing_phones.add(phone)  # Prevent duplicates within same file
-            
+
             # Bulk create contacts
             if contacts_to_create:
                 TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
-                result['created_count'] = len(contacts_to_create)
+                result["created_count"] = len(contacts_to_create)
                 try:
                     from notifications.signals import create_contact_imported_notification
-                    create_contact_imported_notification(tenant, result['created_count'])
+
+                    create_contact_imported_notification(tenant, result["created_count"])
                 except Exception:
                     pass
-            
+
             logger.info(f"CSV import completed: {result['created_count']} created, {result['skipped_count']} skipped")
-            
+
         except UnicodeDecodeError:
-            result['errors'].append({
-                'row': 0,
-                'error': 'Invalid file encoding. Please save your CSV file with UTF-8 encoding.'
-            })
+            result["errors"].append(
+                {"row": 0, "error": "Invalid file encoding. Please save your CSV file with UTF-8 encoding."}
+            )
         except csv.Error as e:
-            result['errors'].append({
-                'row': 0,
-                'error': f'CSV parsing error: {str(e)}'
-            })
+            result["errors"].append({"row": 0, "error": f"CSV parsing error: {str(e)}"})
         except Exception as e:
             logger.exception(f"Error processing CSV: {e}")
-            result['errors'].append({
-                'row': 0,
-                'error': f'Unexpected error: {str(e)}'
-            })
-        
+            result["errors"].append({"row": 0, "error": f"Unexpected error: {str(e)}"})
+
         return result
-    
+
     @action(detail=False, methods=["get"], url_path="export-csv")
     def export_csv(self, request):
         """
         Export all contacts to a CSV file.
-        
+
         Query Parameters:
         - tag: Optional. Filter contacts by tag
         - search: Optional. Search contacts by name or phone
-        
+
         Returns: CSV file download with all matching contacts
         """
         # Get filtered queryset
         queryset = self.filter_queryset(self.get_queryset())
-        
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="contacts_export.csv"'
-        
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="contacts_export.csv"'
+
         writer = csv.writer(response)
-        
+
         # Header row
-        writer.writerow(['phone', 'first_name', 'last_name', 'tag', 'source', 'created_at'])
-        
+        writer.writerow(["phone", "first_name", "last_name", "tag", "source", "created_at"])
+
         # Data rows
         for contact in queryset:
-            writer.writerow([
-                str(contact.phone),
-                contact.first_name,
-                contact.last_name,
-                contact.tag,
-                contact.source,
-                contact.created_at.isoformat() if contact.created_at else '',
-            ])
-        
+            writer.writerow(
+                [
+                    str(contact.phone),
+                    contact.first_name,
+                    contact.last_name,
+                    contact.tag,
+                    contact.source,
+                    contact.created_at.isoformat() if contact.created_at else "",
+                ]
+            )
+
         return response
 
-    @action(detail=False, methods=['get'], url_path='dashboard')
+    @action(detail=False, methods=["get"], url_path="dashboard")
     def dashboard(self, request):
         """
         Get contact growth & engagement dashboard statistics.
@@ -556,14 +561,15 @@ class ContactsViewSet(BaseTenantModelViewSet):
         from datetime import timedelta
 
         from django.db.models import Count, Q
+
         from wa.models import MessageDirection, WAMessage
 
         # ── Period parsing ──────────────────────────────────────────
-        period = request.query_params.get('period', '7d')
-        period_days = {'24h': 1, '7d': 7, '30d': 30, '90d': 90}
+        period = request.query_params.get("period", "7d")
+        period_days = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
         if period not in period_days:
             return Response(
-                {'error': f'Invalid period. Use one of: {", ".join(period_days.keys())}'},
+                {"error": f"Invalid period. Use one of: {', '.join(period_days.keys())}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -575,7 +581,7 @@ class ContactsViewSet(BaseTenantModelViewSet):
         # ── Tenant-scoped base queryset ─────────────────────────────
         tenant_user = self._get_tenant_user()
         if not tenant_user:
-            return Response({'error': 'Could not determine tenant'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Could not determine tenant"}, status=status.HTTP_400_BAD_REQUEST)
         tenant = tenant_user.tenant
         all_contacts = TenantContact.objects.filter(tenant=tenant)
         total_contacts = all_contacts.count()
@@ -587,9 +593,7 @@ class ContactsViewSet(BaseTenantModelViewSet):
             created_at__lt=period_start,
         ).count()
         if prev_new_contacts > 0:
-            new_contacts_change_percent = round(
-                ((new_contacts - prev_new_contacts) / prev_new_contacts) * 100, 1
-            )
+            new_contacts_change_percent = round(((new_contacts - prev_new_contacts) / prev_new_contacts) * 100, 1)
         else:
             new_contacts_change_percent = 100.0 if new_contacts > 0 else 0.0
 
@@ -600,7 +604,7 @@ class ContactsViewSet(BaseTenantModelViewSet):
                 contact__tenant=tenant,
                 created_at__gte=thirty_days_ago,
             )
-            .values_list('contact_id', flat=True)
+            .values_list("contact_id", flat=True)
             .distinct()
         )
         active_contacts = all_contacts.filter(id__in=active_contact_ids).count()
@@ -614,15 +618,14 @@ class ContactsViewSet(BaseTenantModelViewSet):
             inactive_percent = 0.0
 
         # ── Top segment (tag with highest engagement rate) ──────────
-        top_segment = {'name': None, 'contact_count': 0, 'engagement_rate': 0.0}
+        top_segment = {"name": None, "contact_count": 0, "engagement_rate": 0.0}
         tag_stats = (
-            all_contacts
-            .exclude(tag='')
-            .values('tag')
+            all_contacts.exclude(tag="")
+            .values("tag")
             .annotate(
-                contact_count=Count('id', distinct=True),
+                contact_count=Count("id", distinct=True),
                 engaged_count=Count(
-                    'id',
+                    "id",
                     filter=Q(
                         wa_messages__direction=MessageDirection.INBOUND,
                         wa_messages__created_at__gte=period_start,
@@ -631,23 +634,22 @@ class ContactsViewSet(BaseTenantModelViewSet):
                 ),
             )
             .filter(contact_count__gte=5)
-            .order_by('-contact_count')[:100]
+            .order_by("-contact_count")[:100]
         )
         best_rate = -1.0
         for t in tag_stats:
-            rate = round((t['engaged_count'] / t['contact_count']) * 100, 1)
+            rate = round((t["engaged_count"] / t["contact_count"]) * 100, 1)
             if rate > best_rate:
                 best_rate = rate
                 top_segment = {
-                    'name': t['tag'],
-                    'contact_count': t['contact_count'],
-                    'engagement_rate': rate,
+                    "name": t["tag"],
+                    "contact_count": t["contact_count"],
+                    "engagement_rate": rate,
                 }
 
         # ── Funnel metrics (scoped to selected period) ──────────────
         messaged_count = (
-            all_contacts
-            .filter(
+            all_contacts.filter(
                 wa_messages__direction=MessageDirection.OUTBOUND,
                 wa_messages__created_at__gte=period_start,
             )
@@ -655,8 +657,7 @@ class ContactsViewSet(BaseTenantModelViewSet):
             .count()
         )
         engaged_count = (
-            all_contacts
-            .filter(
+            all_contacts.filter(
                 wa_messages__direction=MessageDirection.INBOUND,
                 wa_messages__created_at__gte=period_start,
             )
@@ -664,20 +665,22 @@ class ContactsViewSet(BaseTenantModelViewSet):
             .count()
         )
 
-        return Response({
-            'new_contacts': new_contacts,
-            'new_contacts_change_percent': new_contacts_change_percent,
-            'total_contacts': total_contacts,
-            'active_contacts': active_contacts,
-            'inactive_contacts': inactive_contacts,
-            'active_percent': active_percent,
-            'inactive_percent': inactive_percent,
-            'top_segment': top_segment,
-            'funnel': {
-                'total_reach': total_contacts,
-                'messaged': messaged_count,
-                'engaged': engaged_count,
-                'converted': engaged_count,
-            },
-            'period': period,
-        })
+        return Response(
+            {
+                "new_contacts": new_contacts,
+                "new_contacts_change_percent": new_contacts_change_percent,
+                "total_contacts": total_contacts,
+                "active_contacts": active_contacts,
+                "inactive_contacts": inactive_contacts,
+                "active_percent": active_percent,
+                "inactive_percent": inactive_percent,
+                "top_segment": top_segment,
+                "funnel": {
+                    "total_reach": total_contacts,
+                    "messaged": messaged_count,
+                    "engaged": engaged_count,
+                    "converted": engaged_count,
+                },
+                "period": period,
+            }
+        )

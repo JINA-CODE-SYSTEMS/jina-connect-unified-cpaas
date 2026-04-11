@@ -6,9 +6,9 @@ interactive flow message sending requests.
 """
 
 import re
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Header Types
@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class TextHeader(BaseModel):
     """Text header for flow message"""
+
     type: Literal["text"] = "text"
     text: str = Field(
         ...,
@@ -28,6 +29,7 @@ class TextHeader(BaseModel):
 
 class ImageHeader(BaseModel):
     """Image header for flow message"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -45,6 +47,7 @@ FlowHeader = Union[TextHeader, ImageHeader]
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -55,6 +58,7 @@ class InteractiveBody(BaseModel):
 
 class InteractiveFooter(BaseModel):
     """Footer for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -70,6 +74,7 @@ class InteractiveFooter(BaseModel):
 
 class FlowActionPayload(BaseModel):
     """Payload for flow action"""
+
     screen: str = Field(
         ...,
         description="The first screen to display (for navigate mode)",
@@ -82,6 +87,7 @@ class FlowActionPayload(BaseModel):
 
 class FlowAction(BaseModel):
     """Action for flow interactive message"""
+
     name: Literal["flow"] = "flow"
     parameters: dict = Field(
         ...,
@@ -95,16 +101,16 @@ class FlowAction(BaseModel):
         for field in required_fields:
             if field not in v:
                 raise ValueError(f"Flow parameters must include '{field}'")
-        
+
         # flow_cta max length is 20
         if len(v.get("flow_cta", "")) > 20:
             raise ValueError("flow_cta must be max 20 characters")
-        
+
         # Validate mode if present
         valid_modes = ["navigate", "draft"]
         if "mode" in v and v["mode"] not in valid_modes:
             raise ValueError(f"Invalid mode. Must be one of: {valid_modes}")
-        
+
         return v
 
 
@@ -115,10 +121,9 @@ class FlowAction(BaseModel):
 
 class InteractiveFlowContent(BaseModel):
     """Interactive flow content"""
+
     type: Literal["flow"] = "flow"
-    header: Optional[FlowHeader] = Field(
-        None, description="Optional header (text or image)"
-    )
+    header: Optional[FlowHeader] = Field(None, description="Optional header (text or image)")
     body: InteractiveBody = Field(..., description="Message body (required)")
     footer: Optional[InteractiveFooter] = Field(None, description="Optional footer")
     action: FlowAction = Field(..., description="Flow action")
@@ -143,6 +148,7 @@ class InteractiveFlowContent(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -183,22 +189,12 @@ class InteractiveFlowMessageSendRequestValidator(BaseModel):
         >>> request = InteractiveFlowMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type (must be 'interactive')"
-    )
-    interactive: InteractiveFlowContent = Field(
-        ..., description="Interactive flow content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    type: Literal["interactive"] = Field("interactive", description="Message type (must be 'interactive')")
+    interactive: InteractiveFlowContent = Field(..., description="Interactive flow content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -207,9 +203,7 @@ class InteractiveFlowMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

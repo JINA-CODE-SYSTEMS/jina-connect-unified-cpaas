@@ -6,8 +6,7 @@ template creation requests.
 """
 
 from .body import BodyComponent, BodyTextExample, BodyTextNamedParam
-from .buttons import (CopyCodeButton, FlowButton, PhoneNumberButton,
-                      QuickReplyButton, TemplateButton, URLButton)
+from .buttons import CopyCodeButton, FlowButton, PhoneNumberButton, QuickReplyButton, TemplateButton, URLButton
 from .buttons_component import ButtonsComponent
 from .enums import ButtonType, ComponentType, HeaderFormat, ParameterFormat
 from .footer import FooterComponent

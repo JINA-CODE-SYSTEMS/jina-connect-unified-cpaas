@@ -37,12 +37,8 @@ class WAAPI(BaseModel):
         token (str): Bearer token for API access.
     """
 
-    api_endpoint: str = Field(
-        ..., description="WATI tenant API endpoint (e.g., 'your-tenant.wati.io')"
-    )
-    token: str = Field(
-        ..., description="Bearer token for WATI API authentication"
-    )
+    api_endpoint: str = Field(..., description="WATI tenant API endpoint (e.g., 'your-tenant.wati.io')")
+    token: str = Field(..., description="Bearer token for WATI API authentication")
 
     # Store the last curl command generated
     _last_curl_command: str = ""
@@ -138,8 +134,7 @@ class WAAPI(BaseModel):
                 elif isinstance(value, (list, dict)):
                     processed_data[key] = json.dumps(value, separators=(",", ":"))
                 elif isinstance(value, str) and (
-                    (value.startswith("[") and value.endswith("]"))
-                    or (value.startswith("{") and value.endswith("}"))
+                    (value.startswith("[") and value.endswith("]")) or (value.startswith("{") and value.endswith("}"))
                 ):
                     try:
                         parsed = json.loads(value)
@@ -261,9 +256,7 @@ class WAAPI(BaseModel):
     # Curl Debug Helpers
     # =========================================================================
 
-    def _generate_curl_equivalent(
-        self, method: str, url: str, headers: dict, data: dict
-    ) -> str:
+    def _generate_curl_equivalent(self, method: str, url: str, headers: dict, data: dict) -> str:
         """Generate equivalent curl command for form-encoded requests."""
         curl_command = f'curl -X {method} "{url}"'
 
@@ -279,9 +272,7 @@ class WAAPI(BaseModel):
             else:
                 curl_command += f" \\\n  --data-urlencode '{data}'"
         elif method == "GET" and data:
-            params = "&".join(
-                [f"{key}={value}" for key, value in data.items() if value is not None]
-            )
+            params = "&".join([f"{key}={value}" for key, value in data.items() if value is not None])
             if params:
                 separator = "?" if "?" not in url else "&"
                 curl_command = f'curl -X {method} "{url}{separator}{params}"'
@@ -296,9 +287,7 @@ class WAAPI(BaseModel):
 
         return output
 
-    def _generate_curl_json_equivalent(
-        self, method: str, url: str, headers: dict, data: dict
-    ) -> str:
+    def _generate_curl_json_equivalent(self, method: str, url: str, headers: dict, data: dict) -> str:
         """Generate equivalent curl command for JSON requests."""
         import json
 
@@ -312,9 +301,7 @@ class WAAPI(BaseModel):
             json_str_escaped = json_str.replace('"', '\\"')
             curl_command += f' \\\n  -d "{json_str_escaped}"'
         elif method == "GET" and data:
-            params = "&".join(
-                [f"{key}={value}" for key, value in data.items() if value is not None]
-            )
+            params = "&".join([f"{key}={value}" for key, value in data.items() if value is not None])
             if params:
                 separator = "?" if "?" not in url else "&"
                 curl_command = f'curl -X {method} "{url}{separator}{params}"'
@@ -334,8 +321,6 @@ class WAAPI(BaseModel):
         """Deprecated: Use _generate_curl_equivalent instead."""
         print(self._generate_curl_equivalent(method, url, headers, data))
 
-    def _print_curl_json_equivalent(
-        self, method: str, url: str, headers: dict, data: dict
-    ):
+    def _print_curl_json_equivalent(self, method: str, url: str, headers: dict, data: dict):
         """Deprecated: Use _generate_curl_json_equivalent instead."""
         print(self._generate_curl_json_equivalent(method, url, headers, data))

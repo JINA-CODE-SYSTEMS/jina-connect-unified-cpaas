@@ -41,3 +41,4 @@ django-encrypted-model-fields==0.6.5
 reportlab>=4.0
 langgraph>=0.2.0
 langgraph-checkpoint-postgres
+mcp>=1.0.0

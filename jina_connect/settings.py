@@ -10,7 +10,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
-
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -34,7 +33,7 @@ FIELD_ENCRYPTION_KEY = config(
     default="",
 )
 
-# SECURITY WARNING: don't run with debug turned on in production! 
+# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", False, cast=bool)
 
 ALLOWED_HOSTS = ["*"]
@@ -63,90 +62,90 @@ CORS_ALLOW_HEADERS = [
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.sites',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'django_extensions',
-    'channels',
-    'django_crontab',
-    'django_celery_results',
-    'corsheaders',
-    'drf_yasg',
-    'django_filters',
-    'djmoney.contrib.exchange',
-    'users',
-    'tenants',
-    'phonenumber_field',
-    'simple_history',
-    'wa',
-    'razorpay',
-    'transaction',
-    'chat_flow',
-    'broadcast',
-    'contacts',
-    'message_templates',
-    'team_inbox',
-    'notifications',
-    'rest_framework',
-    'rest_framework.authtoken',
-    'rest_framework_simplejwt',
-    'rest_framework_simplejwt.token_blacklist',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.sites",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django_extensions",
+    "channels",
+    "django_crontab",
+    "django_celery_results",
+    "corsheaders",
+    "drf_yasg",
+    "django_filters",
+    "djmoney.contrib.exchange",
+    "users",
+    "tenants",
+    "phonenumber_field",
+    "simple_history",
+    "wa",
+    "razorpay",
+    "transaction",
+    "chat_flow",
+    "broadcast",
+    "contacts",
+    "message_templates",
+    "team_inbox",
+    "notifications",
+    "rest_framework",
+    "rest_framework.authtoken",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 # ── Django Silk (visual request profiler) ── only in DEBUG mode ──
 if DEBUG:
-    INSTALLED_APPS += ['silk']
-    SILKY_PYTHON_PROFILER = True            # cProfile per request
-    SILKY_PYTHON_PROFILER_BINARY = True     # downloadable .prof files
-    SILKY_MAX_RECORDED_REQUESTS = 5_000     # auto-purge after this many
+    INSTALLED_APPS += ["silk"]
+    SILKY_PYTHON_PROFILER = True  # cProfile per request
+    SILKY_PYTHON_PROFILER_BINARY = True  # downloadable .prof files
+    SILKY_MAX_RECORDED_REQUESTS = 5_000  # auto-purge after this many
     SILKY_MAX_RECORDED_REQUESTS_CHECK_PERCENT = 10
-    SILKY_META = True                       # adds silk overhead info
+    SILKY_META = True  # adds silk overhead info
 
 # CSRF_TRUSTED_ORIGINS = [
 #     "*"
 # ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
 ]
 
 # Silk middleware — injected only in DEBUG mode
 if DEBUG:
-    MIDDLEWARE += ['silk.middleware.SilkyMiddleware']
+    MIDDLEWARE += ["silk.middleware.SilkyMiddleware"]
 
-CSRF_COOKIE_SECURE = False 
+CSRF_COOKIE_SECURE = False
 
-ROOT_URLCONF = 'jina_connect.urls'
+ROOT_URLCONF = "jina_connect.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'jina_connect.wsgi.application'
+WSGI_APPLICATION = "jina_connect.wsgi.application"
 
 
 # Database
@@ -171,16 +170,16 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -193,14 +192,14 @@ DEFAULT_RENDERER_CLASSES = (
     "rest_framework_csv.renderers.PaginatedCSVRenderer",
 )
 REST_FRAMEWORK = {
-     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.UserRateThrottle',
-        'rest_framework.throttling.AnonRateThrottle',
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.AnonRateThrottle",
     ],
-    'DEFAULT_THROTTLE_RATES': {
-        'user': '2000/day',
-        'anon': '2000/day',
-        'waba_sync': '2/minute',  # 1 call per 30 seconds
+    "DEFAULT_THROTTLE_RATES": {
+        "user": "2000/day",
+        "anon": "2000/day",
+        "waba_sync": "2/minute",  # 1 call per 30 seconds
     },
     "DEFAULT_RENDERER_CLASSES": DEFAULT_RENDERER_CLASSES,
     "DEFAULT_FILTER_BACKENDS": [
@@ -208,8 +207,6 @@ REST_FRAMEWORK = {
         "rest_framework.filters.OrderingFilter",
         "rest_framework.filters.SearchFilter",
     ],
-
-
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
     "PAGE_SIZE_QUERY_PARAM": "page_size",
@@ -257,29 +254,27 @@ SIMPLE_JWT = {
 }
 
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'Asia/Kolkata'
+TIME_ZONE = "Asia/Kolkata"
 
 # USE_I18N = True
 
 USE_TZ = True
 
 
-
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = '/static/'
+STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 BASE_URL = config("BASE_URL", "http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", "http://localhost:3000")
-DEFAULT_WEBHOOK_BASE_URL=config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))
+DEFAULT_WEBHOOK_BASE_URL = config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))
 RAZORPAY_KEY_ID = config("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = config("RAZORPAY_WEBHOOK_SECRET", "")
@@ -294,7 +289,7 @@ EMAIL_HOST_USER = config("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", "Jina Connect <noreply@jinaconnect.com>")
 
-MEDIA_URL = '/media/'
+MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 # Cloud Storage Configuration
@@ -352,12 +347,13 @@ elif STORAGE_BACKEND == "gcs":
     GS_QUERYSTRING_AUTH = config("GS_QUERYSTRING_AUTH", True, cast=bool)
     GS_FILE_OVERWRITE = config("GS_FILE_OVERWRITE", False, cast=bool)
     GS_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB — files larger than this spool to disk
-    GS_BLOB_CHUNK_SIZE = 5 * 1024 * 1024   # 5 MB upload chunks (for resumable uploads)
+    GS_BLOB_CHUNK_SIZE = 5 * 1024 * 1024  # 5 MB upload chunks (for resumable uploads)
 
     # Signed URL expiration (only used when GS_QUERYSTRING_AUTH=True)
     # Default: 7 days (V4 max).  The /serve/ endpoint generates fresh
     # signed URLs on every request so this is just a safety-net.
     from datetime import timedelta as _td
+
     GS_EXPIRATION = _td(seconds=config("GS_EXPIRATION", 604800, cast=int))
 
     # Credentials — load from service account JSON if path provided,
@@ -365,9 +361,8 @@ elif STORAGE_BACKEND == "gcs":
     _gs_creds_path = config("GS_CREDENTIALS", None)
     if _gs_creds_path:
         from google.oauth2 import service_account
-        GS_CREDENTIALS = service_account.Credentials.from_service_account_file(
-            _gs_creds_path
-        )
+
+        GS_CREDENTIALS = service_account.Credentials.from_service_account_file(_gs_creds_path)
     # else: GS_CREDENTIALS is not set → django-storages uses ADC automatically
 
     # Custom CDN domain (optional)
@@ -396,7 +391,7 @@ elif STORAGE_BACKEND == "gcs":
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
 SITE_ID = 1
 
@@ -406,8 +401,6 @@ CELERY_ENABLE_UTC = False
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_RESULT_EXTENDED = True
-
-
 
 
 CELERY_CACHE_BACKEND = "django-cache"
@@ -429,9 +422,7 @@ WHATSAPP_API_TOKEN = config("WHATSAPP_API_TOKEN", "")
 
 SWAGGER_SETTINGS = {
     "SECURITY_DEFINITIONS": {
-        "Basic": {
-            "type": "basic"
-        },
+        "Basic": {"type": "basic"},
         "Bearer": {
             "type": "apiKey",
             "name": "Authorization",
@@ -443,25 +434,33 @@ SWAGGER_SETTINGS = {
 }
 
 
-
 # Django Crontab Configuration
 CRONJOBS = [
     # Check WhatsApp template statuses every 2 minutes
-    ('*/2 * * * *', 'wa.cron.check_template_status', ">> " + os.path.join(BASE_DIR, "jina_cron_template_status.log 2>&1")),
-    
+    (
+        "*/2 * * * *",
+        "wa.cron.check_template_status",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_template_status.log 2>&1"),
+    ),
     # Check broadcast message completion and update broadcast status every minute
-    ('* * * * *', 'broadcast.cron.update_broadcast_status', ">> " + os.path.join(BASE_DIR, "jina_cron_broadcast_status.log 2>&1")),
-    
+    (
+        "* * * * *",
+        "broadcast.cron.update_broadcast_status",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_broadcast_status.log 2>&1"),
+    ),
     # Clean up notifications older than 90 days — runs daily at 3 AM
-    ('0 3 * * *', 'notifications.cron.cleanup_old_notifications', ">> " + os.path.join(BASE_DIR, "jina_cron_notification_cleanup.log 2>&1")),
-
+    (
+        "0 3 * * *",
+        "notifications.cron.cleanup_old_notifications",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_notification_cleanup.log 2>&1"),
+    ),
     # Example: Uncomment below to sync gupshup auth templates every 15 minutes
     # ("*/15 * * * *", "gupshup.cron.sync_gupshup_auth_templates", ">> " + os.path.join(BASE_DIR, "gupshup_sync.log 2>&1")),
 ]
 
 
 # Use Redis as broker
-CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = "django-db"
 CELERY_RESULT_EXTENDED = True
 CELERY_TASK_TRACK_STARTED = True
@@ -470,12 +469,11 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
 
-
 GUPSHUP_BASE_URL = config("GUPSHUP_BASE_URL", "")
 
 # Broadcast Configuration
 # Time limit (in minutes) within which a broadcast can be cancelled after scheduling
-BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES= config("BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES", 0.05, cast=float)
+BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES = config("BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES", 0.05, cast=float)
 
 # Transaction ID Configuration
 TRANSACTION_ID_PREFIX = config("TRANSACTION_ID_PREFIX", "jc")  # Prefix for system-generated transaction IDs
@@ -488,23 +486,24 @@ BROADCAST_CLEANUP_DAYS = config("BROADCAST_CLEANUP_DAYS", 30, cast=int)  # Days 
 
 # Platform-specific rate limits (messages per minute)
 PLATFORM_RATE_LIMITS = {
-    'whatsapp': config("WHATSAPP_RATE_LIMIT", 100, cast=int),
-    'telegram': config("TELEGRAM_RATE_LIMIT", 30, cast=int),
-    'sms': config("SMS_RATE_LIMIT", 100, cast=int),
-    'email': config("EMAIL_RATE_LIMIT", 300, cast=int),
+    "whatsapp": config("WHATSAPP_RATE_LIMIT", 100, cast=int),
+    "telegram": config("TELEGRAM_RATE_LIMIT", 30, cast=int),
+    "sms": config("SMS_RATE_LIMIT", 100, cast=int),
+    "email": config("EMAIL_RATE_LIMIT", 300, cast=int),
 }
 
 # Channels Configuration for WebSocket support
-ASGI_APPLICATION = 'jina_connect.routing.application'
+ASGI_APPLICATION = "jina_connect.routing.application"
 
 # Channel layers configuration using Redis
+REDIS_URL = config("REDIS_URL", "redis://localhost:6379/0")
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
             "capacity": 1500,  # Maximum number of messages to store
-            "expiry": 60,      # Message expiry in seconds
+            "expiry": 60,  # Message expiry in seconds
         },
     },
 }
@@ -514,13 +513,13 @@ CHANNEL_LAYERS = {
 WEBSOCKET_ACCEPT_ALL = config("WEBSOCKET_ACCEPT_ALL", True, cast=bool)
 WEBSOCKET_TOKEN_EXPIRY = config("WEBSOCKET_TOKEN_EXPIRY", 3600, cast=int)  # 1 hour
 
-# Team Inbox Configuration  
+# Team Inbox Configuration
 TEAM_INBOX_MESSAGE_LIMIT = config("TEAM_INBOX_MESSAGE_LIMIT", 100, cast=int)
 TEAM_INBOX_TYPING_TIMEOUT = config("TEAM_INBOX_TYPING_TIMEOUT", 5, cast=int)  # seconds
 
 SERIALIZATION_MODULES = {"json": "djmoney.serializers"}
 OPEN_EXCHANGE_RATES_APP_ID = config("OPEN_EXCHANGE_RATES_APP_ID", "")
-EXCHANGE_BACKEND = 'djmoney.contrib.exchange.backends.OpenExchangeRatesBackend'
+EXCHANGE_BACKEND = "djmoney.contrib.exchange.backends.OpenExchangeRatesBackend"
 
 GUPSHUP_EMAIL = config("GUPSHUP_EMAIL", "")
 GUPSHUP_PASSWORD = config("GUPSHUP_PASSWORD", "")
@@ -532,70 +531,70 @@ GUPSHUP_PASSWORD = config("GUPSHUP_PASSWORD", "")
 
 # Log directory - configurable via environment variable
 # Default: /var/log/jina-connect (production) or ./logs (local)
-LOG_DIR = config("LOG_DIR", default=str(BASE_DIR / 'logs'))
+LOG_DIR = config("LOG_DIR", default=str(BASE_DIR / "logs"))
 
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
         },
-        'simple': {
-            'format': '[{levelname}] {asctime} {name}: {message}',
-            'style': '{',
-            'datefmt': '%Y-%m-%d %H:%M:%S',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple',
-        },
-        'chatflow_file': {
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(LOG_DIR, 'chatflow.log'),
-            'formatter': 'simple',
+        "simple": {
+            "format": "[{levelname}] {asctime} {name}: {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
-    'loggers': {
-        'drf_yasg': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+        "chatflow_file": {
+            "class": "logging.FileHandler",
+            "filename": os.path.join(LOG_DIR, "chatflow.log"),
+            "formatter": "simple",
+        },
+    },
+    "loggers": {
+        "drf_yasg": {
+            "handlers": ["console"],
+            "level": "DEBUG",
         },
         # ChatFlow app logging
-        'chat_flow': {
-            'handlers': ['console', 'chatflow_file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "chat_flow": {
+            "handlers": ["console", "chatflow_file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
-        'chat_flow.services.graph_executor': {
-            'handlers': ['console', 'chatflow_file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "chat_flow.services.graph_executor": {
+            "handlers": ["console", "chatflow_file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
         # WhatsApp app logging
-        'wa': {
-            'handlers': ['console', 'chatflow_file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "wa": {
+            "handlers": ["console", "chatflow_file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
-        'wa.tasks': {
-            'handlers': ['console', 'chatflow_file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "wa.tasks": {
+            "handlers": ["console", "chatflow_file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
         # Broadcast app logging
-        'broadcast': {
-            'handlers': ['console', 'chatflow_file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "broadcast": {
+            "handlers": ["console", "chatflow_file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
-        'broadcast.tasks': {
-            'handlers': ['console', 'chatflow_file'],
-            'level': 'DEBUG',
-            'propagate': False,
+        "broadcast.tasks": {
+            "handlers": ["console", "chatflow_file"],
+            "level": "DEBUG",
+            "propagate": False,
         },
     },
 }
@@ -619,16 +618,16 @@ IOS_APP_STORE_URL = config("IOS_APP_STORE_URL", "https://apps.apple.com/app/jina
 
 # Android Configuration
 ANDROID_PACKAGE_NAME = config("ANDROID_PACKAGE_NAME", "com.jinacode.jinaconnect")  # Your Android package name
-ANDROID_PLAY_STORE_URL = config("ANDROID_PLAY_STORE_URL", "https://play.google.com/store/apps/details?id=com.jinacode.jinaconnect")
+ANDROID_PLAY_STORE_URL = config(
+    "ANDROID_PLAY_STORE_URL", "https://play.google.com/store/apps/details?id=com.jinacode.jinaconnect"
+)
 
 # Android SHA-256 Certificate Fingerprints
 # Get these using: keytool -list -v -keystore your-keystore.jks
 # Format: "XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX"
 # You can have multiple fingerprints (debug + release) - comma separated
 ANDROID_SHA256_FINGERPRINTS = config(
-    "ANDROID_SHA256_FINGERPRINTS",
-    default="",
-    cast=lambda v: [x.strip() for x in v.split(",")] if v else []
+    "ANDROID_SHA256_FINGERPRINTS", default="", cast=lambda v: [x.strip() for x in v.split(",")] if v else []
 )
 
 # Custom URL Scheme for fallback (when Universal/App Links fail)

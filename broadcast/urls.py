@@ -1,11 +1,10 @@
-
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .url_tracker.viewsets import TrackedURLViewSet
 from .viewsets.broadcast import BroadcastViewSet
 from .viewsets.dashboard import BroadcastDashboardViewSet
 from .viewsets.messages import BroadcastMessageViewSet
-from .url_tracker.viewsets import TrackedURLViewSet
 
 # from wa.viewsets.broadcast import BroadcastViewSet
 
@@ -13,12 +12,11 @@ from .url_tracker.viewsets import TrackedURLViewSet
 router = DefaultRouter()
 
 
-router.register(r'messages', BroadcastMessageViewSet, basename='broadcast-messages')
-router.register(r'url-tracking', TrackedURLViewSet, basename='url-tracking')
-router.register(r'dashboard', BroadcastDashboardViewSet, basename='broadcast-dashboard')
-router.register(r'', BroadcastViewSet, basename='tenant-broadcasts')
+router.register(r"messages", BroadcastMessageViewSet, basename="broadcast-messages")
+router.register(r"url-tracking", TrackedURLViewSet, basename="url-tracking")
+router.register(r"dashboard", BroadcastDashboardViewSet, basename="broadcast-dashboard")
+router.register(r"", BroadcastViewSet, basename="tenant-broadcasts")
 
 urlpatterns = [
     path("", include(router.urls)),
 ]
-

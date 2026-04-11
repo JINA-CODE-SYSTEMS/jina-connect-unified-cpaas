@@ -8,15 +8,15 @@ initiations from open-session contacts.
 This is INFORMATIONAL ONLY — no wallet deduction occurs here.
 Final billing happens at actual send time.
 """
+
 import logging
 from collections import defaultdict
-from decimal import ROUND_HALF_UP, Decimal
-from typing import Optional
+from decimal import Decimal
 
 import phonenumbers
-from contacts.models import TenantContact
-from django.db.models import QuerySet
 from django.utils import timezone
+
+from contacts.models import TenantContact
 
 logger = logging.getLogger(__name__)
 
@@ -104,16 +104,13 @@ class ChargeBreakdownService:
         open_session_phones = csw_phones
 
         # Step 2: Group by country
-        country_data = self._group_by_country(
-            new_initiation_phones, open_session_phones
-        )
+        country_data = self._group_by_country(new_initiation_phones, open_session_phones)
 
         # Step 3: Per-country rate lookup + cost computation
         from wa.services.rate_card_service import RateCardService
+
         rate_svc = RateCardService(self.tenant)
-        open_session_multiplier = Decimal(str(
-            self.wa_app.open_session_rate_multiplier or 0
-        ))
+        open_session_multiplier = Decimal(str(self.wa_app.open_session_rate_multiplier or 0))
 
         country_breakdown = []
         total_new_cost = Decimal("0")
@@ -139,23 +136,23 @@ class ChargeBreakdownService:
             total_open_cost += open_cost
 
             country_name = self._get_country_name(country)
-            country_breakdown.append({
-                "country": country,
-                "country_name": country_name,
-                "new_initiations": {
-                    "count": new_count,
-                    "rate": str(rate.quantize(Decimal("0.000001"))),
-                    "cost": str(new_cost.quantize(Decimal("0.000001"))),
-                },
-                "open_session": {
-                    "count": open_count,
-                    "rate": str(open_rate.quantize(Decimal("0.000001"))) if open_count > 0 else None,
-                    "cost": str(open_cost.quantize(Decimal("0.000001"))),
-                },
-                "total_cost": str(
-                    (new_cost + open_cost).quantize(Decimal("0.000001"))
-                ),
-            })
+            country_breakdown.append(
+                {
+                    "country": country,
+                    "country_name": country_name,
+                    "new_initiations": {
+                        "count": new_count,
+                        "rate": str(rate.quantize(Decimal("0.000001"))),
+                        "cost": str(new_cost.quantize(Decimal("0.000001"))),
+                    },
+                    "open_session": {
+                        "count": open_count,
+                        "rate": str(open_rate.quantize(Decimal("0.000001"))) if open_count > 0 else None,
+                        "cost": str(open_cost.quantize(Decimal("0.000001"))),
+                    },
+                    "total_cost": str((new_cost + open_cost).quantize(Decimal("0.000001"))),
+                }
+            )
 
         estimated_total = total_new_cost + total_open_cost
         wallet_currency = str(self.tenant.balance.currency)
@@ -180,9 +177,7 @@ class ChargeBreakdownService:
                 "total_countries": len(country_breakdown),
                 "total_new_initiations": len(new_initiation_phones),
                 "total_open_sessions": len(open_session_phones),
-                "estimated_total_cost": str(
-                    estimated_total.quantize(Decimal("0.000001"))
-                ),
+                "estimated_total_cost": str(estimated_total.quantize(Decimal("0.000001"))),
                 "wallet_currency": wallet_currency,
             },
             "quota_impact": quota_impact,
@@ -209,10 +204,9 @@ class ChargeBreakdownService:
 
         if broadcast_id:
             from broadcast.models import Broadcast
+
             try:
-                broadcast = Broadcast.objects.get(
-                    id=broadcast_id, tenant=self.tenant
-                )
+                broadcast = Broadcast.objects.get(id=broadcast_id, tenant=self.tenant)
                 contacts_qs = broadcast.recipients.all()
 
                 # Get message type from template
@@ -221,19 +215,14 @@ class ChargeBreakdownService:
                     and hasattr(broadcast.template_number, "gupshup_template")
                     and broadcast.template_number.gupshup_template
                 ):
-                    message_type = (
-                        broadcast.template_number.gupshup_template.category
-                        or "MARKETING"
-                    )
+                    message_type = broadcast.template_number.gupshup_template.category or "MARKETING"
                 return contacts_qs, message_type
 
             except Broadcast.DoesNotExist:
                 return TenantContact.objects.none(), message_type
 
         elif contact_ids:
-            contacts_qs = TenantContact.objects.filter(
-                id__in=contact_ids, tenant=self.tenant
-            )
+            contacts_qs = TenantContact.objects.filter(id__in=contact_ids, tenant=self.tenant)
 
             # Resolve template category
             if template_id:
@@ -247,6 +236,7 @@ class ChargeBreakdownService:
         """Resolve message type from template_id (WATemplate UUID or TemplateNumber PK)."""
         # Try WATemplate first
         from wa.models import WATemplate
+
         try:
             tpl = WATemplate.objects.get(id=template_id)
             return tpl.category or "MARKETING"
@@ -255,10 +245,9 @@ class ChargeBreakdownService:
 
         # Try TemplateNumber → gupshup_template
         from message_templates.models import TemplateNumber
+
         try:
-            tn = TemplateNumber.objects.select_related("gupshup_template").get(
-                pk=template_id
-            )
+            tn = TemplateNumber.objects.select_related("gupshup_template").get(pk=template_id)
             if tn.gupshup_template:
                 return tn.gupshup_template.category or "MARKETING"
         except (TemplateNumber.DoesNotExist, ValueError):
@@ -286,8 +275,7 @@ class ChargeBreakdownService:
         """
         from datetime import timedelta
 
-        from team_inbox.models import (MessageDirectionChoices,
-                                       MessagePlatformChoices, Messages)
+        from team_inbox.models import MessageDirectionChoices, MessagePlatformChoices, Messages
 
         if not phone_list:
             return set()
@@ -351,9 +339,7 @@ class ChargeBreakdownService:
     # COUNTRY GROUPING
     # =========================================================================
 
-    def _group_by_country(
-        self, new_phones: set, open_phones: set
-    ) -> dict:
+    def _group_by_country(self, new_phones: set, open_phones: set) -> dict:
         """
         Group phone numbers by destination country.
 
@@ -404,15 +390,23 @@ class ChargeBreakdownService:
         """Get full country name from ISO alpha-2 code."""
         try:
             import pycountry
+
             c = pycountry.countries.get(alpha_2=country_code)
             return c.name if c else country_code
         except (ImportError, AttributeError):
             # Fallback — minimal map for common countries
             NAMES = {
-                "IN": "India", "US": "United States", "GB": "United Kingdom",
-                "AE": "United Arab Emirates", "AU": "Australia",
-                "SG": "Singapore", "BR": "Brazil", "DE": "Germany",
-                "FR": "France", "CA": "Canada", "ZZ": "Unknown",
+                "IN": "India",
+                "US": "United States",
+                "GB": "United Kingdom",
+                "AE": "United Arab Emirates",
+                "AU": "Australia",
+                "SG": "Singapore",
+                "BR": "Brazil",
+                "DE": "Germany",
+                "FR": "France",
+                "CA": "Canada",
+                "ZZ": "Unknown",
             }
             return NAMES.get(country_code, country_code)
 
@@ -500,16 +494,12 @@ class ChargeBreakdownService:
             "New initiations are charged at standard WhatsApp country rates.",
         ]
         if open_session_multiplier == Decimal("0"):
-            notes.append(
-                "Open-session (CSW) messages are free — the contact messaged you within 24 hours."
-            )
+            notes.append("Open-session (CSW) messages are free — the contact messaged you within 24 hours.")
         elif open_session_multiplier < Decimal("1"):
             notes.append(
                 f"Open-session messages are charged at {open_session_multiplier * 100:.0f}% of the standard rate."
             )
         else:
-            notes.append(
-                "Open-session messages are charged at the full standard rate for this BSP."
-            )
+            notes.append("Open-session messages are charged at the full standard rate for this BSP.")
         notes.append("Only new initiations count against your daily WhatsApp limit.")
         return notes

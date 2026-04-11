@@ -59,9 +59,7 @@ class TemplateAPI(WAAPI):
         """URL for deleting all templates with a given name."""
         return self.v1_url(f"whatsApp/templates/{waba_id}/{name}")
 
-    def _delete_template_url(
-        self, waba_id: str, name: str, language: str
-    ) -> str:
+    def _delete_template_url(self, waba_id: str, name: str, language: str) -> str:
         """URL for deleting a specific template by name and language."""
         return self.v1_url(f"whatsApp/templates/{waba_id}/{name}/{language}")
 
@@ -206,9 +204,7 @@ class TemplateAPI(WAAPI):
         }
         return self.make_json_request(request_data)
 
-    def delete_template(
-        self, waba_id: str, name: str, language: str
-    ) -> dict:
+    def delete_template(self, waba_id: str, name: str, language: str) -> dict:
         """
         Delete a specific template by name and language.
 

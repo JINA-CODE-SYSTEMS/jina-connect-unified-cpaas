@@ -20,17 +20,13 @@ Categories:
 from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample)
-from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
-from wa.utility.data_model.meta_direct.buttons import OrderDetailsButton
-from wa.utility.data_model.meta_direct.buttons_component import \
-    ButtonsComponent
-from wa.utility.data_model.meta_direct.footer import FooterComponent
-from wa.utility.data_model.meta_direct.header import (HeaderComponent,
-                                                      HeaderHandleExample,
-                                                      HeaderTextExample)
 
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
+from wa.utility.data_model.meta_direct.buttons import OrderDetailsButton
+from wa.utility.data_model.meta_direct.buttons_component import ButtonsComponent
+from wa.utility.data_model.meta_direct.footer import FooterComponent
+from wa.utility.data_model.meta_direct.header import HeaderComponent, HeaderHandleExample, HeaderTextExample
+from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
 # Union type for checkout template components
 CheckoutTemplateComponent = Union[
@@ -150,9 +146,7 @@ class CheckoutTemplateRequestValidator(BaseTemplateValidator):
                                         f"got '{btn_type}'"
                                     )
                             else:
-                                raise ValueError(
-                                    f"Button must be a dictionary, got {type(btn)}"
-                                )
+                                raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                         comp["buttons"] = parsed_buttons
                     parsed.append(ButtonsComponent(**comp))
                 else:
@@ -176,9 +170,7 @@ class CheckoutTemplateRequestValidator(BaseTemplateValidator):
 
         # Buttons is required (must contain ORDER_DETAILS button)
         if "buttons" not in component_types:
-            raise ValueError(
-                "Buttons component with ORDER_DETAILS button is required for order details templates"
-            )
+            raise ValueError("Buttons component with ORDER_DETAILS button is required for order details templates")
 
         # Check for duplicates
         for ctype in ("header", "body", "footer", "buttons"):
@@ -188,48 +180,30 @@ class CheckoutTemplateRequestValidator(BaseTemplateValidator):
         # Validate component order: header -> body -> footer -> buttons
         expected_order = ["header", "body", "footer", "buttons"]
         current_order = [t for t in expected_order if t in component_types]
-        actual_order = [
-            t.lower() for t in component_types if t.lower() in expected_order
-        ]
+        actual_order = [t.lower() for t in component_types if t.lower() in expected_order]
         if current_order != actual_order:
-            raise ValueError(
-                f"Components must be in order: header -> body -> footer -> buttons. "
-                f"Got: {actual_order}"
-            )
+            raise ValueError(f"Components must be in order: header -> body -> footer -> buttons. Got: {actual_order}")
 
         # Validate buttons: must have exactly 1 ORDER_DETAILS button
         buttons_comp = next(c for c in self.components if c.type.lower() == "buttons")
         if len(buttons_comp.buttons) != 1:
-            raise ValueError(
-                "Order details templates must have exactly one button (ORDER_DETAILS)"
-            )
+            raise ValueError("Order details templates must have exactly one button (ORDER_DETAILS)")
         button = buttons_comp.buttons[0]
         if not isinstance(button, OrderDetailsButton):
-            raise ValueError(
-                f"Order details templates require an ORDER_DETAILS button, "
-                f"got {type(button).__name__}"
-            )
+            raise ValueError(f"Order details templates require an ORDER_DETAILS button, got {type(button).__name__}")
 
         # Validate category-specific rules
         cat = self.category.upper()
         if cat == "MARKETING":
             if self.display_format != "order_details":
-                raise ValueError(
-                    "MARKETING order details templates require display_format='order_details'"
-                )
+                raise ValueError("MARKETING order details templates require display_format='order_details'")
             if button.text != "Buy now":
-                raise ValueError(
-                    f"MARKETING order details button text must be 'Buy now', got '{button.text}'"
-                )
+                raise ValueError(f"MARKETING order details button text must be 'Buy now', got '{button.text}'")
         elif cat == "UTILITY":
             if self.display_format is not None:
-                raise ValueError(
-                    "UTILITY order details templates must not set display_format"
-                )
+                raise ValueError("UTILITY order details templates must not set display_format")
             if button.text != "Review and Pay":
-                raise ValueError(
-                    f"UTILITY order details button text must be 'Review and Pay', got '{button.text}'"
-                )
+                raise ValueError(f"UTILITY order details button text must be 'Review and Pay', got '{button.text}'")
 
         # Validate header format (only TEXT or IMAGE allowed for order details)
         if "header" in component_types:
@@ -237,10 +211,7 @@ class CheckoutTemplateRequestValidator(BaseTemplateValidator):
             if hasattr(header_comp, "format") and header_comp.format:
                 allowed_formats = ("TEXT", "IMAGE")
                 if header_comp.format.upper() not in allowed_formats:
-                    raise ValueError(
-                        f"Order details template header must be TEXT or IMAGE, "
-                        f"got '{header_comp.format}'"
-                    )
+                    raise ValueError(f"Order details template header must be TEXT or IMAGE, got '{header_comp.format}'")
 
         return self
 
@@ -276,9 +247,7 @@ class CheckoutTemplateRequestValidator(BaseTemplateValidator):
                         },
                         {
                             "type": "buttons",
-                            "buttons": [
-                                {"type": "ORDER_DETAILS", "text": "Review and Pay"}
-                            ],
+                            "buttons": [{"type": "ORDER_DETAILS", "text": "Review and Pay"}],
                         },
                     ],
                 },
@@ -300,9 +269,7 @@ class CheckoutTemplateRequestValidator(BaseTemplateValidator):
                         },
                         {
                             "type": "buttons",
-                            "buttons": [
-                                {"type": "ORDER_DETAILS", "text": "Buy now"}
-                            ],
+                            "buttons": [{"type": "ORDER_DETAILS", "text": "Buy now"}],
                         },
                     ],
                 },

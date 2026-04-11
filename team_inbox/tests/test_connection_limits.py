@@ -7,7 +7,7 @@ atomic cache operations to prevent race conditions.
 from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from team_inbox.security import WebSocketSecurityManager
 
@@ -20,8 +20,10 @@ class ConnectionLimitTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = User.objects.create_user(
-            username="conn_user", email="conn@t.com",
-            mobile="+910000088881", password="testpass123",
+            username="conn_user",
+            email="conn@t.com",
+            mobile="+910000088881",
+            password="testpass123",
         )
 
     def setUp(self):
@@ -96,12 +98,8 @@ class ConnectionLimitTests(TestCase):
         for _ in range(3):
             async_to_sync(self.manager.check_connection_limits)(self.user)
         # At limit — next should fail
-        self.assertFalse(
-            async_to_sync(self.manager.check_connection_limits)(self.user)
-        )
+        self.assertFalse(async_to_sync(self.manager.check_connection_limits)(self.user))
         # Disconnect one
         async_to_sync(self.manager.decrement_connection_count)(self.user)
         # Now one slot is free
-        self.assertTrue(
-            async_to_sync(self.manager.check_connection_limits)(self.user)
-        )
+        self.assertTrue(async_to_sync(self.manager.check_connection_limits)(self.user))

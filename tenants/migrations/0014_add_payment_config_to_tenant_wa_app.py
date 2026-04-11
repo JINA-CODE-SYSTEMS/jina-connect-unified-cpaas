@@ -4,35 +4,45 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0013_merge_20260226_1731'),
+        ("tenants", "0013_merge_20260226_1731"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='auto_send_order_status_on_payment',
-            field=models.BooleanField(default=True, help_text="Auto-send order_status 'processing' on payment capture."),
+            model_name="tenantwaapp",
+            name="auto_send_order_status_on_payment",
+            field=models.BooleanField(
+                default=True, help_text="Auto-send order_status 'processing' on payment capture."
+            ),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='is_payment_enabled',
-            field=models.BooleanField(default=False, help_text='Whether WhatsApp Payments is enabled for this WABA.'),
+            model_name="tenantwaapp",
+            name="is_payment_enabled",
+            field=models.BooleanField(default=False, help_text="Whether WhatsApp Payments is enabled for this WABA."),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='payment_configuration_name',
-            field=models.CharField(blank=True, help_text='Must match WhatsApp Business Manager config exactly.', max_length=60, null=True),
+            model_name="tenantwaapp",
+            name="payment_configuration_name",
+            field=models.CharField(
+                blank=True, help_text="Must match WhatsApp Business Manager config exactly.", max_length=60, null=True
+            ),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='payment_credentials',
-            field=models.JSONField(blank=True, help_text='Payment gateway credentials (API keys, secrets, etc.)', null=True),
+            model_name="tenantwaapp",
+            name="payment_credentials",
+            field=models.JSONField(
+                blank=True, help_text="Payment gateway credentials (API keys, secrets, etc.)", null=True
+            ),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='payment_gateway',
-            field=models.CharField(blank=True, choices=[('razorpay', 'Razorpay'), ('payu', 'PayU'), ('billdesk', 'BillDesk'), ('zaakpay', 'Zaakpay')], max_length=20, null=True),
+            model_name="tenantwaapp",
+            name="payment_gateway",
+            field=models.CharField(
+                blank=True,
+                choices=[("razorpay", "Razorpay"), ("payu", "PayU"), ("billdesk", "BillDesk"), ("zaakpay", "Zaakpay")],
+                max_length=20,
+                null=True,
+            ),
         ),
     ]

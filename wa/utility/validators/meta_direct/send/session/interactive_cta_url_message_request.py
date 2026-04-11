@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class TextHeader(BaseModel):
     """Text header for CTA URL message"""
+
     type: Literal["text"] = "text"
     text: str = Field(
         ...,
@@ -28,6 +29,7 @@ class TextHeader(BaseModel):
 
 class ImageHeader(BaseModel):
     """Image header for CTA URL message"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -37,6 +39,7 @@ class ImageHeader(BaseModel):
 
 class VideoHeader(BaseModel):
     """Video header for CTA URL message"""
+
     type: Literal["video"] = "video"
     video: dict = Field(
         ...,
@@ -46,6 +49,7 @@ class VideoHeader(BaseModel):
 
 class DocumentHeader(BaseModel):
     """Document header for CTA URL message"""
+
     type: Literal["document"] = "document"
     document: dict = Field(
         ...,
@@ -63,6 +67,7 @@ CTAHeader = Union[TextHeader, ImageHeader, VideoHeader, DocumentHeader]
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -73,6 +78,7 @@ class InteractiveBody(BaseModel):
 
 class InteractiveFooter(BaseModel):
     """Footer for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -88,6 +94,7 @@ class InteractiveFooter(BaseModel):
 
 class CTAURLAction(BaseModel):
     """Action for CTA URL interactive message"""
+
     name: Literal["cta_url"] = "cta_url"
     parameters: dict = Field(
         ...,
@@ -101,16 +108,16 @@ class CTAURLAction(BaseModel):
             raise ValueError("CTA URL parameters must include 'display_text'")
         if "url" not in v:
             raise ValueError("CTA URL parameters must include 'url'")
-        
+
         # display_text max length is 20
         if len(v.get("display_text", "")) > 20:
             raise ValueError("display_text must be max 20 characters")
-        
+
         # Validate URL format
         url = v.get("url", "")
         if not url.startswith(("http://", "https://")):
             raise ValueError("url must be a valid HTTP/HTTPS URL")
-        
+
         return v
 
 
@@ -121,10 +128,9 @@ class CTAURLAction(BaseModel):
 
 class InteractiveCTAURLContent(BaseModel):
     """Interactive CTA URL content"""
+
     type: Literal["cta_url"] = "cta_url"
-    header: Optional[CTAHeader] = Field(
-        None, description="Optional header (text, image, video, or document)"
-    )
+    header: Optional[CTAHeader] = Field(None, description="Optional header (text, image, video, or document)")
     body: InteractiveBody = Field(..., description="Message body (required)")
     footer: Optional[InteractiveFooter] = Field(None, description="Optional footer")
     action: CTAURLAction = Field(..., description="CTA URL action")
@@ -153,6 +159,7 @@ class InteractiveCTAURLContent(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -184,22 +191,12 @@ class InteractiveCTAURLMessageSendRequestValidator(BaseModel):
         >>> request = InteractiveCTAURLMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type (must be 'interactive')"
-    )
-    interactive: InteractiveCTAURLContent = Field(
-        ..., description="Interactive CTA URL content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    type: Literal["interactive"] = Field("interactive", description="Message type (must be 'interactive')")
+    interactive: InteractiveCTAURLContent = Field(..., description="Interactive CTA URL content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -208,9 +205,7 @@ class InteractiveCTAURLMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

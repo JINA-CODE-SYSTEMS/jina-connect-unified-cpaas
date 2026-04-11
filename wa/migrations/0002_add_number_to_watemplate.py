@@ -5,16 +5,21 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('message_templates', '0001_initial'),
-        ('wa', '0001_initial'),
+        ("message_templates", "0001_initial"),
+        ("wa", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='watemplate',
-            name='number',
-            field=models.OneToOneField(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='gupshup_template', to='message_templates.templatenumber'),
+            model_name="watemplate",
+            name="number",
+            field=models.OneToOneField(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="gupshup_template",
+                to="message_templates.templatenumber",
+            ),
         ),
     ]

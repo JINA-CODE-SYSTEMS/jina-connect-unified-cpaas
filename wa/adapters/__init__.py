@@ -22,8 +22,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Dict, Type
 
-from wa.adapters.base import AdapterResult  # noqa: F401 — re-export
-from wa.adapters.base import BaseBSPAdapter
+from wa.adapters.base import (
+    AdapterResult,  # noqa: F401 — re-export
+    BaseBSPAdapter,
+)
 from wa.adapters.gupshup import GupshupAdapter
 from wa.adapters.meta_direct import MetaDirectAdapter
 from wa.models import BSPChoices
@@ -70,9 +72,6 @@ def get_bsp_adapter(wa_app: "WAApp") -> BaseBSPAdapter:
 
     adapter_cls = _ADAPTER_REGISTRY.get(bsp)
     if adapter_cls is None:
-        raise NotImplementedError(
-            f"No BSP adapter registered for '{bsp}'. "
-            f"Available: {list(_ADAPTER_REGISTRY.keys())}"
-        )
+        raise NotImplementedError(f"No BSP adapter registered for '{bsp}'. Available: {list(_ADAPTER_REGISTRY.keys())}")
 
     return adapter_cls(wa_app)

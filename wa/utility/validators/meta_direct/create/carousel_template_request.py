@@ -11,13 +11,11 @@ body, and buttons.
 from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample)
-from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
-from wa.utility.data_model.meta_direct.buttons import (PhoneNumberButton,
-                                                       QuickReplyButton,
-                                                       URLButton)
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
+from wa.utility.data_model.meta_direct.buttons import PhoneNumberButton, QuickReplyButton, URLButton
 from wa.utility.data_model.meta_direct.header import HeaderHandleExample
+from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
 # ============================================================================
 # Card Component Models
@@ -26,13 +24,12 @@ from wa.utility.data_model.meta_direct.header import HeaderHandleExample
 
 class CardHeaderComponent(BaseModel):
     """Header component for carousel card - only IMAGE or VIDEO allowed"""
+
     type: Literal["header", "HEADER"] = "header"
     format: Literal["IMAGE", "VIDEO", "image", "video"] = Field(
         ..., description="Header format (IMAGE or VIDEO only for carousel cards)"
     )
-    example: Optional[HeaderHandleExample] = Field(
-        None, description="Example header handle for media"
-    )
+    example: Optional[HeaderHandleExample] = Field(None, description="Example header handle for media")
 
     @field_validator("format")
     @classmethod
@@ -42,6 +39,7 @@ class CardHeaderComponent(BaseModel):
 
 class CardBodyComponent(BaseModel):
     """Body component for carousel card"""
+
     type: Literal["body", "BODY"] = "body"
     text: str = Field(
         ...,
@@ -49,13 +47,12 @@ class CardBodyComponent(BaseModel):
         max_length=160,
         description="Card body text (max 160 characters)",
     )
-    example: Optional[BodyTextExample] = Field(
-        None, description="Example values for body variables"
-    )
+    example: Optional[BodyTextExample] = Field(None, description="Example values for body variables")
 
 
 class CardButtonsComponent(BaseModel):
     """Buttons component for carousel card - max 2 buttons per card"""
+
     type: Literal["buttons", "BUTTONS"] = "buttons"
     buttons: List[Union[QuickReplyButton, URLButton, PhoneNumberButton]] = Field(
         ...,
@@ -71,6 +68,7 @@ CardComponent = Union[CardHeaderComponent, CardBodyComponent, CardButtonsCompone
 
 class CarouselCard(BaseModel):
     """A single card in the carousel"""
+
     components: List[CardComponent] = Field(
         ...,
         min_length=1,
@@ -122,13 +120,9 @@ class CarouselCard(BaseModel):
                                 elif btn_type == "phone_number":
                                     parsed_buttons.append(PhoneNumberButton(**btn))
                                 else:
-                                    raise ValueError(
-                                        f"Unsupported button type for carousel: {btn_type}"
-                                    )
+                                    raise ValueError(f"Unsupported button type for carousel: {btn_type}")
                             else:
-                                raise ValueError(
-                                    f"Button must be a dictionary, got {type(btn)}"
-                                )
+                                raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                         comp["buttons"] = parsed_buttons
                     parsed.append(CardButtonsComponent(**comp))
                 else:
@@ -160,6 +154,7 @@ class CarouselCard(BaseModel):
 
 class CarouselComponent(BaseModel):
     """Carousel component containing multiple cards"""
+
     type: Literal["carousel", "CAROUSEL"] = "carousel"
     cards: List[CarouselCard] = Field(
         ...,
@@ -252,9 +247,7 @@ class CarouselTemplateRequestValidator(BaseTemplateValidator):
                             elif isinstance(card, dict):
                                 parsed_cards.append(CarouselCard(**card))
                             else:
-                                raise ValueError(
-                                    f"Card must be a dictionary, got {type(card)}"
-                                )
+                                raise ValueError(f"Card must be a dictionary, got {type(card)}")
                         comp["cards"] = parsed_cards
                     parsed.append(CarouselComponent(**comp))
                 else:
@@ -283,20 +276,13 @@ class CarouselTemplateRequestValidator(BaseTemplateValidator):
             raise ValueError("Only one carousel component is allowed")
 
         # Validate all cards have consistent button configuration
-        carousel_comp = next(
-            c for c in self.components if c.type.lower() == "carousel"
-        )
+        carousel_comp = next(c for c in self.components if c.type.lower() == "carousel")
         if carousel_comp.cards:
             first_card_buttons = None
             for i, card in enumerate(carousel_comp.cards):
-                buttons_comp = next(
-                    (c for c in card.components if c.type.lower() == "buttons"), None
-                )
+                buttons_comp = next((c for c in card.components if c.type.lower() == "buttons"), None)
                 if buttons_comp:
-                    button_types = [
-                        (b.type, getattr(b, "text", None))
-                        for b in buttons_comp.buttons
-                    ]
+                    button_types = [(b.type, getattr(b, "text", None)) for b in buttons_comp.buttons]
                     if first_card_buttons is None:
                         first_card_buttons = button_types
                     elif len(button_types) != len(first_card_buttons):
@@ -343,9 +329,7 @@ class CarouselTemplateRequestValidator(BaseTemplateValidator):
                                         {
                                             "type": "header",
                                             "format": "image",
-                                            "example": {
-                                                "header_handle": ["4::aW1hZ2UxLmpwZw=="]
-                                            },
+                                            "example": {"header_handle": ["4::aW1hZ2UxLmpwZw=="]},
                                         },
                                         {
                                             "type": "body",
@@ -371,9 +355,7 @@ class CarouselTemplateRequestValidator(BaseTemplateValidator):
                                         {
                                             "type": "header",
                                             "format": "image",
-                                            "example": {
-                                                "header_handle": ["4::aW1hZ2UyLmpwZw=="]
-                                            },
+                                            "example": {"header_handle": ["4::aW1hZ2UyLmpwZw=="]},
                                         },
                                         {
                                             "type": "body",

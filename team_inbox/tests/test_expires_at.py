@@ -14,8 +14,11 @@ User = get_user_model()
 
 def _make_user(username, email, mobile, **kwargs):
     return User.objects.create_user(
-        username=username, email=email, mobile=mobile,
-        password="testpass123", **kwargs,
+        username=username,
+        email=email,
+        mobile=mobile,
+        password="testpass123",
+        **kwargs,
     )
 
 
@@ -28,7 +31,10 @@ class WithExpiresAtTests(TestCase):
         cls.owner_role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.owner = _make_user("exp_owner", "exp_owner@t.com", "+910000022221")
         TenantUser.objects.create(
-            user=cls.owner, tenant=cls.tenant, role=cls.owner_role, is_active=True,
+            user=cls.owner,
+            tenant=cls.tenant,
+            role=cls.owner_role,
+            is_active=True,
         )
 
     def _create_message(self, platform="WHATSAPP", direction="INCOMING"):
@@ -64,6 +70,7 @@ class WithExpiresAtTests(TestCase):
         self.assertIsInstance(annotated.expires_at_timestamp, int)
         # It should be in the future (at least 23h from now given it was just created + 24h)
         import time
+
         now_epoch = int(time.time())
         self.assertGreater(annotated.expires_at_timestamp, now_epoch)
 

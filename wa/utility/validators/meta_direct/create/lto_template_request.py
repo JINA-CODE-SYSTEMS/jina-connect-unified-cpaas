@@ -11,22 +11,20 @@ Based on META's LTO template structure:
 - components: Array of header, limited_time_offer, body, and button components
 """
 
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample)
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
+from wa.utility.data_model.meta_direct.buttons import (
+    CopyCodeButton,
+    PhoneNumberButton,
+    QuickReplyButton,
+    TemplateButton,
+    URLButton,
+)
+from wa.utility.data_model.meta_direct.header import HeaderComponent, HeaderHandleExample, HeaderTextExample
 from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
-from wa.utility.data_model.meta_direct.buttons import (CopyCodeButton,
-                                                       PhoneNumberButton,
-                                                       QuickReplyButton,
-                                                       TemplateButton,
-                                                       URLButton)
-from wa.utility.data_model.meta_direct.buttons_component import \
-    ButtonsComponent
-from wa.utility.data_model.meta_direct.header import (HeaderComponent,
-                                                      HeaderHandleExample,
-                                                      HeaderTextExample)
 
 # ============================================================================
 # Limited Time Offer Component
@@ -35,6 +33,7 @@ from wa.utility.data_model.meta_direct.header import (HeaderComponent,
 
 class LimitedTimeOfferDetails(BaseModel):
     """Details for the limited time offer"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -49,6 +48,7 @@ class LimitedTimeOfferDetails(BaseModel):
 
 class LimitedTimeOfferComponent(BaseModel):
     """Limited Time Offer component for LTO templates"""
+
     type: Literal["limited_time_offer", "LIMITED_TIME_OFFER"] = "limited_time_offer"
     limited_time_offer: LimitedTimeOfferDetails = Field(
         ...,
@@ -63,10 +63,9 @@ class LimitedTimeOfferComponent(BaseModel):
 
 class LTOButtonsComponent(BaseModel):
     """Buttons component specifically for LTO templates - typically copy_code + url"""
+
     type: Literal["buttons"] = "buttons"
-    buttons: List[TemplateButton] = Field(
-        ..., min_length=1, max_length=10, description="List of buttons"
-    )
+    buttons: List[TemplateButton] = Field(..., min_length=1, max_length=10, description="List of buttons")
 
     @field_validator("buttons")
     @classmethod
@@ -76,15 +75,10 @@ class LTOButtonsComponent(BaseModel):
 
         # Check that at least one copy_code button exists for LTO
         copy_code_buttons = [
-            b
-            for b in v
-            if isinstance(b, CopyCodeButton)
-            or (isinstance(b, dict) and b.get("type") == "copy_code")
+            b for b in v if isinstance(b, CopyCodeButton) or (isinstance(b, dict) and b.get("type") == "copy_code")
         ]
         if not copy_code_buttons:
-            raise ValueError(
-                "LTO templates must have at least one copy_code type button"
-            )
+            raise ValueError("LTO templates must have at least one copy_code type button")
 
         # Count button types for validation
         copy_code_count = len(copy_code_buttons)
@@ -92,12 +86,7 @@ class LTOButtonsComponent(BaseModel):
             raise ValueError("Only one copy_code button is allowed per template")
 
         # URL buttons validation
-        url_count = sum(
-            1
-            for b in v
-            if isinstance(b, URLButton)
-            or (isinstance(b, dict) and b.get("type") == "url")
-        )
+        url_count = sum(1 for b in v if isinstance(b, URLButton) or (isinstance(b, dict) and b.get("type") == "url"))
         if url_count > 2:
             raise ValueError("Maximum 2 URL buttons allowed")
 
@@ -105,9 +94,7 @@ class LTOButtonsComponent(BaseModel):
 
 
 # Union type for LTO template components
-LTOTemplateComponent = Union[
-    HeaderComponent, LimitedTimeOfferComponent, BodyComponent, LTOButtonsComponent
-]
+LTOTemplateComponent = Union[HeaderComponent, LimitedTimeOfferComponent, BodyComponent, LTOButtonsComponent]
 
 
 class LTOTemplateRequestValidator(BaseTemplateValidator):
@@ -191,12 +178,8 @@ class LTOTemplateRequestValidator(BaseTemplateValidator):
                     parsed.append(HeaderComponent(**comp))
                 elif comp_type_lower == "limited_time_offer":
                     # Parse limited_time_offer details
-                    if "limited_time_offer" in comp and isinstance(
-                        comp["limited_time_offer"], dict
-                    ):
-                        comp["limited_time_offer"] = LimitedTimeOfferDetails(
-                            **comp["limited_time_offer"]
-                        )
+                    if "limited_time_offer" in comp and isinstance(comp["limited_time_offer"], dict):
+                        comp["limited_time_offer"] = LimitedTimeOfferDetails(**comp["limited_time_offer"])
                     parsed.append(LimitedTimeOfferComponent(**comp))
                 elif comp_type_lower == "body":
                     # Parse example if present
@@ -226,9 +209,7 @@ class LTOTemplateRequestValidator(BaseTemplateValidator):
                                         f"Allowed types: 'copy_code', 'url', 'quick_reply', 'phone_number'."
                                     )
                             else:
-                                raise ValueError(
-                                    f"Button must be a dictionary, got {type(btn)}"
-                                )
+                                raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                         comp["buttons"] = parsed_buttons
                     parsed.append(LTOButtonsComponent(**comp))
                 else:
@@ -245,9 +226,7 @@ class LTOTemplateRequestValidator(BaseTemplateValidator):
 
         # limited_time_offer is required for LTO templates
         if "limited_time_offer" not in component_types:
-            raise ValueError(
-                "limited_time_offer component is required for LTO templates"
-            )
+            raise ValueError("limited_time_offer component is required for LTO templates")
 
         # Body is required for LTO templates
         if "body" not in component_types:
@@ -255,9 +234,7 @@ class LTOTemplateRequestValidator(BaseTemplateValidator):
 
         # Buttons with copy_code is required
         if "buttons" not in component_types:
-            raise ValueError(
-                "Buttons component with copy_code button is required for LTO templates"
-            )
+            raise ValueError("Buttons component with copy_code button is required for LTO templates")
 
         # Check for duplicate components
         if component_types.count("header") > 1:
@@ -272,14 +249,11 @@ class LTOTemplateRequestValidator(BaseTemplateValidator):
         # Validate component order: header -> limited_time_offer -> body -> buttons
         expected_order = ["header", "limited_time_offer", "body", "buttons"]
         current_order = [t for t in expected_order if t in component_types]
-        actual_order = [
-            t.lower() for t in component_types if t.lower() in expected_order
-        ]
+        actual_order = [t.lower() for t in component_types if t.lower() in expected_order]
 
         if current_order != actual_order:
             raise ValueError(
-                f"Components must be in order: header -> limited_time_offer -> body -> buttons. "
-                f"Got: {actual_order}"
+                f"Components must be in order: header -> limited_time_offer -> body -> buttons. Got: {actual_order}"
             )
 
         return self

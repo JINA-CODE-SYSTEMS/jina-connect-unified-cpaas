@@ -8,12 +8,11 @@ Endpoints:
     GET /broadcast/url-tracking/broadcast/<broadcast_id>/  → aggregated analytics for a broadcast
 """
 
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from abstract.viewsets.base import BaseTenantModelViewSet
 from broadcast.url_tracker.models import TrackedURL, TrackedURLClick
 from broadcast.url_tracker.serializers import (
     BroadcastClickAnalyticsSerializer,
@@ -38,35 +37,31 @@ class TrackedURLViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """Filter tracked URLs by the requesting user's tenant."""
         user = self.request.user
-        qs = TrackedURL.objects.select_related(
-            'contact', 'broadcast', 'broadcast_message'
-        ).filter(
+        qs = TrackedURL.objects.select_related("contact", "broadcast", "broadcast_message").filter(
             tenant__tenant_users__user=user
         )
 
         # Optional filters via query params
-        broadcast_id = self.request.query_params.get('broadcast_id')
+        broadcast_id = self.request.query_params.get("broadcast_id")
         if broadcast_id:
             qs = qs.filter(broadcast_id=broadcast_id)
 
-        contact_id = self.request.query_params.get('contact_id')
+        contact_id = self.request.query_params.get("contact_id")
         if contact_id:
             qs = qs.filter(contact_id=contact_id)
 
         # Only show URLs that have been clicked (optional filter)
-        clicked_only = self.request.query_params.get('clicked_only', '').lower()
-        if clicked_only in ('true', '1', 'yes'):
+        clicked_only = self.request.query_params.get("clicked_only", "").lower()
+        if clicked_only in ("true", "1", "yes"):
             qs = qs.filter(click_count__gt=0)
 
-        return qs.order_by('-created_at')
+        return qs.order_by("-created_at")
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=["get"])
     def clicks(self, request, pk=None):
         """List individual click events for a specific tracked URL."""
         tracked_url = self.get_object()
-        clicks = TrackedURLClick.objects.filter(
-            tracked_url=tracked_url
-        ).order_by('-clicked_at')
+        clicks = TrackedURLClick.objects.filter(tracked_url=tracked_url).order_by("-clicked_at")
 
         # Paginate
         page = self.paginate_queryset(clicks)
@@ -77,11 +72,11 @@ class TrackedURLViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = TrackedURLClickSerializer(clicks, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], url_path=r'broadcast/(?P<broadcast_id>\d+)')
+    @action(detail=False, methods=["get"], url_path=r"broadcast/(?P<broadcast_id>\d+)")
     def broadcast_analytics(self, request, broadcast_id=None):
         """
         Get aggregated click analytics for a broadcast.
-        
+
         Response:
             {
                 "total_tracked_urls": 150,
@@ -102,49 +97,35 @@ class TrackedURLViewSet(viewsets.ReadOnlyModelViewSet):
         """
         # Verify the user has access to this broadcast's tenant
         from broadcast.models import Broadcast
+
         try:
-            broadcast = Broadcast.objects.filter(
-                tenant__tenant_users__user=request.user,
-                id=broadcast_id
-            ).first()
+            broadcast = Broadcast.objects.filter(tenant__tenant_users__user=request.user, id=broadcast_id).first()
 
             if not broadcast:
-                return Response(
-                    {'error': 'Broadcast not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({"error": "Broadcast not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception:
-            return Response(
-                {'error': 'Broadcast not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": "Broadcast not found"}, status=status.HTTP_404_NOT_FOUND)
 
         analytics = get_click_analytics_for_broadcast(int(broadcast_id))
         serializer = BroadcastClickAnalyticsSerializer(analytics)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], url_path=r'message/(?P<message_id>\d+)')
+    @action(detail=False, methods=["get"], url_path=r"message/(?P<message_id>\d+)")
     def message_analytics(self, request, message_id=None):
         """
         Get click analytics for a specific broadcast message (single recipient).
         """
         from broadcast.models import BroadcastMessage
+
         try:
             message = BroadcastMessage.objects.filter(
-                broadcast__tenant__tenant_users__user=request.user,
-                id=message_id
+                broadcast__tenant__tenant_users__user=request.user, id=message_id
             ).first()
 
             if not message:
-                return Response(
-                    {'error': 'Message not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({"error": "Message not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception:
-            return Response(
-                {'error': 'Message not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": "Message not found"}, status=status.HTTP_404_NOT_FOUND)
 
         analytics = get_click_analytics_for_message(int(message_id))
         return Response(analytics)

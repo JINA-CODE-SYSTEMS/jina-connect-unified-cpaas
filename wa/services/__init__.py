@@ -20,10 +20,10 @@ from wa.services.meta_template_service import (
 from wa.services.sync_templates import (
     BaseSyncService,
     BSPType,
-    get_bsp_type_from_app,
-    get_sync_service,
     GupshupSyncService,
     SyncError,
+    get_bsp_type_from_app,
+    get_sync_service,
 )
 
 __all__ = [

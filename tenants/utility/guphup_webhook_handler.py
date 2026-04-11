@@ -12,9 +12,9 @@ class GupshupWebhookHandler:
     @staticmethod
     def _bsp_from_app(wa_app):
         """Return the BSP string from a wa_app, defaulting to GUPSHUP."""
-        if wa_app and hasattr(wa_app, 'bsp') and wa_app.bsp:
+        if wa_app and hasattr(wa_app, "bsp") and wa_app.bsp:
             return wa_app.bsp
-        return 'GUPSHUP'
+        return "GUPSHUP"
 
     def handle_webhook_message(self, data, wa_app=None):
         """
@@ -25,7 +25,7 @@ class GupshupWebhookHandler:
         """
         try:
             # Classify the payload instead of blindly assuming MESSAGE.
-            event_type = _classify_cloud_api_event(data) if isinstance(data, dict) else 'MESSAGE'
+            event_type = _classify_cloud_api_event(data) if isinstance(data, dict) else "MESSAGE"
 
             row = WAWebhookEvent.objects.create(
                 wa_app=wa_app,
@@ -43,7 +43,7 @@ class GupshupWebhookHandler:
         try:
             row = WAWebhookEvent.objects.create(
                 wa_app=wa_app,
-                event_type='TEMPLATE',
+                event_type="TEMPLATE",
                 bsp=self._bsp_from_app(wa_app),
                 payload=data,
             )
@@ -55,9 +55,9 @@ class GupshupWebhookHandler:
     def handle_webhook_billing(self, data, wa_app=None):
         """Handle billing webhooks."""
         try:
-            row = WAWebhookEvent.objects.create(
+            WAWebhookEvent.objects.create(
                 wa_app=wa_app,
-                event_type='BILLING',
+                event_type="BILLING",
                 bsp=self._bsp_from_app(wa_app),
                 payload=data,
             )
@@ -70,11 +70,11 @@ class GupshupWebhookHandler:
         try:
             row = WAWebhookEvent.objects.create(
                 wa_app=wa_app,
-                event_type='STATUS',
+                event_type="STATUS",
                 bsp=self._bsp_from_app(wa_app),
                 payload=data,
             )
             # Trigger async processing for message status updates
             process_webhook_event_task.delay(str(row.pk))
         except Exception as e:
-            print(f"Error saving webhook event (STATUS): {str(e)}")                        
+            print(f"Error saving webhook event (STATUS): {str(e)}")

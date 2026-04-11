@@ -80,10 +80,13 @@ Reference: https://docs.wati.io/reference/post_api-v1-whatsapp-templates
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field, model_validator
-from wa.utility.data_model.wati.template_input import (WATIButtonsType,
-                                                       WATIHeaderFormat,
-                                                       WATITemplateButton,
-                                                       WATITemplateSubCategory)
+
+from wa.utility.data_model.wati.template_input import (
+    WATIButtonsType,
+    WATIHeaderFormat,
+    WATITemplateButton,
+    WATITemplateSubCategory,
+)
 
 from .base_validator import BaseTemplateValidator
 
@@ -275,25 +278,17 @@ class MarketingTemplateValidator(BaseTemplateValidator):
     )
 
     # Carousel / product card fields (populated externally)
-    cards: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Carousel or product card data (2-10 cards)"
-    )
+    cards: Optional[List[Dict[str, Any]]] = Field(None, description="Carousel or product card data (2-10 cards)")
 
     # Product fields for MPM / SPM
-    product_retailer_id: Optional[str] = Field(
-        None, description="Product retailer ID for SPM templates"
-    )
+    product_retailer_id: Optional[str] = Field(None, description="Product retailer ID for SPM templates")
     product_sections: Optional[List[Dict[str, Any]]] = Field(
         None, description="Product list sections for MPM templates"
     )
 
     # LTO fields
-    lto_text: Optional[str] = Field(
-        None, max_length=16, description="Limited time offer text (max 16 chars)"
-    )
-    lto_has_expiration: Optional[bool] = Field(
-        None, description="Whether the LTO has an expiration countdown"
-    )
+    lto_text: Optional[str] = Field(None, max_length=16, description="Limited time offer text (max 16 chars)")
+    lto_has_expiration: Optional[bool] = Field(None, description="Whether the LTO has an expiration countdown")
 
     # =========================================================================
     # Helpers
@@ -335,10 +330,7 @@ class MarketingTemplateValidator(BaseTemplateValidator):
                     f"'{header_fmt}' headers. Allowed: {allowed}"
                 )
             if not allowed:
-                raise ValueError(
-                    f"{self.subCategory.value} marketing templates do not allow "
-                    f"template-level headers."
-                )
+                raise ValueError(f"{self.subCategory.value} marketing templates do not allow template-level headers.")
         return self
 
     @model_validator(mode="after")
@@ -346,9 +338,7 @@ class MarketingTemplateValidator(BaseTemplateValidator):
         """Validate footer against sub-category guardrails."""
         guardrails = self._get_guardrails()
         if self.footer and not guardrails.get("footer_allowed", True):
-            raise ValueError(
-                f"{self.subCategory.value} marketing templates do not allow footers."
-            )
+            raise ValueError(f"{self.subCategory.value} marketing templates do not allow footers.")
         return self
 
     @model_validator(mode="after")
@@ -375,15 +365,12 @@ class MarketingTemplateValidator(BaseTemplateValidator):
 
         # No buttons allowed for this sub-category?
         if max_total == 0:
-            raise ValueError(
-                f"{self.subCategory.value} marketing templates do not allow buttons."
-            )
+            raise ValueError(f"{self.subCategory.value} marketing templates do not allow buttons.")
 
         # Total count
         if len(self.buttons) > max_total:
             raise ValueError(
-                f"{self.subCategory.value} marketing templates allow max "
-                f"{max_total} buttons, got {len(self.buttons)}."
+                f"{self.subCategory.value} marketing templates allow max {max_total} buttons, got {len(self.buttons)}."
             )
 
         counts = self._count_buttons_by_type()
@@ -401,10 +388,7 @@ class MarketingTemplateValidator(BaseTemplateValidator):
         # Validate required types
         for req in required_types:
             if req not in counts:
-                raise ValueError(
-                    f"{self.subCategory.value} marketing templates require "
-                    f"at least one '{req}' button."
-                )
+                raise ValueError(f"{self.subCategory.value} marketing templates require at least one '{req}' button.")
 
         # Validate per-type limits
         for btn_type, count in counts.items():
@@ -427,8 +411,7 @@ class MarketingTemplateValidator(BaseTemplateValidator):
                 )
             elif not can_mix:
                 raise ValueError(
-                    f"{self.subCategory.value} marketing templates cannot mix "
-                    f"quick_reply and call_to_action buttons."
+                    f"{self.subCategory.value} marketing templates cannot mix quick_reply and call_to_action buttons."
                 )
 
         return self
@@ -450,9 +433,7 @@ class MarketingTemplateValidator(BaseTemplateValidator):
         if not self.cards or len(self.cards) < 2:
             raise ValueError("CAROUSEL marketing templates require 2–10 cards.")
         if len(self.cards) > 10:
-            raise ValueError(
-                f"CAROUSEL marketing templates allow max 10 cards, got {len(self.cards)}."
-            )
+            raise ValueError(f"CAROUSEL marketing templates allow max 10 cards, got {len(self.cards)}.")
 
         card_rules = MARKETING_GUARDRAILS["CAROUSEL"]["cards"]
         button_counts = []
@@ -461,38 +442,35 @@ class MarketingTemplateValidator(BaseTemplateValidator):
             card_header = card.get("header", {})
             card_header_fmt = card_header.get("format", "").upper() if card_header else ""
             if card_header_fmt not in card_rules["card_header_formats"]:
-                raise ValueError(
-                    f"Card {i+1}: header format must be IMAGE or VIDEO, got '{card_header_fmt}'."
-                )
+                raise ValueError(f"Card {i + 1}: header format must be IMAGE or VIDEO, got '{card_header_fmt}'.")
 
             card_body = card.get("body", "")
             if not card_body:
-                raise ValueError(f"Card {i+1}: body is required.")
+                raise ValueError(f"Card {i + 1}: body is required.")
             if len(card_body) > card_rules["card_body_max_length"]:
                 raise ValueError(
-                    f"Card {i+1}: body max {card_rules['card_body_max_length']} chars, "
-                    f"got {len(card_body)}."
+                    f"Card {i + 1}: body max {card_rules['card_body_max_length']} chars, got {len(card_body)}."
                 )
 
             card_buttons = card.get("buttons", [])
             if len(card_buttons) < card_rules["card_buttons_min"]:
-                raise ValueError(f"Card {i+1}: at least {card_rules['card_buttons_min']} button(s) required.")
+                raise ValueError(f"Card {i + 1}: at least {card_rules['card_buttons_min']} button(s) required.")
             if len(card_buttons) > card_rules["card_buttons_max"]:
-                raise ValueError(f"Card {i+1}: max {card_rules['card_buttons_max']} buttons, got {len(card_buttons)}.")
+                raise ValueError(
+                    f"Card {i + 1}: max {card_rules['card_buttons_max']} buttons, got {len(card_buttons)}."
+                )
             button_counts.append(len(card_buttons))
 
             for btn in card_buttons:
                 btn_type = btn.get("type", "") if isinstance(btn, dict) else getattr(btn, "type", "")
                 if btn_type not in card_rules["card_button_types"]:
                     raise ValueError(
-                        f"Card {i+1}: button type '{btn_type}' not allowed. "
+                        f"Card {i + 1}: button type '{btn_type}' not allowed. "
                         f"Allowed: {card_rules['card_button_types']}"
                     )
 
         if card_rules.get("all_cards_same_button_count") and len(set(button_counts)) > 1:
-            raise ValueError(
-                f"All carousel cards must have the same number of buttons. Found: {button_counts}"
-            )
+            raise ValueError(f"All carousel cards must have the same number of buttons. Found: {button_counts}")
 
         return self
 
@@ -546,11 +524,13 @@ class MarketingTemplateValidator(BaseTemplateValidator):
         for i, section in enumerate(self.product_sections):
             title = section.get("title", "")
             if len(title) > rules.get("section_title_max_length", 24):
-                raise ValueError(f"Section {i+1}: title max {rules.get('section_title_max_length', 24)} chars.")
+                raise ValueError(f"Section {i + 1}: title max {rules.get('section_title_max_length', 24)} chars.")
             total_products += len(section.get("products", []))
 
         if total_products > rules.get("products_max_total", 30):
-            raise ValueError(f"MPM templates allow max {rules.get('products_max_total', 30)} products total, got {total_products}.")
+            raise ValueError(
+                f"MPM templates allow max {rules.get('products_max_total', 30)} products total, got {total_products}."
+            )
 
         return self
 

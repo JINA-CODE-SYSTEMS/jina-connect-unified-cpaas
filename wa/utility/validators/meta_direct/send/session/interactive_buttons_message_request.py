@@ -8,7 +8,7 @@ interactive button message sending requests during the 24-hour session window.
 import re
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Header Types
@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class TextHeader(BaseModel):
     """Text header for interactive message"""
+
     type: Literal["text"] = "text"
     text: str = Field(
         ...,
@@ -28,6 +29,7 @@ class TextHeader(BaseModel):
 
 class ImageHeader(BaseModel):
     """Image header for interactive message"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -37,6 +39,7 @@ class ImageHeader(BaseModel):
 
 class VideoHeader(BaseModel):
     """Video header for interactive message"""
+
     type: Literal["video"] = "video"
     video: dict = Field(
         ...,
@@ -46,6 +49,7 @@ class VideoHeader(BaseModel):
 
 class DocumentHeader(BaseModel):
     """Document header for interactive message"""
+
     type: Literal["document"] = "document"
     document: dict = Field(
         ...,
@@ -63,6 +67,7 @@ InteractiveHeader = Union[TextHeader, ImageHeader, VideoHeader, DocumentHeader]
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -73,6 +78,7 @@ class InteractiveBody(BaseModel):
 
 class InteractiveFooter(BaseModel):
     """Footer for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -88,6 +94,7 @@ class InteractiveFooter(BaseModel):
 
 class ReplyButton(BaseModel):
     """Reply button for interactive message"""
+
     type: Literal["reply"] = "reply"
     reply: dict = Field(
         ...,
@@ -110,6 +117,7 @@ class ReplyButton(BaseModel):
 
 class ButtonsAction(BaseModel):
     """Action for button interactive message"""
+
     buttons: List[ReplyButton] = Field(
         ...,
         min_length=1,
@@ -125,10 +133,9 @@ class ButtonsAction(BaseModel):
 
 class InteractiveButtonsContent(BaseModel):
     """Interactive buttons content"""
+
     type: Literal["button"] = "button"
-    header: Optional[InteractiveHeader] = Field(
-        None, description="Optional header (text, image, video, or document)"
-    )
+    header: Optional[InteractiveHeader] = Field(None, description="Optional header (text, image, video, or document)")
     body: InteractiveBody = Field(..., description="Message body (required)")
     footer: Optional[InteractiveFooter] = Field(None, description="Optional footer")
     action: ButtonsAction = Field(..., description="Button action")
@@ -157,6 +164,7 @@ class InteractiveButtonsContent(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -186,22 +194,12 @@ class InteractiveButtonsMessageSendRequestValidator(BaseModel):
         >>> request = InteractiveButtonsMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type (must be 'interactive')"
-    )
-    interactive: InteractiveButtonsContent = Field(
-        ..., description="Interactive buttons content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    type: Literal["interactive"] = Field("interactive", description="Message type (must be 'interactive')")
+    interactive: InteractiveButtonsContent = Field(..., description="Interactive buttons content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -210,9 +208,7 @@ class InteractiveButtonsMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

@@ -16,7 +16,7 @@ Based on META's send LTO template message structure:
 import re
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Parameter Models
@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class HeaderImageParameter(BaseModel):
     """Header parameter with image"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -43,6 +44,7 @@ class HeaderImageParameter(BaseModel):
 
 class HeaderVideoParameter(BaseModel):
     """Header parameter with video"""
+
     type: Literal["video"] = "video"
     video: dict = Field(
         ...,
@@ -61,6 +63,7 @@ class HeaderVideoParameter(BaseModel):
 
 class HeaderDocumentParameter(BaseModel):
     """Header parameter with document"""
+
     type: Literal["document"] = "document"
     document: dict = Field(
         ...,
@@ -78,19 +81,19 @@ class HeaderDocumentParameter(BaseModel):
 
 
 # Union type for header parameters
-HeaderParameter = Union[
-    HeaderImageParameter, HeaderVideoParameter, HeaderDocumentParameter
-]
+HeaderParameter = Union[HeaderImageParameter, HeaderVideoParameter, HeaderDocumentParameter]
 
 
 class BodyTextParameter(BaseModel):
     """Body parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the body parameter")
 
 
 class BodyCurrencyParameter(BaseModel):
     """Body parameter with currency"""
+
     type: Literal["currency"] = "currency"
     currency: dict = Field(
         ...,
@@ -100,6 +103,7 @@ class BodyCurrencyParameter(BaseModel):
 
 class BodyDateTimeParameter(BaseModel):
     """Body parameter with date_time"""
+
     type: Literal["date_time"] = "date_time"
     date_time: dict = Field(..., description="DateTime object with fallback_value")
 
@@ -110,12 +114,14 @@ BodyParameter = Union[BodyTextParameter, BodyCurrencyParameter, BodyDateTimePara
 
 class CouponCodeButtonParameter(BaseModel):
     """Button parameter for copy_code buttons"""
+
     type: Literal["coupon_code"] = "coupon_code"
     coupon_code: str = Field(..., description="The coupon code to copy")
 
 
 class URLButtonParameter(BaseModel):
     """Button parameter for URL buttons with dynamic suffix"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Dynamic URL suffix value")
 
@@ -127,14 +133,14 @@ class URLButtonParameter(BaseModel):
 
 class HeaderComponentSend(BaseModel):
     """Header component for sending template message"""
+
     type: Literal["header"] = "header"
-    parameters: List[HeaderParameter] = Field(
-        ..., min_length=1, max_length=1, description="Header parameters"
-    )
+    parameters: List[HeaderParameter] = Field(..., min_length=1, max_length=1, description="Header parameters")
 
 
 class LimitedTimeOfferComponentSend(BaseModel):
     """Limited Time Offer component for sending template message with expiration"""
+
     type: Literal["limited_time_offer"] = "limited_time_offer"
     parameters: List[dict] = Field(
         ...,
@@ -152,33 +158,27 @@ class LimitedTimeOfferComponentSend(BaseModel):
             if "type" not in param or param["type"] != "limited_time_offer":
                 raise ValueError("LTO parameter must have type 'limited_time_offer'")
             if "limited_time_offer" not in param:
-                raise ValueError(
-                    "LTO parameter must have 'limited_time_offer' object"
-                )
+                raise ValueError("LTO parameter must have 'limited_time_offer' object")
             lto_data = param["limited_time_offer"]
             if "expiration_time_ms" not in lto_data:
-                raise ValueError(
-                    "limited_time_offer must have 'expiration_time_ms' timestamp"
-                )
+                raise ValueError("limited_time_offer must have 'expiration_time_ms' timestamp")
             # Validate expiration_time_ms is a valid timestamp
             exp_time = lto_data["expiration_time_ms"]
             if not isinstance(exp_time, int) or exp_time <= 0:
-                raise ValueError(
-                    "expiration_time_ms must be a positive integer (Unix timestamp in milliseconds)"
-                )
+                raise ValueError("expiration_time_ms must be a positive integer (Unix timestamp in milliseconds)")
         return v
 
 
 class BodyComponentSend(BaseModel):
     """Body component for sending template message"""
+
     type: Literal["body"] = "body"
-    parameters: List[BodyParameter] = Field(
-        ..., min_length=1, description="Body parameters"
-    )
+    parameters: List[BodyParameter] = Field(..., min_length=1, description="Body parameters")
 
 
 class CopyCodeButtonComponentSend(BaseModel):
     """Button component for copy_code button in send request"""
+
     type: Literal["button"] = "button"
     sub_type: Literal["copy_code"] = "copy_code"
     index: int = Field(..., ge=0, le=9, description="Button index (0-based)")
@@ -189,12 +189,11 @@ class CopyCodeButtonComponentSend(BaseModel):
 
 class URLButtonComponentSend(BaseModel):
     """Button component for URL button in send request"""
+
     type: Literal["button"] = "button"
     sub_type: Literal["url"] = "url"
     index: int = Field(..., ge=0, le=9, description="Button index (0-based)")
-    parameters: List[URLButtonParameter] = Field(
-        ..., min_length=1, max_length=1, description="URL button parameters"
-    )
+    parameters: List[URLButtonParameter] = Field(..., min_length=1, max_length=1, description="URL button parameters")
 
 
 # Union type for send components
@@ -214,6 +213,7 @@ SendLTOTemplateComponent = Union[
 
 class LanguageInput(BaseModel):
     """Language input for template request"""
+
     code: str = Field(
         ...,
         min_length=2,
@@ -236,6 +236,7 @@ class LanguageInput(BaseModel):
 
 class LTOTemplateSendBody(BaseModel):
     """Template body for LTO template send request"""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -289,17 +290,11 @@ class LTOTemplateSendBody(BaseModel):
                                 elif param_type == "video":
                                     parsed_params.append(HeaderVideoParameter(**param))
                                 elif param_type == "document":
-                                    parsed_params.append(
-                                        HeaderDocumentParameter(**param)
-                                    )
+                                    parsed_params.append(HeaderDocumentParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown header parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown header parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(HeaderComponentSend(**comp))
                 elif comp_type == "limited_time_offer":
@@ -320,13 +315,9 @@ class LTOTemplateSendBody(BaseModel):
                                 elif param_type == "date_time":
                                     parsed_params.append(BodyDateTimeParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown body parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown body parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(BodyComponentSend(**comp))
                 elif comp_type == "button":
@@ -341,17 +332,11 @@ class LTOTemplateSendBody(BaseModel):
                                 elif isinstance(param, dict):
                                     param_type = param.get("type")
                                     if param_type == "coupon_code":
-                                        parsed_params.append(
-                                            CouponCodeButtonParameter(**param)
-                                        )
+                                        parsed_params.append(CouponCodeButtonParameter(**param))
                                     else:
-                                        raise ValueError(
-                                            f"Unknown copy_code button parameter type: {param_type}"
-                                        )
+                                        raise ValueError(f"Unknown copy_code button parameter type: {param_type}")
                                 else:
-                                    raise ValueError(
-                                        f"Parameter must be a dictionary, got {type(param)}"
-                                    )
+                                    raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                             comp["parameters"] = parsed_params
                         parsed.append(CopyCodeButtonComponentSend(**comp))
                     elif sub_type == "url":
@@ -364,17 +349,11 @@ class LTOTemplateSendBody(BaseModel):
                                 elif isinstance(param, dict):
                                     param_type = param.get("type")
                                     if param_type == "text":
-                                        parsed_params.append(
-                                            URLButtonParameter(**param)
-                                        )
+                                        parsed_params.append(URLButtonParameter(**param))
                                     else:
-                                        raise ValueError(
-                                            f"Unknown URL button parameter type: {param_type}"
-                                        )
+                                        raise ValueError(f"Unknown URL button parameter type: {param_type}")
                                 else:
-                                    raise ValueError(
-                                        f"Parameter must be a dictionary, got {type(param)}"
-                                    )
+                                    raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                             comp["parameters"] = parsed_params
                         parsed.append(URLButtonComponentSend(**comp))
                     else:
@@ -432,16 +411,10 @@ class LTOTemplateSendRequestValidator(BaseModel):
         >>> request = LTOTemplateSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["template"] = Field(
-        "template", description="Message type (must be 'template')"
-    )
+    type: Literal["template"] = Field("template", description="Message type (must be 'template')")
     template: LTOTemplateSendBody = Field(..., description="Template details")
 
     @field_validator("to")
@@ -453,9 +426,7 @@ class LTOTemplateSendRequestValidator(BaseModel):
         cleaned = re.sub(r"[^\d+]", "", v)
         # Validate phone number format
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:
@@ -495,9 +466,7 @@ class LTOTemplateSendRequestValidator(BaseModel):
                                 "parameters": [
                                     {
                                         "type": "image",
-                                        "image": {
-                                            "link": "https://example.com/flash-sale.jpg"
-                                        },
+                                        "image": {"link": "https://example.com/flash-sale.jpg"},
                                     }
                                 ],
                             },
@@ -506,9 +475,7 @@ class LTOTemplateSendRequestValidator(BaseModel):
                                 "parameters": [
                                     {
                                         "type": "limited_time_offer",
-                                        "limited_time_offer": {
-                                            "expiration_time_ms": 1704067200000
-                                        },
+                                        "limited_time_offer": {"expiration_time_ms": 1704067200000},
                                     }
                                 ],
                             },
@@ -520,9 +487,7 @@ class LTOTemplateSendRequestValidator(BaseModel):
                                 "type": "button",
                                 "sub_type": "copy_code",
                                 "index": 0,
-                                "parameters": [
-                                    {"type": "coupon_code", "coupon_code": "FLASH50"}
-                                ],
+                                "parameters": [{"type": "coupon_code", "coupon_code": "FLASH50"}],
                             },
                             {
                                 "type": "button",

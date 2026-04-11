@@ -1,13 +1,12 @@
-from abstract.pagination_class import BasePaginationClass
-from abstract.serializers import BaseSerializer
-from abstract.backends import DateTimeAwareFilterBackend
 from rest_framework import viewsets
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 
+from abstract.backends import DateTimeAwareFilterBackend
+from abstract.pagination_class import BasePaginationClass
+from abstract.serializers import BaseSerializer
 from tenants.permission_classes import TenantRolePermission
-
 
 # Slugs whose querysets are narrowed to only their assigned records.
 # Per ticket #250: VIEWER sees all records (read-only enforced by permissions,
@@ -28,7 +27,6 @@ class BaseModelViewSet(viewsets.ModelViewSet):
     ordering = ["-id"]
     http_method_names = ["get", "post", "patch"]
     serializer_class = BaseSerializer
-    
 
 
 class BaseTenantModelViewSet(BaseModelViewSet):
@@ -40,6 +38,7 @@ class BaseTenantModelViewSet(BaseModelViewSet):
     Subclasses may override ``get_role_scoped_queryset()`` to apply row-level
     filtering for agents (e.g. agents see only assigned records).
     """
+
     permission_classes = [IsAuthenticated, TenantRolePermission]
 
     # ── helpers ────────────────────────────────────────────────────────
@@ -55,9 +54,7 @@ class BaseTenantModelViewSet(BaseModelViewSet):
             setattr(
                 self.request,
                 cache_attr,
-                TenantUser.objects.select_related("role")
-                .filter(user=self.request.user, is_active=True)
-                .first(),
+                TenantUser.objects.select_related("role").filter(user=self.request.user, is_active=True).first(),
             )
         return getattr(self.request, cache_attr)
 
@@ -79,11 +76,7 @@ class BaseTenantModelViewSet(BaseModelViewSet):
 
         # Role-scoped filtering — only for AGENT role
         tenant_user = self._get_tenant_user()
-        if (
-            tenant_user
-            and tenant_user.role
-            and tenant_user.role.slug in _SCOPED_ROLE_SLUGS
-        ):
+        if tenant_user and tenant_user.role and tenant_user.role.slug in _SCOPED_ROLE_SLUGS:
             qs = self.get_role_scoped_queryset(qs, user, tenant_user)
         return qs
 

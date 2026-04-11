@@ -21,10 +21,10 @@ import logging
 import re
 from typing import TYPE_CHECKING, Optional
 
-from django.conf import settings
 from django.db import IntegrityError
 from django.utils import timezone
 from pydantic import ValidationError
+
 from wa.adapters.base import AdapterResult, BaseBSPAdapter
 from wa.models import TemplateStatus
 
@@ -32,13 +32,16 @@ from wa.models import TemplateStatus
 try:
     from silk.profiling.profiler import silk_profile
 except (ImportError, RuntimeError):
-    def silk_profile(name=""):              # noqa: no-op fallback
+
+    def silk_profile(name=""):  # noqa: no-op fallback
         def decorator(func):
             return func
+
         return decorator
 
+
 if TYPE_CHECKING:
-    from wa.models import WAApp, WASubscription, WATemplate
+    from wa.models import WASubscription, WATemplate
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +104,7 @@ class GupshupAdapter(BaseBSPAdapter):
 
         app_id = self._resolve_app_id()
         if not app_id:
-            raise ValueError(
-                "Gupshup app_id not configured on the WAApp."
-            )
+            raise ValueError("Gupshup app_id not configured on the WAApp.")
 
         return TemplateAPI(appId=app_id, token=token)
 
@@ -122,12 +123,9 @@ class GupshupAdapter(BaseBSPAdapter):
 
         Raises ``ValueError`` or ``pydantic.ValidationError`` on bad data.
         """
-        from wa.utility.validators.gupshup.authentication_template_validator import \
-            AuthTemplateValidator
-        from wa.utility.validators.gupshup.marketing_validator import \
-            MarketingTemplateValidator
-        from wa.utility.validators.gupshup.utility_template_validator import \
-            UtilityTemplateValidator
+        from wa.utility.validators.gupshup.authentication_template_validator import AuthTemplateValidator
+        from wa.utility.validators.gupshup.marketing_validator import MarketingTemplateValidator
+        from wa.utility.validators.gupshup.utility_template_validator import UtilityTemplateValidator
 
         # A — canonical model → Gupshup-shaped dict (named → positional)
         raw = template.to_gupshup_payload()
@@ -163,8 +161,13 @@ class GupshupAdapter(BaseBSPAdapter):
 
         # B3 — reject template types not supported by Gupshup / WhatsApp
         _SUPPORTED_TEMPLATE_TYPES = {
-            "TEXT", "IMAGE", "VIDEO", "DOCUMENT",
-            "CAROUSEL", "LOCATION", "CATALOG",
+            "TEXT",
+            "IMAGE",
+            "VIDEO",
+            "DOCUMENT",
+            "CAROUSEL",
+            "LOCATION",
+            "CATALOG",
         }
         if template_type_raw not in _SUPPORTED_TEMPLATE_TYPES:
             raise ValueError(
@@ -201,7 +204,7 @@ class GupshupAdapter(BaseBSPAdapter):
                 f"has_cards={bool(raw.get('cards'))}, "
                 f"has_buttons={bool(raw.get('buttons'))}, "
                 f"has_header={bool(raw.get('header'))}, "
-                f"has_footer={bool(raw.get('footer'))}"
+                f"has_footer={bool(raw.get('footer'))}",
             )
 
         return raw
@@ -351,12 +354,18 @@ class GupshupAdapter(BaseBSPAdapter):
         times).  The local ``WATemplate.element_name`` is updated to match
         so the DB stays in sync with what Gupshup accepted.
         """
-        self._log("info", f"[STEP 1/5] submit_template START — element_name={template.element_name}, wa_app_id={template.wa_app_id}")
+        self._log(
+            "info",
+            f"[STEP 1/5] submit_template START — element_name={template.element_name}, wa_app_id={template.wa_app_id}",
+        )
 
         # Step 2: Resolve credentials
         try:
             api = self._get_template_api()
-            self._log("info", f"[STEP 2/5] Credentials resolved — app_id={api.appId}, token={'***' + self._resolve_partner_token()[-4:] if self._resolve_partner_token() else 'NONE'}")
+            self._log(
+                "info",
+                f"[STEP 2/5] Credentials resolved — app_id={api.appId}, token={'***' + self._resolve_partner_token()[-4:] if self._resolve_partner_token() else 'NONE'}",
+            )
         except ValueError as exc:
             self._log("error", f"[STEP 2/5] Credential resolution FAILED — {exc}")
             template.error_message = str(exc)
@@ -375,7 +384,10 @@ class GupshupAdapter(BaseBSPAdapter):
             # Step 3: Validate & build payload
             try:
                 payload = self._validate_and_build_payload(template)
-                self._log("info", f"[STEP 3/5] Payload validated & built (attempt {attempt}) — elementName={payload.get('elementName')}, category={payload.get('category')}, templateType={payload.get('templateType')}")
+                self._log(
+                    "info",
+                    f"[STEP 3/5] Payload validated & built (attempt {attempt}) — elementName={payload.get('elementName')}, category={payload.get('category')}, templateType={payload.get('templateType')}",
+                )
                 self._log("debug", f"[STEP 3/5] Full payload: {payload}")
             except (ValueError, ValidationError) as exc:
                 error_msg = f"Gupshup payload validation failed: {exc}"
@@ -390,9 +402,15 @@ class GupshupAdapter(BaseBSPAdapter):
 
             # Step 4: Call Gupshup API
             try:
-                self._log("info", f"[STEP 4/5] Calling Gupshup Partner API (attempt {attempt}) — POST /partner/app/{api.appId}/templates")
+                self._log(
+                    "info",
+                    f"[STEP 4/5] Calling Gupshup Partner API (attempt {attempt}) — POST /partner/app/{api.appId}/templates",
+                )
                 response = api.apply_for_template(payload)
-                self._log("info", f"[STEP 4/5] Gupshup responded — keys={list(response.keys()) if isinstance(response, dict) else type(response)}")
+                self._log(
+                    "info",
+                    f"[STEP 4/5] Gupshup responded — keys={list(response.keys()) if isinstance(response, dict) else type(response)}",
+                )
                 self._log("debug", f"[STEP 4/5] Full response: {response}")
             except Exception as exc:
                 error_msg = f"Gupshup API call failed: {exc}"
@@ -409,10 +427,7 @@ class GupshupAdapter(BaseBSPAdapter):
             status_str = (response.get("status") or "").lower()
             resp_message = response.get("message", "")
 
-            if (
-                status_str == "error"
-                and self._DUPLICATE_ERROR_FRAGMENT in resp_message.lower()
-            ):
+            if status_str == "error" and self._DUPLICATE_ERROR_FRAGMENT in resp_message.lower():
                 # ── Duplicate detected — try next element_name suffix ─────
                 new_name = self._next_element_name(template.element_name)
                 self._log(
@@ -485,11 +500,7 @@ class GupshupAdapter(BaseBSPAdapter):
 
         # Success path — extract Gupshup's own template ID
         template_data = response.get("template", response)
-        gs_template_id = (
-            template_data.get("id")
-            or template_data.get("templateId")
-            or template_data.get("elementName")
-        )
+        gs_template_id = template_data.get("id") or template_data.get("templateId") or template_data.get("elementName")
 
         # Store in bsp_template_id — this is Gupshup's internal ID.
         # meta_template_id will be populated later during get_template_status()
@@ -587,7 +598,10 @@ class GupshupAdapter(BaseBSPAdapter):
         stored in ``meta_template_id`` so both IDs are tracked.
         """
         gs_id = template.bsp_template_id
-        self._log("info", f"[STEP 1/4] get_template_status START — element_name={template.element_name}, bsp_template_id={gs_id}")
+        self._log(
+            "info",
+            f"[STEP 1/4] get_template_status START — element_name={template.element_name}, bsp_template_id={gs_id}",
+        )
 
         if not gs_id:
             self._log("warning", "[STEP 1/4] ABORTED — bsp_template_id is not set")
@@ -640,11 +654,7 @@ class GupshupAdapter(BaseBSPAdapter):
         # Extract META's actual template ID if Gupshup includes it.
         # Gupshup may return it under meta.id, meta.templateId, or wabaTemplateId.
         meta_section = template_data.get("meta", {})
-        meta_id = (
-            meta_section.get("id")
-            or meta_section.get("templateId")
-            or template_data.get("wabaTemplateId")
-        )
+        meta_id = meta_section.get("id") or meta_section.get("templateId") or template_data.get("wabaTemplateId")
 
         update_fields = ["status", "rejection_reason", "last_synced_at"]
 
@@ -660,7 +670,10 @@ class GupshupAdapter(BaseBSPAdapter):
         template.last_synced_at = timezone.now()
         template.save(update_fields=update_fields)
 
-        self._log("info", f"[STEP 4/4] get_template_status SUCCESS — status={canonical_status}, meta_template_id={template.meta_template_id}")
+        self._log(
+            "info",
+            f"[STEP 4/4] get_template_status SUCCESS — status={canonical_status}, meta_template_id={template.meta_template_id}",
+        )
 
         return AdapterResult(
             success=True,
@@ -807,8 +820,7 @@ class GupshupAdapter(BaseBSPAdapter):
         self._log("info", f"[STEP 1/5] register_webhook START — url={subscription.webhook_url}")
 
         from wa.models import SubscriptionStatus
-        from wa.utility.data_model.gupshup.subscription import \
-            SubscriptionFormData
+        from wa.utility.data_model.gupshup.subscription import SubscriptionFormData
 
         # Step 2: Resolve credentials
         try:
@@ -849,9 +861,7 @@ class GupshupAdapter(BaseBSPAdapter):
             self._log("warning", f"[STEP 3/5] Could not check existing count: {exc}")
 
         # Step 4: Build payload
-        modes = self._map_event_types_to_gupshup_modes(
-            subscription.event_types or []
-        )
+        modes = self._map_event_types_to_gupshup_modes(subscription.event_types or [])
         if not modes:
             modes = ["MESSAGE", "ALL"]  # sensible default
 
@@ -886,9 +896,13 @@ class GupshupAdapter(BaseBSPAdapter):
             subscription.bsp_subscription_id = str(gs_sub_id) if gs_sub_id else None
             subscription.status = SubscriptionStatus.ACTIVE
             subscription.error_message = None
-            subscription.save(update_fields=[
-                "bsp_subscription_id", "status", "error_message",
-            ])
+            subscription.save(
+                update_fields=[
+                    "bsp_subscription_id",
+                    "status",
+                    "error_message",
+                ]
+            )
             self._log("info", f"register_webhook SUCCESS — gs_id={gs_sub_id}")
             return AdapterResult(
                 success=True,
@@ -1050,14 +1064,18 @@ class GupshupAdapter(BaseBSPAdapter):
         # Mark all local WASubscription records for this app as INACTIVE
         from wa.models import SubscriptionStatus, WASubscription
 
-        deleted_count = WASubscription.objects.filter(
-            wa_app=self.wa_app,
-        ).exclude(
-            status=SubscriptionStatus.INACTIVE,
-        ).update(
-            status=SubscriptionStatus.INACTIVE,
-            bsp_subscription_id=None,
-            error_message="Purged during refresh",
+        deleted_count = (
+            WASubscription.objects.filter(
+                wa_app=self.wa_app,
+            )
+            .exclude(
+                status=SubscriptionStatus.INACTIVE,
+            )
+            .update(
+                status=SubscriptionStatus.INACTIVE,
+                bsp_subscription_id=None,
+                error_message="Purged during refresh",
+            )
         )
 
         self._log("info", f"purge_all_webhooks SUCCESS — {deleted_count} local records marked INACTIVE")
@@ -1096,24 +1114,26 @@ class GupshupAdapter(BaseBSPAdapter):
         )
 
         # Required top-level fields
-        required = ("currency", "type", "reference_id", "payment_configuration",
-                     "total_amount", "order", "payment_settings")
+        required = (
+            "currency",
+            "type",
+            "reference_id",
+            "payment_configuration",
+            "total_amount",
+            "order",
+            "payment_settings",
+        )
         missing = [f for f in required if f not in order_data]
         if missing:
             raise ValueError(f"Missing required fields: {missing}")
 
         # Currency must be INR
         if order_data["currency"] != "INR":
-            raise ValueError(
-                f"Only INR currency is supported, got '{order_data['currency']}'"
-            )
+            raise ValueError(f"Only INR currency is supported, got '{order_data['currency']}'")
 
         # Type must be digital-goods or physical-goods
         if order_data["type"] not in ("digital-goods", "physical-goods"):
-            raise ValueError(
-                f"type must be 'digital-goods' or 'physical-goods', "
-                f"got '{order_data['type']}'"
-            )
+            raise ValueError(f"type must be 'digital-goods' or 'physical-goods', got '{order_data['type']}'")
 
         # Validate total_amount structure
         total = order_data["total_amount"]

@@ -11,27 +11,21 @@ Based on META's catalog template structure:
 - components: Array of body, footer, and catalog button components
 """
 
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample,
-                                                    BodyTextNamedParam)
-from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
-from wa.utility.data_model.meta_direct.buttons import (CatalogButton,
-                                                       PhoneNumberButton,
-                                                       QuickReplyButton,
-                                                       TemplateButton,
-                                                       URLButton)
-from wa.utility.data_model.meta_direct.buttons_component import \
-    ButtonsComponent
-from wa.utility.data_model.meta_direct.enums import (HeaderFormat,
-                                                     ParameterFormat,
-                                                     TemplateCategory)
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
+from wa.utility.data_model.meta_direct.buttons import (
+    CatalogButton,
+    PhoneNumberButton,
+    QuickReplyButton,
+    TemplateButton,
+    URLButton,
+)
 from wa.utility.data_model.meta_direct.footer import FooterComponent
-from wa.utility.data_model.meta_direct.header import (HeaderComponent,
-                                                      HeaderHandleExample,
-                                                      HeaderTextExample)
+from wa.utility.data_model.meta_direct.header import HeaderComponent, HeaderHandleExample, HeaderTextExample
+from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
 # ============================================================================
 # Catalog-specific Button Component
@@ -40,10 +34,9 @@ from wa.utility.data_model.meta_direct.header import (HeaderComponent,
 
 class CatalogButtonsComponent(BaseModel):
     """Buttons component specifically for catalog templates - must contain CATALOG button"""
+
     type: Literal["BUTTONS"] = "BUTTONS"
-    buttons: List[TemplateButton] = Field(
-        ..., min_length=1, max_length=10, description="List of buttons"
-    )
+    buttons: List[TemplateButton] = Field(..., min_length=1, max_length=10, description="List of buttons")
 
     @field_validator("buttons")
     @classmethod
@@ -53,15 +46,10 @@ class CatalogButtonsComponent(BaseModel):
 
         # Check that at least one CATALOG button exists
         catalog_buttons = [
-            b
-            for b in v
-            if isinstance(b, CatalogButton)
-            or (isinstance(b, dict) and b.get("type") == "CATALOG")
+            b for b in v if isinstance(b, CatalogButton) or (isinstance(b, dict) and b.get("type") == "CATALOG")
         ]
         if not catalog_buttons:
-            raise ValueError(
-                "Catalog templates must have at least one CATALOG type button"
-            )
+            raise ValueError("Catalog templates must have at least one CATALOG type button")
 
         # Count button types for validation
         catalog_count = len(catalog_buttons)
@@ -72,9 +60,7 @@ class CatalogButtonsComponent(BaseModel):
 
 
 # Union type for catalog template components
-CatalogTemplateComponent = Union[
-    HeaderComponent, BodyComponent, FooterComponent, CatalogButtonsComponent
-]
+CatalogTemplateComponent = Union[HeaderComponent, BodyComponent, FooterComponent, CatalogButtonsComponent]
 
 
 class CatalogTemplateRequestValidator(BaseTemplateValidator):
@@ -178,9 +164,7 @@ class CatalogTemplateRequestValidator(BaseTemplateValidator):
                                 else:
                                     raise ValueError(f"Unknown button type: {btn_type}")
                             else:
-                                raise ValueError(
-                                    f"Button must be a dictionary, got {type(btn)}"
-                                )
+                                raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                         comp["buttons"] = parsed_buttons
                     parsed.append(CatalogButtonsComponent(**comp))
                 else:
@@ -201,9 +185,7 @@ class CatalogTemplateRequestValidator(BaseTemplateValidator):
 
         # Buttons with CATALOG is required
         if "BUTTONS" not in component_types:
-            raise ValueError(
-                "Buttons component with CATALOG button is required for catalog templates"
-            )
+            raise ValueError("Buttons component with CATALOG button is required for catalog templates")
 
         # Check for duplicate components
         if component_types.count("HEADER") > 1:
@@ -221,10 +203,7 @@ class CatalogTemplateRequestValidator(BaseTemplateValidator):
         actual_order = [t.upper() for t in component_types if t.upper() in expected_order]
 
         if current_order != actual_order:
-            raise ValueError(
-                f"Components must be in order: HEADER -> BODY -> FOOTER -> BUTTONS. "
-                f"Got: {actual_order}"
-            )
+            raise ValueError(f"Components must be in order: HEADER -> BODY -> FOOTER -> BUTTONS. Got: {actual_order}")
 
         return self
 

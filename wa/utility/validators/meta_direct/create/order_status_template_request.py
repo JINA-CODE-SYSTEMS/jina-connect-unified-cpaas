@@ -11,18 +11,12 @@ and other order status changes to customers.
 from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample)
-from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
-from wa.utility.data_model.meta_direct.buttons import (PhoneNumberButton,
-                                                       QuickReplyButton,
-                                                       URLButton)
-from wa.utility.data_model.meta_direct.buttons_component import \
-    ButtonsComponent
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
+from wa.utility.data_model.meta_direct.buttons import PhoneNumberButton, QuickReplyButton, URLButton
 from wa.utility.data_model.meta_direct.footer import FooterComponent
-from wa.utility.data_model.meta_direct.header import (HeaderComponent,
-                                                      HeaderHandleExample,
-                                                      HeaderTextExample)
+from wa.utility.data_model.meta_direct.header import HeaderComponent, HeaderHandleExample, HeaderTextExample
+from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
 # ============================================================================
 # Order Status Specific Models
@@ -31,6 +25,7 @@ from wa.utility.data_model.meta_direct.header import (HeaderComponent,
 
 class OrderStatusType(BaseModel):
     """Order status type enumeration"""
+
     status: Literal[
         "pending",
         "processing",
@@ -48,6 +43,7 @@ class OrderStatusType(BaseModel):
 
 class ShippingAddress(BaseModel):
     """Shipping address for order status"""
+
     name: str = Field(..., min_length=1, max_length=100, description="Recipient name")
     address: str = Field(..., min_length=1, max_length=256, description="Street address")
     city: str = Field(..., min_length=1, max_length=100, description="City")
@@ -58,6 +54,7 @@ class ShippingAddress(BaseModel):
 
 class ShippingInfo(BaseModel):
     """Shipping information for order status updates"""
+
     carrier: Optional[str] = Field(
         None,
         max_length=100,
@@ -85,6 +82,7 @@ class ShippingInfo(BaseModel):
 
 class OrderStatusDetails(BaseModel):
     """Order status details for the template"""
+
     reference_id: str = Field(
         ...,
         min_length=1,
@@ -121,6 +119,7 @@ class OrderStatusDetails(BaseModel):
 
 class OrderStatusAction(BaseModel):
     """Action containing order status details"""
+
     name: Literal["order_status"] = Field(
         "order_status",
         description="Action name for order status",
@@ -133,6 +132,7 @@ class OrderStatusAction(BaseModel):
 
 class OrderStatusComponent(BaseModel):
     """Order status component for the template"""
+
     type: Literal["order_status", "ORDER_STATUS"] = "order_status"
     action: OrderStatusAction = Field(
         ...,
@@ -147,6 +147,7 @@ class OrderStatusComponent(BaseModel):
 
 class OrderStatusButtonsComponent(BaseModel):
     """Buttons component for order status templates"""
+
     type: Literal["buttons"] = "buttons"
     buttons: List[Union[URLButton, QuickReplyButton, PhoneNumberButton]] = Field(
         ..., min_length=1, max_length=3, description="List of buttons (max 3)"
@@ -259,14 +260,10 @@ class OrderStatusTemplateRequestValidator(BaseTemplateValidator):
                     # Parse order status action
                     if "action" in comp and isinstance(comp["action"], dict):
                         action_data = comp["action"]
-                        if "parameters" in action_data and isinstance(
-                            action_data["parameters"], dict
-                        ):
+                        if "parameters" in action_data and isinstance(action_data["parameters"], dict):
                             params = action_data["parameters"]
                             # Parse shipping info if present
-                            if "shipping" in params and isinstance(
-                                params["shipping"], dict
-                            ):
+                            if "shipping" in params and isinstance(params["shipping"], dict):
                                 shipping_data = params["shipping"]
                                 if "shipping_address" in shipping_data and isinstance(
                                     shipping_data["shipping_address"], dict
@@ -294,13 +291,9 @@ class OrderStatusTemplateRequestValidator(BaseTemplateValidator):
                                 elif btn_type == "phone_number":
                                     parsed_buttons.append(PhoneNumberButton(**btn))
                                 else:
-                                    raise ValueError(
-                                        f"Unsupported button type for order status: {btn_type}"
-                                    )
+                                    raise ValueError(f"Unsupported button type for order status: {btn_type}")
                             else:
-                                raise ValueError(
-                                    f"Button must be a dictionary, got {type(btn)}"
-                                )
+                                raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                         comp["buttons"] = parsed_buttons
                     parsed.append(OrderStatusButtonsComponent(**comp))
                 else:
@@ -337,14 +330,11 @@ class OrderStatusTemplateRequestValidator(BaseTemplateValidator):
         # Validate component order: header -> body -> order_status -> footer -> buttons
         expected_order = ["header", "body", "order_status", "footer", "buttons"]
         current_order = [t for t in expected_order if t in component_types]
-        actual_order = [
-            t.lower() for t in component_types if t.lower() in expected_order
-        ]
+        actual_order = [t.lower() for t in component_types if t.lower() in expected_order]
 
         if current_order != actual_order:
             raise ValueError(
-                f"Components must be in order: header -> body -> order_status -> footer -> buttons. "
-                f"Got: {actual_order}"
+                f"Components must be in order: header -> body -> order_status -> footer -> buttons. Got: {actual_order}"
             )
 
         return self
@@ -441,11 +431,7 @@ class OrderStatusTemplateRequestValidator(BaseTemplateValidator):
                         {
                             "type": "body",
                             "text": "Hi {{1}}, your order #{{2}} has been delivered!\n\nDelivered on: {{3}}\n\nWe hope you love your purchase!",
-                            "example": {
-                                "body_text": [
-                                    ["John", "ORD-12345", "Feb 5, 2026 at 2:30 PM"]
-                                ]
-                            },
+                            "example": {"body_text": [["John", "ORD-12345", "Feb 5, 2026 at 2:30 PM"]]},
                         },
                         {
                             "type": "order_status",

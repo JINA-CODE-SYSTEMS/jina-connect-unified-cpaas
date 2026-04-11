@@ -7,6 +7,7 @@ Handles:
 - Recent-changes detection
 - Send-time rate lookup (for CreditManager)
 """
+
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
@@ -14,9 +15,9 @@ from django.db.models import F, Q
 from django.utils import timezone
 from djmoney.contrib.exchange.models import convert_money
 from djmoney.money import Money
+
 from tenants.models import Tenant
-from wa.models import (MessageTypeChoices, MetaBaseRate, RateCardMargin,
-                       TenantRateCard)
+from wa.models import MetaBaseRate, RateCardMargin, TenantRateCard
 
 
 class RateCardService:
@@ -94,9 +95,7 @@ class RateCardService:
         # Use django-money's exchange backend
         one_usd = Money(1, "USD")
         converted = convert_money(one_usd, self.wallet_currency)
-        return Decimal(str(converted.amount)).quantize(
-            Decimal("0.000001"), rounding=ROUND_HALF_UP
-        )
+        return Decimal(str(converted.amount)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
     # =========================================================================
     # RATE COMPUTATION
@@ -289,9 +288,7 @@ class RateCardService:
         """
         from tenants.models import TenantWAApp
 
-        tenant_ids = (
-            TenantWAApp.objects.values_list("tenant_id", flat=True).distinct()
-        )
+        tenant_ids = TenantWAApp.objects.values_list("tenant_id", flat=True).distinct()
         results = {}
         for tid in tenant_ids:
             try:

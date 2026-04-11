@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from wa.models import WATemplate, TenantMedia, TemplateTypeChoices
+from wa.models import TemplateTypeChoices, TenantMedia, WATemplate
 
 
 class Command(BaseCommand):
@@ -9,8 +9,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         templates = (
-            WATemplate.objects
-            .filter(template_type=TemplateTypeChoices.CAROUSEL)
+            WATemplate.objects.filter(template_type=TemplateTypeChoices.CAROUSEL)
             .exclude(cards__isnull=True)
             .select_related("wa_app__tenant")
             .prefetch_related("card_media")
@@ -28,9 +27,7 @@ class Command(BaseCommand):
                 continue
 
             tenant = template.wa_app.tenant
-            existing_media_ids = {
-                media.id for media in template.card_media.all()
-            }
+            existing_media_ids = {media.id for media in template.card_media.all()}
 
             template_processed_cards = 0
             template_skipped_cards = 0
@@ -71,11 +68,7 @@ class Command(BaseCommand):
 
             except Exception as exc:
                 errors += 1
-                self.stderr.write(
-                    self.style.ERROR(
-                        f"[Template {template.id}] Transaction failed: {exc}"
-                    )
-                )
+                self.stderr.write(self.style.ERROR(f"[Template {template.id}] Transaction failed: {exc}"))
                 continue
 
             # Counters are updated only after successful transaction

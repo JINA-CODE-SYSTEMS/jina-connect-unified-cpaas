@@ -1,5 +1,6 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from users.viewsets.user import UserViewSet
 from users.viewsets.user_login_patch import LoginPatchViewSet
 

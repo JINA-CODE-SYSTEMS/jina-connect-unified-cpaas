@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 # need to know about provider-specific response shapes.
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class AdapterResult:
     """Uniform result wrapper returned by every adapter operation."""
@@ -46,13 +47,14 @@ class AdapterResult:
     error_message: Optional[str] = None
     raw_response: Optional[Dict[str, Any]] = None  # full provider response for debugging
 
-    def __bool__(self) -> bool:          # lets you do `if result:`
+    def __bool__(self) -> bool:  # lets you do `if result:`
         return self.success
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Abstract base
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class BaseBSPAdapter(ABC):
     """

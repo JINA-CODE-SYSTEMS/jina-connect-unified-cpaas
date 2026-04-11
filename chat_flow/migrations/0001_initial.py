@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -15,79 +14,172 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='ChatFlowEdge',
+            name="ChatFlowEdge",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('edge_id', models.CharField(help_text='\n        Unique identifier for this edge within the ReactFlow visual editor.\n        \n        Examples: "welcome-to-menu", "payment-to-confirmation", "edge-1"\n        \n        Used for:\n        - Visual editor state management\n        - Debugging conversation flows\n        - Maintaining edge references in ReactFlow JSON\n        \n        Must be unique within the flow.\n        ', max_length=255)),
-                ('button_text', models.CharField(help_text='\n        The exact text of the button that triggers this edge transition.\n        \n        IMPORTANT: This must match the button text in the source node\'s template exactly.\n        \n        Examples: "Order Pizza", "Contact Support", "Yes, Continue"\n        \n        Button Matching Process:\n        1. User clicks button in WhatsApp\n        2. System receives button text from WhatsApp API\n        3. System finds edge where button_text matches the clicked text\n        4. System transitions user to target_node\n        \n        Legacy vs Modern Approach:\n        - Legacy: Uses button_text for matching (this field)\n        - Modern: Uses button_id from edge_data (more reliable)\n        \n        Both approaches are supported for backward compatibility.\n        ', max_length=255)),
-                ('button_type', models.CharField(help_text='\n        The type of button that triggers this transition.\n        \n        WhatsApp Button Types:\n        - "QUICK_REPLY": Simple text button (most common)\n        - "URL": Button that opens a website\n        - "PHONE_NUMBER": Button that initiates a phone call\n        - "OTP": Button for OTP/authentication flows\n        \n        This field helps with:\n        - Validation during flow creation\n        - Analytics and reporting\n        - Future button-type-specific behaviors\n        \n        Must match the button type defined in the source template.\n        ', max_length=50)),
-                ('edge_data', models.JSONField(default=dict, help_text='\n        Additional configuration and metadata for this edge transition.\n        \n        Modern Structure (Recommended):\n        {\n            "button_id": "btn-order-pizza",        // Unique button identifier\n            "button_text": "Order Pizza",          // Fallback text matching\n            "button_type": "QUICK_REPLY",          // Button type\n            "analytics_label": "main_cta",         // Custom analytics tag\n            "conditions": {                        // Future: conditional logic\n                "user_type": "premium"\n            },\n            "delay_seconds": 2                     // Future: delayed responses\n        }\n        \n        Key Features:\n        1. button_id: Modern, reliable button identification\n        2. Analytics: Custom labels for tracking specific user paths\n        3. Conditions: Future support for conditional edges\n        4. Timing: Future support for delayed message delivery\n        \n        Migration Path:\n        - Legacy edges use only button_text matching\n        - Modern edges prefer button_id with button_text fallback\n        - Both approaches work simultaneously for compatibility\n        \n        Benefits of button_id:\n        - Survives template text changes\n        - Supports multiple languages\n        - Prevents typo-related bugs\n        - Enables better debugging\n        ')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "edge_id",
+                    models.CharField(
+                        help_text='\n        Unique identifier for this edge within the ReactFlow visual editor.\n        \n        Examples: "welcome-to-menu", "payment-to-confirmation", "edge-1"\n        \n        Used for:\n        - Visual editor state management\n        - Debugging conversation flows\n        - Maintaining edge references in ReactFlow JSON\n        \n        Must be unique within the flow.\n        ',
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "button_text",
+                    models.CharField(
+                        help_text='\n        The exact text of the button that triggers this edge transition.\n        \n        IMPORTANT: This must match the button text in the source node\'s template exactly.\n        \n        Examples: "Order Pizza", "Contact Support", "Yes, Continue"\n        \n        Button Matching Process:\n        1. User clicks button in WhatsApp\n        2. System receives button text from WhatsApp API\n        3. System finds edge where button_text matches the clicked text\n        4. System transitions user to target_node\n        \n        Legacy vs Modern Approach:\n        - Legacy: Uses button_text for matching (this field)\n        - Modern: Uses button_id from edge_data (more reliable)\n        \n        Both approaches are supported for backward compatibility.\n        ',
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "button_type",
+                    models.CharField(
+                        help_text='\n        The type of button that triggers this transition.\n        \n        WhatsApp Button Types:\n        - "QUICK_REPLY": Simple text button (most common)\n        - "URL": Button that opens a website\n        - "PHONE_NUMBER": Button that initiates a phone call\n        - "OTP": Button for OTP/authentication flows\n        \n        This field helps with:\n        - Validation during flow creation\n        - Analytics and reporting\n        - Future button-type-specific behaviors\n        \n        Must match the button type defined in the source template.\n        ',
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "edge_data",
+                    models.JSONField(
+                        default=dict,
+                        help_text='\n        Additional configuration and metadata for this edge transition.\n        \n        Modern Structure (Recommended):\n        {\n            "button_id": "btn-order-pizza",        // Unique button identifier\n            "button_text": "Order Pizza",          // Fallback text matching\n            "button_type": "QUICK_REPLY",          // Button type\n            "analytics_label": "main_cta",         // Custom analytics tag\n            "conditions": {                        // Future: conditional logic\n                "user_type": "premium"\n            },\n            "delay_seconds": 2                     // Future: delayed responses\n        }\n        \n        Key Features:\n        1. button_id: Modern, reliable button identification\n        2. Analytics: Custom labels for tracking specific user paths\n        3. Conditions: Future support for conditional edges\n        4. Timing: Future support for delayed message delivery\n        \n        Migration Path:\n        - Legacy edges use only button_text matching\n        - Modern edges prefer button_id with button_text fallback\n        - Both approaches work simultaneously for compatibility\n        \n        Benefits of button_id:\n        - Survives template text changes\n        - Supports multiple languages\n        - Prevents typo-related bugs\n        - Enables better debugging\n        ',
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Chat Flow Edge',
-                'verbose_name_plural': 'Chat Flow Edges',
+                "verbose_name": "Chat Flow Edge",
+                "verbose_name_plural": "Chat Flow Edges",
             },
         ),
         migrations.CreateModel(
-            name='ChatFlowNode',
+            name="ChatFlowNode",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('node_id', models.CharField(help_text='\n        Unique identifier for this node within the ReactFlow visual editor.\n        \n        Examples: "welcome-node", "pizza-menu", "payment-options"\n        \n        This ID is used to:\n        - Reference nodes in the ReactFlow JSON structure\n        - Connect nodes with edges in the visual editor\n        - Debug and trace user paths through flows\n        \n        Must be unique within the flow.\n        ', max_length=255)),
-                ('node_type', models.CharField(default='template', help_text='\n        Type of node determining its behavior in the flow.\n        \n        Available Types:\n        - "template": Standard message node that displays a WhatsApp template\n        - "condition": Logic node for conditional branching (future feature)\n        - "action": Integration node for external API calls (future feature)\n        \n        Currently, most nodes are "template" type since they represent WhatsApp messages.\n        ', max_length=50)),
-                ('position_x', models.FloatField(help_text="\n        X coordinate of this node in the ReactFlow visual editor.\n        \n        Used for:\n        - Saving and restoring visual flow layouts\n        - Organizing flows in a readable manner\n        - Maintaining designer's intended flow structure\n        \n        Coordinate system starts at (0,0) in the top-left corner.\n        ")),
-                ('position_y', models.FloatField(help_text='\n        Y coordinate of this node in the ReactFlow visual editor.\n        \n        Used for:\n        - Saving and restoring visual flow layouts\n        - Creating logical top-to-bottom flow progression\n        - Grouping related nodes visually\n        \n        Coordinate system starts at (0,0) in the top-left corner.\n        ')),
-                ('node_data', models.JSONField(default=dict, help_text='\n        Additional configuration data specific to this node within the flow context.\n        \n        Common Use Cases:\n        1. Button overrides - Customize button layout for this specific flow\n        2. Display labels - Human-readable names for the visual editor\n        3. Conditional logic - Parameters for future conditional nodes\n        4. Analytics tags - Custom tracking labels for this node\n        \n        Example Structure:\n        {\n            "label": "Pizza Selection",\n            "buttons": [\n                {\n                    "id": "btn-margherita",\n                    "text": "Margherita", \n                    "type": "QUICK_REPLY",\n                    "template_button_index": 0\n                }\n            ],\n            "analytics_tags": ["menu", "pizza"],\n            "display_priority": 1\n        }\n        \n        Key Benefits:\n        - Allows same template to behave differently in different flows\n        - Enables flow-specific customizations without modifying templates\n        - Supports visual editor metadata that doesn\'t belong in templates\n        - Future-proofs for advanced node features\n        ')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "node_id",
+                    models.CharField(
+                        help_text='\n        Unique identifier for this node within the ReactFlow visual editor.\n        \n        Examples: "welcome-node", "pizza-menu", "payment-options"\n        \n        This ID is used to:\n        - Reference nodes in the ReactFlow JSON structure\n        - Connect nodes with edges in the visual editor\n        - Debug and trace user paths through flows\n        \n        Must be unique within the flow.\n        ',
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "node_type",
+                    models.CharField(
+                        default="template",
+                        help_text='\n        Type of node determining its behavior in the flow.\n        \n        Available Types:\n        - "template": Standard message node that displays a WhatsApp template\n        - "condition": Logic node for conditional branching (future feature)\n        - "action": Integration node for external API calls (future feature)\n        \n        Currently, most nodes are "template" type since they represent WhatsApp messages.\n        ',
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "position_x",
+                    models.FloatField(
+                        help_text="\n        X coordinate of this node in the ReactFlow visual editor.\n        \n        Used for:\n        - Saving and restoring visual flow layouts\n        - Organizing flows in a readable manner\n        - Maintaining designer's intended flow structure\n        \n        Coordinate system starts at (0,0) in the top-left corner.\n        "
+                    ),
+                ),
+                (
+                    "position_y",
+                    models.FloatField(
+                        help_text="\n        Y coordinate of this node in the ReactFlow visual editor.\n        \n        Used for:\n        - Saving and restoring visual flow layouts\n        - Creating logical top-to-bottom flow progression\n        - Grouping related nodes visually\n        \n        Coordinate system starts at (0,0) in the top-left corner.\n        "
+                    ),
+                ),
+                (
+                    "node_data",
+                    models.JSONField(
+                        default=dict,
+                        help_text='\n        Additional configuration data specific to this node within the flow context.\n        \n        Common Use Cases:\n        1. Button overrides - Customize button layout for this specific flow\n        2. Display labels - Human-readable names for the visual editor\n        3. Conditional logic - Parameters for future conditional nodes\n        4. Analytics tags - Custom tracking labels for this node\n        \n        Example Structure:\n        {\n            "label": "Pizza Selection",\n            "buttons": [\n                {\n                    "id": "btn-margherita",\n                    "text": "Margherita", \n                    "type": "QUICK_REPLY",\n                    "template_button_index": 0\n                }\n            ],\n            "analytics_tags": ["menu", "pizza"],\n            "display_priority": 1\n        }\n        \n        Key Benefits:\n        - Allows same template to behave differently in different flows\n        - Enables flow-specific customizations without modifying templates\n        - Supports visual editor metadata that doesn\'t belong in templates\n        - Future-proofs for advanced node features\n        ',
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Chat Flow Node',
-                'verbose_name_plural': 'Chat Flow Nodes',
+                "verbose_name": "Chat Flow Node",
+                "verbose_name_plural": "Chat Flow Nodes",
             },
         ),
         migrations.CreateModel(
-            name='UserChatFlowSession',
+            name="UserChatFlowSession",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('current_node_id', models.CharField(help_text="\n        The node_id of the node the contact is currently at.\n        \n        This is the string node_id (e.g., 'welcome-node'), not the database ID.\n        After each step, this is updated to reflect where the user is.\n        ", max_length=255)),
-                ('is_active', models.BooleanField(default=True, help_text='Whether this session is still active (user can continue)')),
-                ('is_complete', models.BooleanField(default=False, help_text='Whether the user reached an end node (flow completed successfully)')),
-                ('started_at', models.DateTimeField(auto_now_add=True, help_text='When the session started')),
-                ('ended_at', models.DateTimeField(blank=True, help_text='When the session ended (completed or expired)', null=True)),
-                ('context_data', models.JSONField(blank=True, default=dict, help_text='Additional context data collected during the flow')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "current_node_id",
+                    models.CharField(
+                        help_text="\n        The node_id of the node the contact is currently at.\n        \n        This is the string node_id (e.g., 'welcome-node'), not the database ID.\n        After each step, this is updated to reflect where the user is.\n        ",
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Whether this session is still active (user can continue)"
+                    ),
+                ),
+                (
+                    "is_complete",
+                    models.BooleanField(
+                        default=False, help_text="Whether the user reached an end node (flow completed successfully)"
+                    ),
+                ),
+                ("started_at", models.DateTimeField(auto_now_add=True, help_text="When the session started")),
+                (
+                    "ended_at",
+                    models.DateTimeField(
+                        blank=True, help_text="When the session ended (completed or expired)", null=True
+                    ),
+                ),
+                (
+                    "context_data",
+                    models.JSONField(
+                        blank=True, default=dict, help_text="Additional context data collected during the flow"
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'User Chat Flow Session',
-                'verbose_name_plural': 'User Chat Flow Sessions',
+                "verbose_name": "User Chat Flow Session",
+                "verbose_name_plural": "User Chat Flow Sessions",
             },
         ),
         migrations.CreateModel(
-            name='ChatFlow',
+            name="ChatFlow",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.TextField(blank=True, null=True)),
-                ('name', models.CharField(max_length=100)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('flow_data', models.JSONField(help_text='\n        Complete ReactFlow JSON structure containing the visual flow design.\n        \n        Expected Structure:\n        {\n            "nodes": [\n                {\n                    "id": "welcome-node",\n                    "type": "template", \n                    "position": {"x": 100, "y": 100},\n                    "data": {\n                        "template_id": 123,\n                        "label": "Welcome Message",\n                        "buttons": [...]\n                    }\n                }\n            ],\n            "edges": [\n                {\n                    "id": "edge-1",\n                    "source": "welcome-node",\n                    "target": "menu-node", \n                    "data": {\n                        "button_id": "btn-get-started",\n                        "button_text": "Get Started"\n                    }\n                }\n            ],\n            "viewport": {"x": 0, "y": 0, "zoom": 1}\n        }\n        \n        This JSON is generated by the ReactFlow visual editor and contains all the information\n        needed to recreate the flow design, including node positions, connections, and styling.\n        ')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created_by', to=settings.AUTH_USER_MODEL)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("description", models.TextField(blank=True, null=True)),
+                ("name", models.CharField(max_length=100)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "flow_data",
+                    models.JSONField(
+                        help_text='\n        Complete ReactFlow JSON structure containing the visual flow design.\n        \n        Expected Structure:\n        {\n            "nodes": [\n                {\n                    "id": "welcome-node",\n                    "type": "template", \n                    "position": {"x": 100, "y": 100},\n                    "data": {\n                        "template_id": 123,\n                        "label": "Welcome Message",\n                        "buttons": [...]\n                    }\n                }\n            ],\n            "edges": [\n                {\n                    "id": "edge-1",\n                    "source": "welcome-node",\n                    "target": "menu-node", \n                    "data": {\n                        "button_id": "btn-get-started",\n                        "button_text": "Get Started"\n                    }\n                }\n            ],\n            "viewport": {"x": 0, "y": 0, "zoom": 1}\n        }\n        \n        This JSON is generated by the ReactFlow visual editor and contains all the information\n        needed to recreate the flow design, including node positions, connections, and styling.\n        '
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="%(class)s_created_by",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Chat Flow',
-                'verbose_name_plural': 'Chat Flows',
+                "verbose_name": "Chat Flow",
+                "verbose_name_plural": "Chat Flows",
             },
         ),
     ]

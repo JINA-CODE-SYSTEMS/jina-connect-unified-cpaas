@@ -4,50 +4,62 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0002_initial'),
+        ("tenants", "0002_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='bsp_credentials',
-            field=models.JSONField(blank=True, help_text='BSP credentials (access tokens, etc.)', null=True),
+            model_name="tenantwaapp",
+            name="bsp_credentials",
+            field=models.JSONField(blank=True, help_text="BSP credentials (access tokens, etc.)", null=True),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='daily_limit',
-            field=models.IntegerField(default=1000, help_text='Daily message limit'),
+            model_name="tenantwaapp",
+            name="daily_limit",
+            field=models.IntegerField(default=1000, help_text="Daily message limit"),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='is_verified',
-            field=models.BooleanField(default=False, help_text='Phone number verified with META'),
+            model_name="tenantwaapp",
+            name="is_verified",
+            field=models.BooleanField(default=False, help_text="Phone number verified with META"),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='messages_sent_today',
+            model_name="tenantwaapp",
+            name="messages_sent_today",
             field=models.IntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='phone_number_id',
-            field=models.CharField(blank=True, help_text='Phone Number ID from META', max_length=100, null=True),
+            model_name="tenantwaapp",
+            name="phone_number_id",
+            field=models.CharField(blank=True, help_text="Phone Number ID from META", max_length=100, null=True),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='tier',
-            field=models.CharField(blank=True, help_text='META messaging tier', max_length=50, null=True),
+            model_name="tenantwaapp",
+            name="tier",
+            field=models.CharField(blank=True, help_text="META messaging tier", max_length=50, null=True),
         ),
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='waba_id',
-            field=models.CharField(blank=True, help_text='WhatsApp Business Account ID', max_length=100, null=True),
+            model_name="tenantwaapp",
+            name="waba_id",
+            field=models.CharField(blank=True, help_text="WhatsApp Business Account ID", max_length=100, null=True),
         ),
         migrations.AlterField(
-            model_name='tenantwaapp',
-            name='bsp',
-            field=models.CharField(choices=[('GUPSHUP', 'Gupshup'), ('META', 'Meta'), ('TWILIO', 'Twilio'), ('MESSAGEBIRD', 'MessageBird'), ('WATI', 'WATI'), ('AISENSY', 'Aisensy'), ('INTERAKT', 'Interakt'), ('YELLOW_AI', 'Yellow.ai')], default='GUPSHUP', max_length=20),
+            model_name="tenantwaapp",
+            name="bsp",
+            field=models.CharField(
+                choices=[
+                    ("GUPSHUP", "Gupshup"),
+                    ("META", "Meta"),
+                    ("TWILIO", "Twilio"),
+                    ("MESSAGEBIRD", "MessageBird"),
+                    ("WATI", "WATI"),
+                    ("AISENSY", "Aisensy"),
+                    ("INTERAKT", "Interakt"),
+                    ("YELLOW_AI", "Yellow.ai"),
+                ],
+                default="GUPSHUP",
+                max_length=20,
+            ),
         ),
     ]

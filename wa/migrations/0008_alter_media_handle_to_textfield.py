@@ -4,20 +4,31 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('wa', '0007_add_unknown_webhook_event_type'),
+        ("wa", "0007_add_unknown_webhook_event_type"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='watemplate',
-            name='media_handle',
-            field=models.TextField(blank=True, help_text='META media handle ID', null=True),
+            model_name="watemplate",
+            name="media_handle",
+            field=models.TextField(blank=True, help_text="META media handle ID", null=True),
         ),
         migrations.AlterField(
-            model_name='watemplate',
-            name='status',
-            field=models.CharField(choices=[('DRAFT', 'Draft'), ('PENDING', 'Pending'), ('APPROVED', 'Approved'), ('REJECTED', 'Rejected'), ('PAUSED', 'Paused'), ('DISABLED', 'Disabled'), ('FAILED', 'Failed')], default='DRAFT', max_length=20),
+            model_name="watemplate",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("DRAFT", "Draft"),
+                    ("PENDING", "Pending"),
+                    ("APPROVED", "Approved"),
+                    ("REJECTED", "Rejected"),
+                    ("PAUSED", "Paused"),
+                    ("DISABLED", "Disabled"),
+                    ("FAILED", "Failed"),
+                ],
+                default="DRAFT",
+                max_length=20,
+            ),
         ),
     ]

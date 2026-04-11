@@ -10,15 +10,14 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import (Flowable, Paragraph, SimpleDocTemplate,
-                                 Spacer)
+from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from contacts.models import TenantContact
-from team_inbox.models import Messages, MessageDirectionChoices, AuthorChoices
+from team_inbox.models import AuthorChoices, MessageDirectionChoices, Messages
 from tenants.permission_classes import TenantRolePermission
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,7 @@ MAX_DATE_RANGE_DAYS = 90
 
 def _sanitize_filename(name):
     """Remove characters unsafe for filenames."""
-    return re.sub(r'[^\w\s\-]', '', name).strip().replace(' ', '-')
+    return re.sub(r"[^\w\s\-]", "", name).strip().replace(" ", "-")
 
 
 def _extract_message_text(content):
@@ -135,6 +134,7 @@ class ExportPDFView(APIView):
 
     Generate and return a PDF of chat messages for a contact within a date range.
     """
+
     permission_classes = [IsAuthenticated, TenantRolePermission]
     required_permissions = {
         "post": "inbox.view",
@@ -199,9 +199,7 @@ class ExportPDFView(APIView):
         end_datetime = timezone.make_aware(
             timezone.datetime.combine(end_date + timedelta(days=1), timezone.datetime.min.time())
         )
-        start_datetime = timezone.make_aware(
-            timezone.datetime.combine(start_date, timezone.datetime.min.time())
-        )
+        start_datetime = timezone.make_aware(timezone.datetime.combine(start_date, timezone.datetime.min.time()))
 
         messages = (
             Messages.objects.filter(
@@ -312,11 +310,7 @@ class ExportPDFView(APIView):
                 )
             )
             # Message text (escape XML entities for reportlab)
-            safe_text = (
-                text.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-            )
+            safe_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             story.append(Paragraph(safe_text, current_msg_style))
             story.append(Spacer(1, 3 * mm))
 

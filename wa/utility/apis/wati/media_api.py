@@ -89,9 +89,7 @@ class MediaAPI(WAAPI):
         print(f"  -o '{output_path}'")
         print("=" * 80)
 
-        response = requests.get(
-            url, headers=headers, params={"fileName": file_name}, stream=True
-        )
+        response = requests.get(url, headers=headers, params={"fileName": file_name}, stream=True)
 
         if response.status_code not in [200, 201]:
             error_msg = f"Media download failed with status code {response.status_code}"

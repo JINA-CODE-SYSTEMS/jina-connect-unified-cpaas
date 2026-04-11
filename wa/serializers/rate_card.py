@@ -1,7 +1,9 @@
 """
 Serializers for WhatsApp Rate Card API (Issue #188).
 """
+
 from rest_framework import serializers
+
 from wa.models import MetaBaseRate, RateCardMargin, TenantRateCard
 
 
@@ -10,9 +12,13 @@ class TenantRateCardSerializer(serializers.ModelSerializer):
     Read-only serializer for tenant-facing rate card entries.
     Shown in wallet currency with pricing breakdown.
     """
+
     rate_changed = serializers.BooleanField(read_only=True)
     rate_change_percent = serializers.DecimalField(
-        max_digits=8, decimal_places=2, read_only=True, allow_null=True,
+        max_digits=8,
+        decimal_places=2,
+        read_only=True,
+        allow_null=True,
     )
     destination_country_name = serializers.SerializerMethodField()
 
@@ -23,14 +29,22 @@ class TenantRateCardSerializer(serializers.ModelSerializer):
             return ""
         try:
             import pycountry
+
             c = pycountry.countries.get(alpha_2=code)
             return c.name if c else code
         except (ImportError, AttributeError):
             _NAMES = {
-                "IN": "India", "US": "United States", "GB": "United Kingdom",
-                "AE": "United Arab Emirates", "AU": "Australia",
-                "SG": "Singapore", "BR": "Brazil", "DE": "Germany",
-                "FR": "France", "CA": "Canada", "ZZ": "Unknown",
+                "IN": "India",
+                "US": "United States",
+                "GB": "United Kingdom",
+                "AE": "United Arab Emirates",
+                "AU": "Australia",
+                "SG": "Singapore",
+                "BR": "Brazil",
+                "DE": "Germany",
+                "FR": "France",
+                "CA": "Canada",
+                "ZZ": "Unknown",
             }
             return _NAMES.get(code, code)
 
@@ -60,6 +74,7 @@ class TenantRateCardSerializer(serializers.ModelSerializer):
 
 class TenantRateCardSummarySerializer(serializers.Serializer):
     """Response serializer for the rate-card summary endpoint."""
+
     total_countries = serializers.IntegerField()
     total_entries = serializers.IntegerField()
     wallet_currency = serializers.CharField()
@@ -90,6 +105,7 @@ class MetaBaseRateSerializer(serializers.ModelSerializer):
 
 class RateCardMarginSerializer(serializers.ModelSerializer):
     """Admin serializer for margin configuration."""
+
     specificity = serializers.IntegerField(read_only=True)
 
     class Meta:

@@ -26,12 +26,9 @@ class TemplateMessageParameter(BaseModel):
 
     Maps to the ``parameters`` array in WATI's send template message API.
     """
-    name: str = Field(
-        ..., description="Parameter name matching the template variable"
-    )
-    value: str = Field(
-        ..., description="Value to substitute for the template variable"
-    )
+
+    name: str = Field(..., description="Parameter name matching the template variable")
+    value: str = Field(..., description="Value to substitute for the template variable")
 
 
 class TemplateMessagePayload(BaseModel):
@@ -53,27 +50,16 @@ class TemplateMessagePayload(BaseModel):
             data=payload.to_wati_payload(),
         )
     """
-    template_name: str = Field(
-        ..., min_length=1,
-        description="Name of the approved template to send"
-    )
-    broadcast_name: str = Field(
-        ..., min_length=1,
-        description="Name for broadcast tracking/analytics"
-    )
-    channel_number: str = Field(
-        ..., min_length=1,
-        description="Sending channel phone number with country code"
-    )
+
+    template_name: str = Field(..., min_length=1, description="Name of the approved template to send")
+    broadcast_name: str = Field(..., min_length=1, description="Name for broadcast tracking/analytics")
+    channel_number: str = Field(..., min_length=1, description="Sending channel phone number with country code")
     parameters: List[TemplateMessageParameter] = Field(
-        default_factory=list,
-        description="Parameter values for template variable substitution"
+        default_factory=list, description="Parameter values for template variable substitution"
     )
 
     # Optional fields for v2
-    header_media_url: Optional[str] = Field(
-        None, description="Media URL for template header (if header is media type)"
-    )
+    header_media_url: Optional[str] = Field(None, description="Media URL for template header (if header is media type)")
 
     @field_validator("template_name")
     @classmethod

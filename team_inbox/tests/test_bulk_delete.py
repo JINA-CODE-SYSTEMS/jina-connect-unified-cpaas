@@ -16,8 +16,11 @@ User = get_user_model()
 
 def _make_user(username, email, mobile, **kwargs):
     return User.objects.create_user(
-        username=username, email=email, mobile=mobile,
-        password="testpass123", **kwargs,
+        username=username,
+        email=email,
+        mobile=mobile,
+        password="testpass123",
+        **kwargs,
     )
 
 
@@ -30,11 +33,16 @@ class BulkDeleteTests(TestCase):
         cls.owner_role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.owner = _make_user("bd_owner", "bd_owner@t.com", "+910000066661")
         TenantUser.objects.create(
-            user=cls.owner, tenant=cls.tenant, role=cls.owner_role, is_active=True,
+            user=cls.owner,
+            tenant=cls.tenant,
+            role=cls.owner_role,
+            is_active=True,
         )
         cls.contact = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+910000066662",
-            first_name="DelContact", last_name="X",
+            tenant=cls.tenant,
+            phone="+910000066662",
+            first_name="DelContact",
+            last_name="X",
         )
 
     def setUp(self):
@@ -44,18 +52,21 @@ class BulkDeleteTests(TestCase):
 
     def _create_messages(self, count=3):
         from team_inbox.models import MessageEventIds
+
         msgs = []
         for i in range(count):
             event = MessageEventIds.objects.create()
-            msgs.append(Messages.objects.create(
-                tenant=self.tenant,
-                contact=self.contact,
-                message_id=event,
-                content={"type": "text", "body": {"text": f"del_{i}"}},
-                direction="INCOMING",
-                platform="WHATSAPP",
-                author="CONTACT",
-            ))
+            msgs.append(
+                Messages.objects.create(
+                    tenant=self.tenant,
+                    contact=self.contact,
+                    message_id=event,
+                    content={"type": "text", "body": {"text": f"del_{i}"}},
+                    direction="INCOMING",
+                    platform="WHATSAPP",
+                    author="CONTACT",
+                )
+            )
         return msgs
 
     # ── Method tests ─────────────────────────────────────────────

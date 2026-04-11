@@ -11,27 +11,21 @@ Based on META's coupon code template structure:
 - components: Array of header (optional), body, and button components with copy_code
 """
 
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from wa.utility.data_model.meta_direct.body import (BodyComponent,
-                                                    BodyTextExample,
-                                                    BodyTextNamedParam)
-from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
-from wa.utility.data_model.meta_direct.buttons import (CopyCodeButton,
-                                                       PhoneNumberButton,
-                                                       QuickReplyButton,
-                                                       TemplateButton,
-                                                       URLButton)
-from wa.utility.data_model.meta_direct.buttons_component import \
-    ButtonsComponent
-from wa.utility.data_model.meta_direct.enums import (HeaderFormat,
-                                                     ParameterFormat,
-                                                     TemplateCategory)
+
+from wa.utility.data_model.meta_direct.body import BodyComponent, BodyTextExample
+from wa.utility.data_model.meta_direct.buttons import (
+    CopyCodeButton,
+    PhoneNumberButton,
+    QuickReplyButton,
+    TemplateButton,
+    URLButton,
+)
 from wa.utility.data_model.meta_direct.footer import FooterComponent
-from wa.utility.data_model.meta_direct.header import (HeaderComponent,
-                                                      HeaderHandleExample,
-                                                      HeaderTextExample)
+from wa.utility.data_model.meta_direct.header import HeaderComponent, HeaderHandleExample, HeaderTextExample
+from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
 # ============================================================================
 # Coupon Code-specific Button Component
@@ -40,10 +34,9 @@ from wa.utility.data_model.meta_direct.header import (HeaderComponent,
 
 class CouponCodeButtonsComponent(BaseModel):
     """Buttons component specifically for coupon code templates - must contain copy_code button"""
+
     type: Literal["buttons"] = "buttons"
-    buttons: List[TemplateButton] = Field(
-        ..., min_length=1, max_length=10, description="List of buttons"
-    )
+    buttons: List[TemplateButton] = Field(..., min_length=1, max_length=10, description="List of buttons")
 
     @field_validator("buttons")
     @classmethod
@@ -53,15 +46,10 @@ class CouponCodeButtonsComponent(BaseModel):
 
         # Check that at least one copy_code button exists
         copy_code_buttons = [
-            b
-            for b in v
-            if isinstance(b, CopyCodeButton)
-            or (isinstance(b, dict) and b.get("type") == "copy_code")
+            b for b in v if isinstance(b, CopyCodeButton) or (isinstance(b, dict) and b.get("type") == "copy_code")
         ]
         if not copy_code_buttons:
-            raise ValueError(
-                "Coupon code templates must have at least one copy_code type button"
-            )
+            raise ValueError("Coupon code templates must have at least one copy_code type button")
 
         # Count button types for validation
         copy_code_count = len(copy_code_buttons)
@@ -70,10 +58,7 @@ class CouponCodeButtonsComponent(BaseModel):
 
         # Quick reply buttons are allowed alongside copy_code
         quick_reply_count = sum(
-            1
-            for b in v
-            if isinstance(b, QuickReplyButton)
-            or (isinstance(b, dict) and b.get("type") == "quick_reply")
+            1 for b in v if isinstance(b, QuickReplyButton) or (isinstance(b, dict) and b.get("type") == "quick_reply")
         )
         if quick_reply_count > 3:
             raise ValueError("Maximum 3 quick reply buttons allowed")
@@ -82,9 +67,7 @@ class CouponCodeButtonsComponent(BaseModel):
 
 
 # Union type for coupon code template components
-CouponCodeTemplateComponent = Union[
-    HeaderComponent, BodyComponent, FooterComponent, CouponCodeButtonsComponent
-]
+CouponCodeTemplateComponent = Union[HeaderComponent, BodyComponent, FooterComponent, CouponCodeButtonsComponent]
 
 
 class CouponCodeTemplateRequestValidator(BaseTemplateValidator):
@@ -193,9 +176,7 @@ class CouponCodeTemplateRequestValidator(BaseTemplateValidator):
                                         f"Only 'copy_code', 'quick_reply', 'url', and 'phone_number' buttons are allowed."
                                     )
                             else:
-                                raise ValueError(
-                                    f"Button must be a dictionary, got {type(btn)}"
-                                )
+                                raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                         comp["buttons"] = parsed_buttons
                     parsed.append(CouponCodeButtonsComponent(**comp))
                 else:
@@ -216,9 +197,7 @@ class CouponCodeTemplateRequestValidator(BaseTemplateValidator):
 
         # Buttons with copy_code is required
         if "buttons" not in component_types:
-            raise ValueError(
-                "Buttons component with copy_code button is required for coupon code templates"
-            )
+            raise ValueError("Buttons component with copy_code button is required for coupon code templates")
 
         # Check for duplicate components
         if component_types.count("header") > 1:
@@ -236,10 +215,7 @@ class CouponCodeTemplateRequestValidator(BaseTemplateValidator):
         actual_order = [t.lower() for t in component_types if t.lower() in expected_order]
 
         if current_order != actual_order:
-            raise ValueError(
-                f"Components must be in order: header -> body -> footer -> buttons. "
-                f"Got: {actual_order}"
-            )
+            raise ValueError(f"Components must be in order: header -> body -> footer -> buttons. Got: {actual_order}")
 
         return self
 

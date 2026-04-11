@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class TextHeader(BaseModel):
     """Text header for list message (only text headers allowed)"""
+
     type: Literal["text"] = "text"
     text: str = Field(
         ...,
@@ -33,6 +34,7 @@ class TextHeader(BaseModel):
 
 class InteractiveBody(BaseModel):
     """Body for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -43,6 +45,7 @@ class InteractiveBody(BaseModel):
 
 class InteractiveFooter(BaseModel):
     """Footer for interactive message"""
+
     text: str = Field(
         ...,
         min_length=1,
@@ -58,6 +61,7 @@ class InteractiveFooter(BaseModel):
 
 class ListRow(BaseModel):
     """A row item in a list section"""
+
     id: str = Field(
         ...,
         min_length=1,
@@ -79,6 +83,7 @@ class ListRow(BaseModel):
 
 class ListSection(BaseModel):
     """A section in the list"""
+
     title: Optional[str] = Field(
         None,
         max_length=24,
@@ -94,6 +99,7 @@ class ListSection(BaseModel):
 
 class ListAction(BaseModel):
     """Action for list interactive message"""
+
     button: str = Field(
         ...,
         min_length=1,
@@ -113,15 +119,11 @@ class ListAction(BaseModel):
         if len(self.sections) > 1:
             for i, section in enumerate(self.sections):
                 if not section.title:
-                    raise ValueError(
-                        f"Section {i + 1} must have a title when multiple sections are present"
-                    )
+                    raise ValueError(f"Section {i + 1} must have a title when multiple sections are present")
         # Total rows across all sections cannot exceed 10
         total_rows = sum(len(section.rows) for section in self.sections)
         if total_rows > 10:
-            raise ValueError(
-                f"Total rows across all sections cannot exceed 10, got {total_rows}"
-            )
+            raise ValueError(f"Total rows across all sections cannot exceed 10, got {total_rows}")
         return self
 
 
@@ -132,10 +134,9 @@ class ListAction(BaseModel):
 
 class InteractiveListContent(BaseModel):
     """Interactive list content"""
+
     type: Literal["list"] = "list"
-    header: Optional[TextHeader] = Field(
-        None, description="Optional text header"
-    )
+    header: Optional[TextHeader] = Field(None, description="Optional text header")
     body: InteractiveBody = Field(..., description="Message body (required)")
     footer: Optional[InteractiveFooter] = Field(None, description="Optional footer")
     action: ListAction = Field(..., description="List action")
@@ -143,6 +144,7 @@ class InteractiveListContent(BaseModel):
 
 class ContextInfo(BaseModel):
     """Context for replying to a specific message"""
+
     message_id: str = Field(..., description="The message ID to reply to")
 
 
@@ -180,22 +182,12 @@ class InteractiveListMessageSendRequestValidator(BaseModel):
         >>> request = InteractiveListMessageSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["interactive"] = Field(
-        "interactive", description="Message type (must be 'interactive')"
-    )
-    interactive: InteractiveListContent = Field(
-        ..., description="Interactive list content"
-    )
-    context: Optional[ContextInfo] = Field(
-        None, description="Context for replying to a specific message"
-    )
+    type: Literal["interactive"] = Field("interactive", description="Message type (must be 'interactive')")
+    interactive: InteractiveListContent = Field(..., description="Interactive list content")
+    context: Optional[ContextInfo] = Field(None, description="Context for replying to a specific message")
 
     @field_validator("to")
     @classmethod
@@ -204,9 +196,7 @@ class InteractiveListMessageSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

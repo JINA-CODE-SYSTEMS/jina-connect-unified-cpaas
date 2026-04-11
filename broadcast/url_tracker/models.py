@@ -17,7 +17,6 @@ import string
 from django.db import models
 from django.utils import timezone
 
-
 # ── Short code generator ──────────────────────────────────────────────────
 _CODE_ALPHABET = string.ascii_letters + string.digits  # a-zA-Z0-9 → 62 chars
 _CODE_LENGTH = 8  # 62^8 ≈ 218 trillion unique codes
@@ -25,10 +24,11 @@ _CODE_LENGTH = 8  # 62^8 ≈ 218 trillion unique codes
 
 def _generate_short_code() -> str:
     """Generate a cryptographically random short code."""
-    return ''.join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))
+    return "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))
 
 
 # ── TrackedURL ────────────────────────────────────────────────────────────
+
 
 class TrackedURL(models.Model):
     """
@@ -53,32 +53,32 @@ class TrackedURL(models.Model):
 
     # ── Relations ─────────────────────────────────────────────────────────
     tenant = models.ForeignKey(
-        'tenants.Tenant',
+        "tenants.Tenant",
         on_delete=models.CASCADE,
-        related_name='tracked_urls',
+        related_name="tracked_urls",
     )
     broadcast = models.ForeignKey(
-        'broadcast.Broadcast',
+        "broadcast.Broadcast",
         on_delete=models.CASCADE,
-        related_name='tracked_urls',
+        related_name="tracked_urls",
         null=True,
         blank=True,
         help_text="Broadcast this link belongs to",
     )
     broadcast_message = models.ForeignKey(
-        'broadcast.BroadcastMessage',
+        "broadcast.BroadcastMessage",
         on_delete=models.CASCADE,
-        related_name='tracked_urls',
+        related_name="tracked_urls",
         null=True,
         blank=True,
         help_text="Per-recipient broadcast message this link belongs to",
     )
     contact = models.ForeignKey(
-        'contacts.TenantContact',
+        "contacts.TenantContact",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='tracked_urls',
+        related_name="tracked_urls",
         help_text="Contact who received this tracked link",
     )
 
@@ -90,7 +90,7 @@ class TrackedURL(models.Model):
     button_text = models.CharField(
         max_length=100,
         blank=True,
-        default='',
+        default="",
         help_text="Display text of the button (e.g. 'Shop Now')",
     )
 
@@ -103,12 +103,12 @@ class TrackedURL(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'broadcast_tracked_url'
+        db_table = "broadcast_tracked_url"
         indexes = [
-            models.Index(fields=['tenant', 'broadcast']),
-            models.Index(fields=['contact']),
-            models.Index(fields=['broadcast_message']),
-            models.Index(fields=['created_at']),
+            models.Index(fields=["tenant", "broadcast"]),
+            models.Index(fields=["contact"]),
+            models.Index(fields=["broadcast_message"]),
+            models.Index(fields=["created_at"]),
         ]
 
     def __str__(self):
@@ -118,10 +118,11 @@ class TrackedURL(models.Model):
     def tracked_url(self) -> str:
         """Full tracked URL (e.g. https://localhost:8000/r/AbC12x/)."""
         from django.conf import settings
-        base = getattr(settings, 'BASE_URL', 'http://localhost:8000').rstrip('/')
+
+        base = getattr(settings, "BASE_URL", "http://localhost:8000").rstrip("/")
         return f"{base}/r/{self.code}/"
 
-    def record_click(self, ip_address: str = '', user_agent: str = '', referer: str = ''):
+    def record_click(self, ip_address: str = "", user_agent: str = "", referer: str = ""):
         """
         Record a click event and update denormalized counters.
         Uses F() expressions for atomic counter increment (no race conditions).
@@ -132,24 +133,26 @@ class TrackedURL(models.Model):
         TrackedURLClick.objects.create(
             tracked_url=self,
             ip_address=ip_address,
-            user_agent=user_agent[:512] if user_agent else '',
-            referer=referer[:2048] if referer else '',
+            user_agent=user_agent[:512] if user_agent else "",
+            referer=referer[:2048] if referer else "",
             clicked_at=now,
         )
 
         # Atomically update counters
         from django.db.models import F
+
         updates = {
-            'click_count': F('click_count') + 1,
-            'last_clicked_at': now,
+            "click_count": F("click_count") + 1,
+            "last_clicked_at": now,
         }
         if not self.first_clicked_at:
-            updates['first_clicked_at'] = now
+            updates["first_clicked_at"] = now
 
         TrackedURL.objects.filter(pk=self.pk).update(**updates)
 
 
 # ── TrackedURLClick ───────────────────────────────────────────────────────
+
 
 class TrackedURLClick(models.Model):
     """
@@ -160,19 +163,19 @@ class TrackedURLClick(models.Model):
     tracked_url = models.ForeignKey(
         TrackedURL,
         on_delete=models.CASCADE,
-        related_name='clicks',
+        related_name="clicks",
     )
 
     clicked_at = models.DateTimeField(default=timezone.now, db_index=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
-    user_agent = models.CharField(max_length=512, blank=True, default='')
-    referer = models.URLField(max_length=2048, blank=True, default='')
+    user_agent = models.CharField(max_length=512, blank=True, default="")
+    referer = models.URLField(max_length=2048, blank=True, default="")
 
     class Meta:
-        db_table = 'broadcast_tracked_url_click'
-        ordering = ['-clicked_at']
+        db_table = "broadcast_tracked_url_click"
+        ordering = ["-clicked_at"]
         indexes = [
-            models.Index(fields=['tracked_url', 'clicked_at']),
+            models.Index(fields=["tracked_url", "clicked_at"]),
         ]
 
     def __str__(self):

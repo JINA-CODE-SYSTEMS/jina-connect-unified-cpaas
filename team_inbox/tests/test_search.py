@@ -16,8 +16,11 @@ User = get_user_model()
 
 def _make_user(username, email, mobile, **kwargs):
     return User.objects.create_user(
-        username=username, email=email, mobile=mobile,
-        password="testpass123", **kwargs,
+        username=username,
+        email=email,
+        mobile=mobile,
+        password="testpass123",
+        **kwargs,
     )
 
 
@@ -30,12 +33,17 @@ class SearchFieldsTests(TestCase):
         cls.owner_role = TenantRole.objects.get(tenant=cls.tenant, slug="owner")
         cls.owner = _make_user("search_owner", "search_owner@t.com", "+910000044441")
         TenantUser.objects.create(
-            user=cls.owner, tenant=cls.tenant, role=cls.owner_role, is_active=True,
+            user=cls.owner,
+            tenant=cls.tenant,
+            role=cls.owner_role,
+            is_active=True,
         )
 
         cls.contact = TenantContact.objects.create(
-            tenant=cls.tenant, phone="+910000044442",
-            first_name="SearchContact", last_name="X",
+            tenant=cls.tenant,
+            phone="+910000044442",
+            first_name="SearchContact",
+            last_name="X",
         )
 
         # Text message with body.text
@@ -99,7 +107,8 @@ class SearchFieldsTests(TestCase):
         # message_id is an FK to MessageEventIds; search on its string repr
         if self.msg_hello.message_id:
             resp = self.client.get(
-                self.url, {"search": str(self.msg_hello.message_id)},
+                self.url,
+                {"search": str(self.msg_hello.message_id)},
             )
             self.assertEqual(resp.status_code, 200)
 

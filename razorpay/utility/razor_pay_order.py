@@ -11,14 +11,14 @@ def create_razorpay_order(amount, currency, receipt="receipt#1", notes=None):
         "amount": int(amount * 100),  # Razorpay expects amount in paisa (INR) / cents
         "currency": currency,
         "receipt": receipt,
-        "notes": notes or {}
+        "notes": notes or {},
     }
 
     response = requests.post(
         settings.RAZORPAY_URL + "orders",
         auth=HTTPBasicAuth(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
         json=payload,
-        headers={"content-type": "application/json"}
+        headers={"content-type": "application/json"},
     )
 
     if response.status_code != 200:

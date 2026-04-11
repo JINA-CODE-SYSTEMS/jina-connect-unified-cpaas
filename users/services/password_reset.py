@@ -18,26 +18,26 @@ logger = logging.getLogger(__name__)
 class PasswordResetService:
     """
     Service to handle password reset emails.
-    
+
     Deep Linking Support:
     - Uses Universal Links (iOS) and App Links (Android) format
     - If mobile app is installed, link opens directly in the app
     - If app is not installed, falls back to web page with options
     """
-    
+
     @staticmethod
     def get_reset_url(token, use_deep_link=True):
         """
         Generate the password reset URL.
-        
+
         Args:
             token: The password reset token string
             use_deep_link: If True, uses backend URL (recommended - backend handles redirect)
                           If False, uses direct frontend URL
-        
+
         Returns:
             str: The password reset URL
-        
+
         Flow:
             1. Email contains link to backend: http://localhost:8000/reset-password/{token}/
             2. If mobile app installed: App intercepts via Universal/App Links
@@ -45,29 +45,29 @@ class PasswordResetService:
         """
         if use_deep_link:
             # Use the backend site URL - backend handles redirect logic
-            site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+            site_url = getattr(settings, "SITE_URL", "http://localhost:8000")
             return f"{site_url}/reset-password/{token}/"
         else:
             # Direct frontend URL format (bypasses backend redirect logic)
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+            frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
             return f"{frontend_url}/reset-password?token={token}"
-    
+
     @staticmethod
     def send_password_reset_email(user, token):
         """
         Send password reset email to user.
-        
+
         Args:
             user: User instance
             token: PasswordResetToken instance
-            
+
         Returns:
             bool: True if email sent successfully, False otherwise
         """
         reset_url = PasswordResetService.get_reset_url(token.token)
-        
+
         subject = "Reset your password - Jina Connect"
-        
+
         # HTML message
         html_message = f"""
         <!DOCTYPE html>
@@ -93,20 +93,20 @@ class PasswordResetService:
                 <div class="content">
                     <h2>Hi {user.first_name},</h2>
                     <p>We received a request to reset the password for your Jina Connect account associated with this email address.</p>
-                    
+
                     <p>Click the button below to reset your password:</p>
-                    
+
                     <p style="text-align: center;">
                         <a href="{reset_url}" class="button">Reset Password</a>
                     </p>
-                    
+
                     <p>Or copy and paste this link into your browser:</p>
                     <p style="word-break: break-all; color: #4F46E5;">{reset_url}</p>
-                    
+
                     <div class="warning">
                         <strong>⚠️ This link will expire in 1 hour.</strong>
                     </div>
-                    
+
                     <p class="security-note">
                         If you didn't request a password reset, please ignore this email or contact support if you have concerns about your account security. Your password will remain unchanged.
                     </p>
@@ -119,7 +119,7 @@ class PasswordResetService:
         </body>
         </html>
         """
-        
+
         # Plain text fallback
         plain_message = f"""
 Hi {user.first_name},
@@ -136,7 +136,7 @@ If you didn't request a password reset, please ignore this email. Your password 
 Best regards,
 The Jina Connect Team
         """
-        
+
         try:
             send_mail(
                 subject=subject,

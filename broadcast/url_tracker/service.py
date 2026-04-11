@@ -46,7 +46,7 @@ from django.conf import settings
 
 from broadcast.url_tracker.models import TrackedURL
 
-logger = logging.getLogger('broadcast.url_tracker')
+logger = logging.getLogger("broadcast.url_tracker")
 
 # The base URL pattern we use in our tracking-enabled templates.
 # Templates should be created with URL: {TRACKING_BASE_URL}/r/{{1}}
@@ -58,7 +58,7 @@ def _get_tracking_base_url() -> str:
     """Return the base URL used for tracked redirect links."""
     global _TRACKING_BASE_URL
     if _TRACKING_BASE_URL is None:
-        _TRACKING_BASE_URL = getattr(settings, 'BASE_URL', 'http://localhost:8000').rstrip('/')
+        _TRACKING_BASE_URL = getattr(settings, "BASE_URL", "http://localhost:8000").rstrip("/")
     return _TRACKING_BASE_URL
 
 
@@ -72,9 +72,11 @@ def is_tracking_url(template_url: str) -> bool:
         Template URL: "https://shop.com/order?id={{1}}"               → False
     """
     base = _get_tracking_base_url()
+
     # Strip scheme for comparison
     def _domain(url):
-        return re.sub(r'^https?://', '', url).split('/')[0].lower()
+        return re.sub(r"^https?://", "", url).split("/")[0].lower()
+
     return _domain(template_url).startswith(_domain(base))
 
 
@@ -106,6 +108,7 @@ def create_tracked_urls_for_message(broadcast_message) -> dict:
             return {}
 
         from wa.models import WATemplate
+
         template: WATemplate = template_number.gupshup_template
         buttons = template.buttons or []
 
@@ -123,14 +126,14 @@ def create_tracked_urls_for_message(broadcast_message) -> dict:
         tracked_map = {}  # {button_index: short_code}
 
         for idx, button in enumerate(buttons):
-            if button.get('type') != 'URL':
+            if button.get("type") != "URL":
                 continue
 
-            template_url = button.get('url', '')
+            template_url = button.get("url", "")
             if not template_url:
                 continue
 
-            has_placeholder = bool(re.search(r'\{\{\d+\}\}', template_url))
+            has_placeholder = bool(re.search(r"\{\{\d+\}\}", template_url))
 
             if has_placeholder and is_tracking_url(template_url):
                 # ── Tracking-enabled template URL ─────────────────────────
@@ -138,13 +141,10 @@ def create_tracked_urls_for_message(broadcast_message) -> dict:
                 # We need the actual destination URL from placeholder_data.
                 #
                 # Find what placeholder name maps to this button's {{1}}.
-                original_url = _resolve_original_url_for_button(
-                    template, idx, all_data
-                )
+                original_url = _resolve_original_url_for_button(template, idx, all_data)
                 if not original_url:
                     logger.warning(
-                        f"No destination URL found for tracking button[{idx}] "
-                        f"in message={broadcast_message.id}"
+                        f"No destination URL found for tracking button[{idx}] in message={broadcast_message.id}"
                     )
                     continue
 
@@ -156,7 +156,7 @@ def create_tracked_urls_for_message(broadcast_message) -> dict:
                     broadcast_message=broadcast_message,
                     contact=contact,
                     button_index=idx,
-                    button_text=button.get('text', ''),
+                    button_text=button.get("text", ""),
                 )
                 # Return the short code — caller injects it as the {{1}} param
                 tracked_map[idx] = tracked_url_obj.code
@@ -171,9 +171,7 @@ def create_tracked_urls_for_message(broadcast_message) -> dict:
                 # ── Third-party URL (static or dynamic) ───────────────────
                 # Can't redirect-track, but create a record for analytics.
                 if has_placeholder:
-                    original_url = _resolve_full_url_for_button(
-                        template_url, template, idx, all_data
-                    )
+                    original_url = _resolve_full_url_for_button(template_url, template, idx, all_data)
                 else:
                     original_url = template_url
 
@@ -184,7 +182,7 @@ def create_tracked_urls_for_message(broadcast_message) -> dict:
                     broadcast_message=broadcast_message,
                     contact=contact,
                     button_index=idx,
-                    button_text=button.get('text', ''),
+                    button_text=button.get("text", ""),
                 )
                 logger.debug(
                     f"Analytics-only tracked URL for message={broadcast_message.id}, "
@@ -203,7 +201,7 @@ def create_tracked_url_for_resolved_button(
     broadcast_message,
     button_index: int,
     resolved_url: str,
-    button_text: str = '',
+    button_text: str = "",
 ) -> str:
     """
     Create a tracked URL for a dynamically-resolved URL button.
@@ -246,8 +244,7 @@ def create_tracked_url_for_resolved_button(
 
     except Exception as e:
         logger.exception(
-            f"Error creating tracked URL for resolved button "
-            f"(message={broadcast_message.id}, idx={button_index}): {e}"
+            f"Error creating tracked URL for resolved button (message={broadcast_message.id}, idx={button_index}): {e}"
         )
         return resolved_url  # Fallback: use original URL
 
@@ -268,18 +265,18 @@ def _resolve_original_url_for_button(template, button_index: int, all_data: dict
     ``all_data``.
     """
     placeholder_mapping = template.placeholder_mapping or {}
-    button_mappings = placeholder_mapping.get('buttons', [])
+    button_mappings = placeholder_mapping.get("buttons", [])
 
     for bm in button_mappings:
-        if bm.get('button_index') == button_index:
-            url_mapping = bm.get('url_mapping', {})
+        if bm.get("button_index") == button_index:
+            url_mapping = bm.get("url_mapping", {})
             # Usually there's a single {{1}} parameter
             for number in sorted(url_mapping.keys(), key=int):
                 placeholder_name = url_mapping[number]
-                value = all_data.get(placeholder_name, '')
+                value = all_data.get(placeholder_name, "")
                 if value:
                     return str(value)
-    return ''
+    return ""
 
 
 def _resolve_full_url_for_button(template_url: str, template, button_index: int, all_data: dict) -> str:
@@ -287,20 +284,20 @@ def _resolve_full_url_for_button(template_url: str, template, button_index: int,
     Build the fully resolved URL for a dynamic button with third-party base URL.
 
     E.g. template_url = "https://shop.com/order?id={{1}}"
-    After substituting {{1}} with the value from placeholder_data → 
+    After substituting {{1}} with the value from placeholder_data →
     "https://shop.com/order?id=12345"
     """
     placeholder_mapping = template.placeholder_mapping or {}
-    button_mappings = placeholder_mapping.get('buttons', [])
+    button_mappings = placeholder_mapping.get("buttons", [])
 
     resolved = template_url
     for bm in button_mappings:
-        if bm.get('button_index') == button_index:
-            url_mapping = bm.get('url_mapping', {})
+        if bm.get("button_index") == button_index:
+            url_mapping = bm.get("url_mapping", {})
             for number in sorted(url_mapping.keys(), key=int):
                 placeholder_name = url_mapping[number]
-                value = all_data.get(placeholder_name, '')
-                resolved = resolved.replace(f'{{{{{number}}}}}', str(value))
+                value = all_data.get(placeholder_name, "")
+                resolved = resolved.replace(f"{{{{{number}}}}}", str(value))
             break
     return resolved
 
@@ -336,48 +333,47 @@ def get_click_analytics_for_broadcast(broadcast_id: int) -> dict:
 
     if not tracked_urls.exists():
         return {
-            'total_tracked_urls': 0,
-            'total_clicks': 0,
-            'unique_contacts_clicked': 0,
-            'buttons': [],
+            "total_tracked_urls": 0,
+            "total_clicks": 0,
+            "unique_contacts_clicked": 0,
+            "buttons": [],
         }
 
     # Aggregate by button_index
     button_stats = (
-        tracked_urls
-        .values('button_index', 'button_text')
+        tracked_urls.values("button_index", "button_text")
         .annotate(
-            total_clicks=Sum('click_count'),
-            unique_clickers=Count('contact', distinct=True, filter=Q(click_count__gt=0)),
-            first_click=Min('first_clicked_at'),
-            last_click=Max('last_clicked_at'),
+            total_clicks=Sum("click_count"),
+            unique_clickers=Count("contact", distinct=True, filter=Q(click_count__gt=0)),
+            first_click=Min("first_clicked_at"),
+            last_click=Max("last_clicked_at"),
         )
-        .order_by('button_index')
+        .order_by("button_index")
     )
 
     # Get a sample original_url for each button_index
     sample_urls = {}
     for stat in button_stats:
-        btn_idx = stat['button_index']
-        sample = tracked_urls.filter(button_index=btn_idx).values_list('original_url', flat=True).first()
-        sample_urls[btn_idx] = sample or ''
+        btn_idx = stat["button_index"]
+        sample = tracked_urls.filter(button_index=btn_idx).values_list("original_url", flat=True).first()
+        sample_urls[btn_idx] = sample or ""
 
-    total_clicks = tracked_urls.aggregate(t=Sum('click_count'))['t'] or 0
-    unique_contacts = tracked_urls.filter(click_count__gt=0).values('contact').distinct().count()
+    total_clicks = tracked_urls.aggregate(t=Sum("click_count"))["t"] or 0
+    unique_contacts = tracked_urls.filter(click_count__gt=0).values("contact").distinct().count()
 
     return {
-        'total_tracked_urls': tracked_urls.count(),
-        'total_clicks': total_clicks,
-        'unique_contacts_clicked': unique_contacts,
-        'buttons': [
+        "total_tracked_urls": tracked_urls.count(),
+        "total_clicks": total_clicks,
+        "unique_contacts_clicked": unique_contacts,
+        "buttons": [
             {
-                'button_index': s['button_index'],
-                'button_text': s['button_text'],
-                'original_url': sample_urls.get(s['button_index'], ''),
-                'total_clicks': s['total_clicks'] or 0,
-                'unique_clickers': s['unique_clickers'],
-                'first_click': s['first_click'],
-                'last_click': s['last_click'],
+                "button_index": s["button_index"],
+                "button_text": s["button_text"],
+                "original_url": sample_urls.get(s["button_index"], ""),
+                "total_clicks": s["total_clicks"] or 0,
+                "unique_clickers": s["unique_clickers"],
+                "first_click": s["first_click"],
+                "last_click": s["last_click"],
             }
             for s in button_stats
         ],
@@ -401,19 +397,17 @@ def get_click_analytics_for_message(broadcast_message_id: int) -> list:
             }
         ]
     """
-    tracked_urls = TrackedURL.objects.filter(
-        broadcast_message_id=broadcast_message_id
-    ).order_by('button_index')
+    tracked_urls = TrackedURL.objects.filter(broadcast_message_id=broadcast_message_id).order_by("button_index")
 
     return [
         {
-            'button_index': t.button_index,
-            'button_text': t.button_text,
-            'original_url': t.original_url,
-            'tracked_url': t.tracked_url,
-            'click_count': t.click_count,
-            'first_clicked_at': t.first_clicked_at,
-            'last_clicked_at': t.last_clicked_at,
+            "button_index": t.button_index,
+            "button_text": t.button_text,
+            "original_url": t.original_url,
+            "tracked_url": t.tracked_url,
+            "click_count": t.click_count,
+            "first_clicked_at": t.first_clicked_at,
+            "last_clicked_at": t.last_clicked_at,
         }
         for t in tracked_urls
     ]

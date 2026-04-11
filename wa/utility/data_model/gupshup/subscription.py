@@ -20,15 +20,31 @@ class SubscriptionFormData(BaseModel):
     READ: Read events get forwarded to subscriptions if read mode is subscribed.
     ENQUEUED Enqueued events get forwarded to subscriptions if enqueued mode is subscribed.
     """
-    modes: List[Literal[
-        "WHATSAPP", "SMS", "VOICE", "TEMPLATE", "ACCOUNT", "PAYMENTS",
-        "FLOWS_MESSAGE", "MESSAGE", "OTHERS", "ALL", "BILLING", "FAILED",
-        "SENT", "DELIVERED", "READ", "ENQUEUED"
-    ]]
+
+    modes: List[
+        Literal[
+            "WHATSAPP",
+            "SMS",
+            "VOICE",
+            "TEMPLATE",
+            "ACCOUNT",
+            "PAYMENTS",
+            "FLOWS_MESSAGE",
+            "MESSAGE",
+            "OTHERS",
+            "ALL",
+            "BILLING",
+            "FAILED",
+            "SENT",
+            "DELIVERED",
+            "READ",
+            "ENQUEUED",
+        ]
+    ]
     tag: str
     url: str
-    version:int = 3
-    showOnUI:bool = True
+    version: int = 3
+    showOnUI: bool = True
 
     def to_form_data(self) -> dict:
         """
@@ -36,6 +52,5 @@ class SubscriptionFormData(BaseModel):
         Use this method instead of __dict__ for API requests.
         """
         data = self.model_dump()
-        data['modes'] = ','.join(data['modes'])
+        data["modes"] = ",".join(data["modes"])
         return data
-    

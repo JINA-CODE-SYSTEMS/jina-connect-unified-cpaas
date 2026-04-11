@@ -12,29 +12,20 @@ Based on META's marketing template structure:
 - components: Array of header, body, footer, and button components
 """
 
-import re
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from wa.utility.data_model.meta_direct.body import (
     BodyComponent,
     BodyTextExample,
-    BodyTextNamedParam,
 )
 from wa.utility.data_model.meta_direct.buttons import (
     PhoneNumberButton,
     QuickReplyButton,
-    TemplateButton,
     URLButton,
 )
 from wa.utility.data_model.meta_direct.buttons_component import ButtonsComponent
-from wa.utility.data_model.meta_direct.enums import (
-    HeaderFormat,
-    ParameterFormat,
-    TemplateCategory,
-    TemplateType,
-)
 from wa.utility.data_model.meta_direct.footer import FooterComponent
 from wa.utility.data_model.meta_direct.header import (
     HeaderComponent,
@@ -43,17 +34,14 @@ from wa.utility.data_model.meta_direct.header import (
 )
 from wa.utility.validators.meta_direct.create.base_validator import BaseTemplateValidator
 
-
 # Union type for all marketing template components
-MarketingTemplateComponent = Union[
-    HeaderComponent, BodyComponent, FooterComponent, ButtonsComponent
-]
+MarketingTemplateComponent = Union[HeaderComponent, BodyComponent, FooterComponent, ButtonsComponent]
 
 
 class MarketingTemplateRequestValidator(BaseTemplateValidator):
     """
     Validator for META Direct API marketing template creation request.
-    
+
     Inherits from BaseTemplateValidator which provides:
     - name, language validation
     - template_type (internal, excluded from META API)
@@ -90,10 +78,8 @@ class MarketingTemplateRequestValidator(BaseTemplateValidator):
     """
 
     # Override category to restrict to marketing only
-    category: Literal["marketing", "MARKETING"] = Field(
-        ..., description="Template category (must be 'marketing')"
-    )
-    
+    category: Literal["marketing", "MARKETING"] = Field(..., description="Template category (must be 'marketing')")
+
     # Override components with marketing-specific component types
     components: List[MarketingTemplateComponent] = Field(
         ..., min_length=1, description="Template components (header, body, footer, buttons)"
@@ -159,9 +145,7 @@ class MarketingTemplateRequestValidator(BaseTemplateValidator):
                                 else:
                                     raise ValueError(f"Unknown button type: {btn_type}")
                             else:
-                                raise ValueError(
-                                    f"Button must be a dictionary, got {type(btn)}"
-                                )
+                                raise ValueError(f"Button must be a dictionary, got {type(btn)}")
                         comp["buttons"] = parsed_buttons
                     parsed.append(ButtonsComponent(**comp))
                 else:
@@ -196,10 +180,7 @@ class MarketingTemplateRequestValidator(BaseTemplateValidator):
         actual_order = [t for t in component_types if t in expected_order]
 
         if current_order != actual_order:
-            raise ValueError(
-                f"Components must be in order: header -> body -> footer -> buttons. "
-                f"Got: {actual_order}"
-            )
+            raise ValueError(f"Components must be in order: header -> body -> footer -> buttons. Got: {actual_order}")
 
         return self
 

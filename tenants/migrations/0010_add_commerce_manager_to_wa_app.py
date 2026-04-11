@@ -4,15 +4,17 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0009_rbac_add_webhook_wa_delete_permissions'),
+        ("tenants", "0009_rbac_add_webhook_wa_delete_permissions"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenantwaapp',
-            name='is_commerce_manager_enabled',
-            field=models.BooleanField(default=False, help_text='Whether Meta Commerce Manager is enabled for this WhatsApp Business Account. When False, CATALOG and PRODUCT template types are disabled.'),
+            model_name="tenantwaapp",
+            name="is_commerce_manager_enabled",
+            field=models.BooleanField(
+                default=False,
+                help_text="Whether Meta Commerce Manager is enabled for this WhatsApp Business Account. When False, CATALOG and PRODUCT template types are disabled.",
+            ),
         ),
     ]

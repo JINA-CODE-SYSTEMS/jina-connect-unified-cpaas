@@ -12,7 +12,7 @@ The payload format is identical to Gupshup's Cloud API proxy — both accept
 the standard WhatsApp Cloud API JSON schema (messaging_product, to, type, …).
 """
 
-from typing import Any, Optional, Union
+from typing import Any
 
 from wa.utility.apis.meta.base_api import WAAPI
 
@@ -68,8 +68,7 @@ class SessionMessageAPI(WAAPI):
         Raises:
             Exception: on non-200/201 response (raised by ``make_json_request``).
         """
-        from wa.utility.data_model.gupshup.session_message_base import \
-            SessionMessageBase
+        from wa.utility.data_model.gupshup.session_message_base import SessionMessageBase
 
         if isinstance(data, SessionMessageBase):
             data = data.model_dump(by_alias=True, exclude_none=True)

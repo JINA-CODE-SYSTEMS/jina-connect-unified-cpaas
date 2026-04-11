@@ -6,82 +6,139 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('chat_flow', '0001_initial'),
-        ('contacts', '0002_initial'),
-        ('tenants', '0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more'),
-        ('wa', '0001_initial'),
+        ("chat_flow", "0001_initial"),
+        ("contacts", "0002_initial"),
+        ("tenants", "0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more"),
+        ("wa", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='chatflow',
-            name='start_template',
-            field=models.ForeignKey(blank=True, help_text='\n        The WhatsApp template that users will see first when they start this flow.\n        \n        Requirements:\n        - Must be an APPROVED template (not pending or rejected)\n        - Must have at least one button (flows require user interaction)\n        - Must belong to the same tenant as this flow\n        - Can be null for draft/inactive flows that are still being designed\n        \n        Example:\n        If start_template is "Welcome Message" with buttons ["Get Started", "More Info"],\n        then users will see this message first and can click either button to proceed.\n        \n        The start_template determines the first node that users land on when beginning\n        a new chat flow session.\n        ', limit_choices_to={'buttons__isnull': False, 'status': 'APPROVED'}, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='flows_as_start', to='wa.watemplate'),
+            model_name="chatflow",
+            name="start_template",
+            field=models.ForeignKey(
+                blank=True,
+                help_text='\n        The WhatsApp template that users will see first when they start this flow.\n        \n        Requirements:\n        - Must be an APPROVED template (not pending or rejected)\n        - Must have at least one button (flows require user interaction)\n        - Must belong to the same tenant as this flow\n        - Can be null for draft/inactive flows that are still being designed\n        \n        Example:\n        If start_template is "Welcome Message" with buttons ["Get Started", "More Info"],\n        then users will see this message first and can click either button to proceed.\n        \n        The start_template determines the first node that users land on when beginning\n        a new chat flow session.\n        ',
+                limit_choices_to={"buttons__isnull": False, "status": "APPROVED"},
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="flows_as_start",
+                to="wa.watemplate",
+            ),
         ),
         migrations.AddField(
-            model_name='chatflow',
-            name='tenant',
-            field=models.ForeignKey(blank=True, help_text='The tenant/organization that owns this chat flow', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='chat_flows', to='tenants.tenant'),
+            model_name="chatflow",
+            name="tenant",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="The tenant/organization that owns this chat flow",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="chat_flows",
+                to="tenants.tenant",
+            ),
         ),
         migrations.AddField(
-            model_name='chatflow',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated_by', to=settings.AUTH_USER_MODEL),
+            model_name="chatflow",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated_by",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
         migrations.AddField(
-            model_name='chatflowedge',
-            name='flow',
-            field=models.ForeignKey(help_text='The ChatFlow that this edge belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='edges', to='chat_flow.chatflow'),
+            model_name="chatflowedge",
+            name="flow",
+            field=models.ForeignKey(
+                help_text="The ChatFlow that this edge belongs to",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="edges",
+                to="chat_flow.chatflow",
+            ),
         ),
         migrations.AddField(
-            model_name='chatflownode',
-            name='flow',
-            field=models.ForeignKey(help_text='The ChatFlow that this node belongs to', on_delete=django.db.models.deletion.CASCADE, related_name='nodes', to='chat_flow.chatflow'),
+            model_name="chatflownode",
+            name="flow",
+            field=models.ForeignKey(
+                help_text="The ChatFlow that this node belongs to",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="nodes",
+                to="chat_flow.chatflow",
+            ),
         ),
         migrations.AddField(
-            model_name='chatflownode',
-            name='template',
-            field=models.ForeignKey(blank=True, help_text='\n        The approved WhatsApp template that will be sent when users reach this node.\n        \n        Requirements:\n        - Must be APPROVED status (Gupshup has validated the template)\n        - Should belong to the same tenant as the flow\n        - Template content cannot be modified once approved\n        \n        The template contains:\n        - Message text (e.g., "Welcome to our store!")\n        - Button definitions (text, types, actions)\n        - Media attachments (images, documents, etc.)\n        - Template metadata (category, language, etc.)\n        \n        Example Template:\n        Content: "Your order status: {{1}}. What would you like to do?"\n        Buttons: ["Track Order", "Cancel Order", "Contact Support"]\n        ', limit_choices_to={'status': 'APPROVED'}, null=True, on_delete=django.db.models.deletion.CASCADE, to='wa.watemplate'),
+            model_name="chatflownode",
+            name="template",
+            field=models.ForeignKey(
+                blank=True,
+                help_text='\n        The approved WhatsApp template that will be sent when users reach this node.\n        \n        Requirements:\n        - Must be APPROVED status (Gupshup has validated the template)\n        - Should belong to the same tenant as the flow\n        - Template content cannot be modified once approved\n        \n        The template contains:\n        - Message text (e.g., "Welcome to our store!")\n        - Button definitions (text, types, actions)\n        - Media attachments (images, documents, etc.)\n        - Template metadata (category, language, etc.)\n        \n        Example Template:\n        Content: "Your order status: {{1}}. What would you like to do?"\n        Buttons: ["Track Order", "Cancel Order", "Contact Support"]\n        ',
+                limit_choices_to={"status": "APPROVED"},
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                to="wa.watemplate",
+            ),
         ),
         migrations.AddField(
-            model_name='chatflowedge',
-            name='source_node',
-            field=models.ForeignKey(help_text='\n        The node that users are leaving when they click the button.\n        \n        This is the "current" node where the user sees a message and buttons.\n        When they click a button, this edge defines where they go next.\n        \n        Example: User is viewing "Pizza Menu" node and clicks "Add to Cart"\n        → source_node = "Pizza Menu" node\n        ', on_delete=django.db.models.deletion.CASCADE, related_name='outgoing_edges', to='chat_flow.chatflownode'),
+            model_name="chatflowedge",
+            name="source_node",
+            field=models.ForeignKey(
+                help_text='\n        The node that users are leaving when they click the button.\n        \n        This is the "current" node where the user sees a message and buttons.\n        When they click a button, this edge defines where they go next.\n        \n        Example: User is viewing "Pizza Menu" node and clicks "Add to Cart"\n        → source_node = "Pizza Menu" node\n        ',
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="outgoing_edges",
+                to="chat_flow.chatflownode",
+            ),
         ),
         migrations.AddField(
-            model_name='chatflowedge',
-            name='target_node',
-            field=models.ForeignKey(help_text='\n        The node that users will see after clicking the button.\n        \n        This is the "destination" node that becomes the user\'s new current position.\n        \n        Example: User clicks "Add to Cart" button\n        → target_node = "Shopping Cart" node\n        \n        The user\'s session will be updated to show them at the target_node,\n        and they\'ll receive the target node\'s template message.\n        ', on_delete=django.db.models.deletion.CASCADE, related_name='incoming_edges', to='chat_flow.chatflownode'),
+            model_name="chatflowedge",
+            name="target_node",
+            field=models.ForeignKey(
+                help_text='\n        The node that users will see after clicking the button.\n        \n        This is the "destination" node that becomes the user\'s new current position.\n        \n        Example: User clicks "Add to Cart" button\n        → target_node = "Shopping Cart" node\n        \n        The user\'s session will be updated to show them at the target_node,\n        and they\'ll receive the target node\'s template message.\n        ',
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="incoming_edges",
+                to="chat_flow.chatflownode",
+            ),
         ),
         migrations.AddField(
-            model_name='userchatflowsession',
-            name='contact',
-            field=models.ForeignKey(help_text='The contact going through this flow', on_delete=django.db.models.deletion.CASCADE, related_name='chatflow_sessions', to='contacts.tenantcontact'),
+            model_name="userchatflowsession",
+            name="contact",
+            field=models.ForeignKey(
+                help_text="The contact going through this flow",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="chatflow_sessions",
+                to="contacts.tenantcontact",
+            ),
         ),
         migrations.AddField(
-            model_name='userchatflowsession',
-            name='flow',
-            field=models.ForeignKey(help_text='The ChatFlow being executed', on_delete=django.db.models.deletion.CASCADE, related_name='sessions', to='chat_flow.chatflow'),
+            model_name="userchatflowsession",
+            name="flow",
+            field=models.ForeignKey(
+                help_text="The ChatFlow being executed",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="sessions",
+                to="chat_flow.chatflow",
+            ),
         ),
         migrations.AlterUniqueTogether(
-            name='chatflownode',
-            unique_together={('flow', 'node_id')},
+            name="chatflownode",
+            unique_together={("flow", "node_id")},
         ),
         migrations.AlterUniqueTogether(
-            name='chatflowedge',
-            unique_together={('flow', 'edge_id')},
+            name="chatflowedge",
+            unique_together={("flow", "edge_id")},
         ),
         migrations.AddIndex(
-            model_name='userchatflowsession',
-            index=models.Index(fields=['contact', 'flow', 'is_active'], name='chat_flow_u_contact_ca841a_idx'),
+            model_name="userchatflowsession",
+            index=models.Index(fields=["contact", "flow", "is_active"], name="chat_flow_u_contact_ca841a_idx"),
         ),
         migrations.AddIndex(
-            model_name='userchatflowsession',
-            index=models.Index(fields=['is_active', 'started_at'], name='chat_flow_u_is_acti_7f5d0d_idx'),
+            model_name="userchatflowsession",
+            index=models.Index(fields=["is_active", "started_at"], name="chat_flow_u_is_acti_7f5d0d_idx"),
         ),
     ]

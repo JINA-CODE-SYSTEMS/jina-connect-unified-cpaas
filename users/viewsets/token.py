@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.db.models import Q
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -22,12 +21,12 @@ class JwtTokenObtainPairView(TokenObtainPairView):
         request_body=JwtUserSerializer,
         manual_parameters=[
             openapi.Parameter(
-                'X-ACCESS-KEY',
+                "X-ACCESS-KEY",
                 openapi.IN_HEADER,
                 description="Tenant access key for authentication",
                 type=openapi.TYPE_STRING,
                 required=False,
-                example="your-tenant-access-key-here"
+                example="your-tenant-access-key-here",
             )
         ],
         responses={
@@ -36,33 +35,31 @@ class JwtTokenObtainPairView(TokenObtainPairView):
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
-                        'access': openapi.Schema(type=openapi.TYPE_STRING, description='JWT Access Token'),
-                        'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='JWT Refresh Token'),
-                        'user': openapi.Schema(
+                        "access": openapi.Schema(type=openapi.TYPE_STRING, description="JWT Access Token"),
+                        "refresh": openapi.Schema(type=openapi.TYPE_STRING, description="JWT Refresh Token"),
+                        "user": openapi.Schema(
                             type=openapi.TYPE_OBJECT,
                             properties={
-                                'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                                'username': openapi.Schema(type=openapi.TYPE_STRING),
-                                'email': openapi.Schema(type=openapi.TYPE_STRING),
-                            }
-                        )
-                    }
-                )
+                                "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                "username": openapi.Schema(type=openapi.TYPE_STRING),
+                                "email": openapi.Schema(type=openapi.TYPE_STRING),
+                            },
+                        ),
+                    },
+                ),
             ),
             401: openapi.Response(description="Authentication failed"),
-            400: openapi.Response(description="Bad request - missing required fields")
+            400: openapi.Response(description="Bad request - missing required fields"),
         },
-        tags=['Authentication']
+        tags=["Authentication"],
     )
     def post(self, request, *args, **kwargs):
-        
 
         username_or_email = request.data.get("username")
         password = request.data.get("password")
 
         _, tenant = TenantAccessKeyAuthentication().authenticate(request)
 
-        
         # User check - try username first, then email
         try:
             user = User.objects.get(Q(username=username_or_email) | Q(email__iexact=username_or_email))
@@ -77,7 +74,7 @@ class JwtTokenObtainPairView(TokenObtainPairView):
 
         if not user.check_password(password):
             raise AuthenticationFailed("Invalid username/email or password")
-        
+
         # Check if user is active (email verified)
         if not user.is_active:
             raise AuthenticationFailed("Please verify your email before logging in.")
@@ -93,7 +90,7 @@ class JwtTokenObtainPairView(TokenObtainPairView):
 
         # Generate token - pass the actual username for the serializer
         data = request.data.copy()
-        data['username'] = user.username  # Use actual username for token generation
+        data["username"] = user.username  # Use actual username for token generation
         serializer = self.get_serializer(data=data, context={"tenant": tenant})
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data, status=200)

@@ -1,5 +1,3 @@
-from djmoney.models.fields import MoneyField as DjangoMoneyField
-from moneyed import Money
 from rest_framework import serializers
 from rest_framework.request import HttpRequest
 
@@ -8,16 +6,12 @@ class BaseSerializer(serializers.ModelSerializer):
     """
     The base serializer to be used by our apps.
     """
+
     created_at = serializers.DateTimeField(read_only=True, format="%d %b %Y, %H:%M")
     updated_at = serializers.DateTimeField(read_only=True, format="%d %b %Y, %H:%M")
     # share user name for created by and updated by
-    created_by = serializers.SlugRelatedField(
-        read_only=True, slug_field="username"
-    )
-    updated_by = serializers.SlugRelatedField(
-        read_only=True, slug_field="username"
-    )
-
+    created_by = serializers.SlugRelatedField(read_only=True, slug_field="username")
+    updated_by = serializers.SlugRelatedField(read_only=True, slug_field="username")
 
     class Meta:
         model = None

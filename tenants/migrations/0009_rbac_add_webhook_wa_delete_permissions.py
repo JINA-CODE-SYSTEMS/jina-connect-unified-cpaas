@@ -42,7 +42,6 @@ def seed_new_permissions(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("tenants", "0008_rbac_make_role_non_nullable"),
     ]

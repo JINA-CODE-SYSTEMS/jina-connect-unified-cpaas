@@ -1,1 +1,1 @@
-default_app_config = 'transaction.apps.TransactionConfig'
+default_app_config = "transaction.apps.TransactionConfig"

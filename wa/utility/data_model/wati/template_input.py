@@ -13,7 +13,7 @@ Reference: https://docs.wati.io/reference/post_api-v1-whatsapp-templates
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class WATITemplateCategory(str, Enum):
     """WATI template categories (maps to META's categories)."""
+
     MARKETING = "MARKETING"
     UTILITY = "UTILITY"
     AUTHENTICATION = "AUTHENTICATION"
@@ -31,6 +32,7 @@ class WATITemplateCategory(str, Enum):
 
 class WATITemplateSubCategory(str, Enum):
     """WATI template sub-categories."""
+
     STANDARD = "STANDARD"
     CAROUSEL = "CAROUSEL"
     CATALOG = "CATALOG"
@@ -45,6 +47,7 @@ class WATITemplateSubCategory(str, Enum):
 
 class WATIButtonsType(str, Enum):
     """WATI template button type configurations."""
+
     NONE = "NONE"
     QUICK_REPLY = "quick_reply"
     CALL_TO_ACTION = "call_to_action"
@@ -55,6 +58,7 @@ class WATIButtonsType(str, Enum):
 
 class WATICreationMethod(int, Enum):
     """Template creation method."""
+
     HUMAN = 0
     AI = 1
     HUMAN_AND_AI = 2
@@ -62,6 +66,7 @@ class WATICreationMethod(int, Enum):
 
 class WATIHeaderFormat(str, Enum):
     """Header format types for WATI templates."""
+
     TEXT = "TEXT"
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"
@@ -81,18 +86,11 @@ class WATITemplateHeader(BaseModel):
     Supports text headers (with optional variables) and media headers
     (image, video, document).
     """
-    format: WATIHeaderFormat = Field(
-        ..., description="Header format type"
-    )
-    text: Optional[str] = Field(
-        None, description="Header text (required for TEXT format, may contain {{variables}})"
-    )
-    media_url: Optional[str] = Field(
-        None, description="Media URL for IMAGE/VIDEO/DOCUMENT headers"
-    )
-    example: Optional[str] = Field(
-        None, description="Example value for header variables or media handle"
-    )
+
+    format: WATIHeaderFormat = Field(..., description="Header format type")
+    text: Optional[str] = Field(None, description="Header text (required for TEXT format, may contain {{variables}})")
+    media_url: Optional[str] = Field(None, description="Media URL for IMAGE/VIDEO/DOCUMENT headers")
+    example: Optional[str] = Field(None, description="Example value for header variables or media handle")
 
 
 class WATITemplateButton(BaseModel):
@@ -101,21 +99,12 @@ class WATITemplateButton(BaseModel):
 
     Supports different button types as used in WATI's API.
     """
-    type: str = Field(
-        ..., description="Button type (e.g., 'url', 'phone_number', 'quick_reply')"
-    )
-    text: str = Field(
-        ..., min_length=1, max_length=25, description="Button label text"
-    )
-    url: Optional[str] = Field(
-        None, description="URL for URL-type buttons"
-    )
-    phone_number: Optional[str] = Field(
-        None, description="Phone number for phone_number-type buttons"
-    )
-    example: Optional[str] = Field(
-        None, description="Example value for dynamic URL parameters"
-    )
+
+    type: str = Field(..., description="Button type (e.g., 'url', 'phone_number', 'quick_reply')")
+    text: str = Field(..., min_length=1, max_length=25, description="Button label text")
+    url: Optional[str] = Field(None, description="URL for URL-type buttons")
+    phone_number: Optional[str] = Field(None, description="Phone number for phone_number-type buttons")
+    example: Optional[str] = Field(None, description="Example value for dynamic URL parameters")
 
     @field_validator("text")
     @classmethod
@@ -131,10 +120,9 @@ class WATITemplateCustomParam(BaseModel):
 
     Used to define variables in the template body (e.g., {{name}}, {{order_id}}).
     """
+
     name: str = Field(..., description="Parameter name")
-    value: Optional[str] = Field(
-        None, description="Default or example value for the parameter"
-    )
+    value: Optional[str] = Field(None, description="Default or example value for the parameter")
 
 
 # =========================================================================
@@ -158,47 +146,28 @@ class WATITemplateInput(BaseModel):
         )
         payload = template.to_wati_payload()
     """
+
     # Core fields
-    type: str = Field(
-        default="template", description="Template type, typically 'template'"
-    )
-    category: WATITemplateCategory = Field(
-        ..., description="Template category (MARKETING, UTILITY, AUTHENTICATION)"
-    )
+    type: str = Field(default="template", description="Template type, typically 'template'")
+    category: WATITemplateCategory = Field(..., description="Template category (MARKETING, UTILITY, AUTHENTICATION)")
     subCategory: Optional[WATITemplateSubCategory] = Field(
-        default=WATITemplateSubCategory.STANDARD,
-        description="Template sub-category"
+        default=WATITemplateSubCategory.STANDARD, description="Template sub-category"
     )
     elementName: str = Field(
-        ..., min_length=1, max_length=512,
-        description="Internal template name (alphanumeric and underscores)"
+        ..., min_length=1, max_length=512, description="Internal template name (alphanumeric and underscores)"
     )
-    language: str = Field(
-        ..., min_length=2, max_length=10,
-        description="Language code (e.g., 'en', 'es', 'fr')"
-    )
+    language: str = Field(..., min_length=2, max_length=10, description="Language code (e.g., 'en', 'es', 'fr')")
 
     # Content
     body: str = Field(
-        ..., min_length=1, max_length=1024,
-        description="Body text of the template, can include variables like {{name}}"
+        ..., min_length=1, max_length=1024, description="Body text of the template, can include variables like {{name}}"
     )
-    footer: Optional[str] = Field(
-        None, max_length=60,
-        description="Footer text of the template"
-    )
-    header: Optional[WATITemplateHeader] = Field(
-        None, description="Header configuration"
-    )
+    footer: Optional[str] = Field(None, max_length=60, description="Footer text of the template")
+    header: Optional[WATITemplateHeader] = Field(None, description="Header configuration")
 
     # Buttons
-    buttonsType: WATIButtonsType = Field(
-        default=WATIButtonsType.NONE,
-        description="Type of buttons configuration"
-    )
-    buttons: Optional[List[WATITemplateButton]] = Field(
-        None, description="List of button configurations"
-    )
+    buttonsType: WATIButtonsType = Field(default=WATIButtonsType.NONE, description="Type of buttons configuration")
+    buttons: Optional[List[WATITemplateButton]] = Field(None, description="List of button configurations")
 
     # Parameters
     customParams: Optional[List[WATITemplateCustomParam]] = Field(
@@ -207,27 +176,23 @@ class WATITemplateInput(BaseModel):
 
     # Metadata
     creationMethod: WATICreationMethod = Field(
-        default=WATICreationMethod.HUMAN,
-        description="Template creation method (0=HUMAN, 1=AI, 2=HUMAN_AND_AI)"
+        default=WATICreationMethod.HUMAN, description="Template creation method (0=HUMAN, 1=AI, 2=HUMAN_AND_AI)"
     )
 
     # Raw payload for debugging
-    raw_payload: Optional[Dict[str, Any]] = Field(
-        None, exclude=True, description="Raw payload for debugging"
-    )
+    raw_payload: Optional[Dict[str, Any]] = Field(None, exclude=True, description="Raw payload for debugging")
 
     @field_validator("elementName")
     @classmethod
     def validate_element_name(cls, v):
         """Template names must be lowercase alphanumeric with underscores."""
         import re
+
         if not v or not v.strip():
             raise ValueError("Template name cannot be empty")
         v = v.strip().lower()
         if not re.match(r"^[a-z0-9_]+$", v):
-            raise ValueError(
-                "Template name must contain only lowercase letters, numbers, and underscores"
-            )
+            raise ValueError("Template name must contain only lowercase letters, numbers, and underscores")
         return v
 
     def to_wati_payload(self) -> dict:

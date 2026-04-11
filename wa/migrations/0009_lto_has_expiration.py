@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('wa', '0008_alter_media_handle_to_textfield'),
+        ("wa", "0008_alter_media_handle_to_textfield"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='watemplate',
-            name='lto_has_expiration',
-            field=models.BooleanField(default=True, help_text='Whether LTO has expiration countdown'),
+            model_name="watemplate",
+            name="lto_has_expiration",
+            field=models.BooleanField(default=True, help_text="Whether LTO has expiration countdown"),
         ),
     ]

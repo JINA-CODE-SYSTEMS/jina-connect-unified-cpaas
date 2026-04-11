@@ -4,10 +4,8 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0012_media_id_charfield_to_textfield'),
+        ("tenants", "0012_media_id_charfield_to_textfield"),
     ]
 
-    operations = [
-    ]
+    operations = []

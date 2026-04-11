@@ -41,10 +41,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from wa.utility.data_model.shared.order_models import (
     OrderAmount,
     OrderItem,
-    PaymentGatewayConfig,
     PaymentSettings,
 )
-
 
 # ============================================================================
 # Header / Body Parameter Models (for template variable substitution)
@@ -53,12 +51,14 @@ from wa.utility.data_model.shared.order_models import (
 
 class BodyTextParameter(BaseModel):
     """Body parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the body parameter")
 
 
 class BodyCurrencyParameter(BaseModel):
     """Body parameter with currency"""
+
     type: Literal["currency"] = "currency"
     currency: dict = Field(
         ...,
@@ -68,6 +68,7 @@ class BodyCurrencyParameter(BaseModel):
 
 class BodyDateTimeParameter(BaseModel):
     """Body parameter with date_time"""
+
     type: Literal["date_time"] = "date_time"
     date_time: dict = Field(..., description="DateTime object with fallback_value")
 
@@ -77,12 +78,14 @@ BodyParameter = Union[BodyTextParameter, BodyCurrencyParameter, BodyDateTimePara
 
 class HeaderTextParameter(BaseModel):
     """Header parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the header parameter")
 
 
 class HeaderImageParameter(BaseModel):
     """Header parameter with image"""
+
     type: Literal["image"] = "image"
     image: dict = Field(
         ...,
@@ -92,6 +95,7 @@ class HeaderImageParameter(BaseModel):
 
 class HeaderDocumentParameter(BaseModel):
     """Header parameter with document"""
+
     type: Literal["document"] = "document"
     document: dict = Field(
         ...,
@@ -109,6 +113,7 @@ HeaderParameter = Union[HeaderTextParameter, HeaderImageParameter, HeaderDocumen
 
 class OrderData(BaseModel):
     """Order block inside the order_details action payload."""
+
     status: Literal["pending"] = Field(
         default="pending",
         description="Order status. Must be 'pending' for new order details templates.",
@@ -144,6 +149,7 @@ class OrderData(BaseModel):
 
 class ShippingAddress(BaseModel):
     """Shipping address for physical-goods orders."""
+
     name: Optional[str] = Field(default=None, description="Recipient name.")
     phone_number: Optional[str] = Field(default=None, description="Recipient phone.")
     address: Optional[str] = Field(default=None, description="Street address.")
@@ -155,11 +161,13 @@ class ShippingAddress(BaseModel):
 
 class ShippingInfo(BaseModel):
     """Shipping information for physical-goods orders."""
+
     address: Optional[ShippingAddress] = Field(default=None, description="Shipping address.")
 
 
 class ImporterAddress(BaseModel):
     """Importer address for India compliance."""
+
     address_line1: Optional[str] = Field(default=None)
     address_line2: Optional[str] = Field(default=None)
     city: Optional[str] = Field(default=None)
@@ -176,6 +184,7 @@ class OrderDetailsPayload(BaseModel):
     Supports arithmetic validation: total_amount = subtotal + tax + shipping - discount.
     Currency is restricted to INR (India Payments).
     """
+
     currency: Literal["INR"] = Field(
         default="INR",
         description="Currency code. Only INR is currently supported.",
@@ -268,21 +277,20 @@ class OrderDetailsPayload(BaseModel):
 
 class OrderDetailsActionWrapper(BaseModel):
     """Wrapper containing the order_details key inside the action."""
-    order_details: OrderDetailsPayload = Field(
-        ..., description="Full order details payload."
-    )
+
+    order_details: OrderDetailsPayload = Field(..., description="Full order details payload.")
 
 
 class OrderDetailsActionParameter(BaseModel):
     """The action parameter inside the button component."""
+
     type: Literal["action"] = "action"
-    action: OrderDetailsActionWrapper = Field(
-        ..., description="Action wrapper containing order_details."
-    )
+    action: OrderDetailsActionWrapper = Field(..., description="Action wrapper containing order_details.")
 
 
 class OrderDetailsButtonComponentSend(BaseModel):
     """Button component with sub_type order_details for SEND payload."""
+
     type: Literal["button"] = "button"
     sub_type: Literal["order_details"] = "order_details"
     index: Literal[0] = Field(
@@ -304,18 +312,16 @@ class OrderDetailsButtonComponentSend(BaseModel):
 
 class HeaderComponentSend(BaseModel):
     """Header component for sending template message"""
+
     type: Literal["header"] = "header"
-    parameters: List[HeaderParameter] = Field(
-        ..., min_length=1, max_length=1, description="Header parameters"
-    )
+    parameters: List[HeaderParameter] = Field(..., min_length=1, max_length=1, description="Header parameters")
 
 
 class BodyComponentSend(BaseModel):
     """Body component for sending template message"""
+
     type: Literal["body"] = "body"
-    parameters: List[BodyParameter] = Field(
-        ..., min_length=1, description="Body parameters"
-    )
+    parameters: List[BodyParameter] = Field(..., min_length=1, description="Body parameters")
 
 
 SendCheckoutTemplateComponent = Union[
@@ -332,6 +338,7 @@ SendCheckoutTemplateComponent = Union[
 
 class LanguageInput(BaseModel):
     """Language input for template request"""
+
     code: str = Field(
         ...,
         min_length=2,
@@ -349,6 +356,7 @@ class LanguageInput(BaseModel):
 
 class CheckoutTemplateSendBody(BaseModel):
     """Template body for order details template send request"""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -403,13 +411,9 @@ class CheckoutTemplateSendBody(BaseModel):
                                 elif param_type == "document":
                                     parsed_params.append(HeaderDocumentParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown header parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown header parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(HeaderComponentSend(**comp))
                 elif comp_type == "body":
@@ -427,13 +431,9 @@ class CheckoutTemplateSendBody(BaseModel):
                                 elif param_type == "date_time":
                                     parsed_params.append(BodyDateTimeParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown body parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown body parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(BodyComponentSend(**comp))
                 elif comp_type == "button":
@@ -446,13 +446,9 @@ class CheckoutTemplateSendBody(BaseModel):
                                 if isinstance(param, BaseModel):
                                     parsed_params.append(param)
                                 elif isinstance(param, dict):
-                                    parsed_params.append(
-                                        OrderDetailsActionParameter(**param)
-                                    )
+                                    parsed_params.append(OrderDetailsActionParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Parameter must be a dictionary, got {type(param)}"
-                                    )
+                                    raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                             comp["parameters"] = parsed_params
                         parsed.append(OrderDetailsButtonComponentSend(**comp))
                     else:
@@ -461,10 +457,7 @@ class CheckoutTemplateSendBody(BaseModel):
                             f"template buttons, got '{sub_type}'"
                         )
                 else:
-                    raise ValueError(
-                        f"Unknown component type: '{comp_type}'. "
-                        f"Allowed: 'header', 'body', 'button'"
-                    )
+                    raise ValueError(f"Unknown component type: '{comp_type}'. Allowed: 'header', 'body', 'button'")
             except Exception as e:
                 raise ValueError(f"Error parsing {comp_type} component: {e}")
 
@@ -473,13 +466,10 @@ class CheckoutTemplateSendBody(BaseModel):
     @model_validator(mode="after")
     def validate_send_structure(self):
         """Validate that the order_details button component is present."""
-        has_order_button = any(
-            isinstance(c, OrderDetailsButtonComponentSend) for c in self.components
-        )
+        has_order_button = any(isinstance(c, OrderDetailsButtonComponentSend) for c in self.components)
         if not has_order_button:
             raise ValueError(
-                "Order details template send must include a button component "
-                "with sub_type 'order_details'"
+                "Order details template send must include a button component with sub_type 'order_details'"
             )
         return self
 
@@ -533,16 +523,10 @@ class CheckoutTemplateSendRequestValidator(BaseModel):
         >>> request = CheckoutTemplateSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["template"] = Field(
-        "template", description="Message type (must be 'template')"
-    )
+    type: Literal["template"] = Field("template", description="Message type (must be 'template')")
     template: CheckoutTemplateSendBody = Field(..., description="Template details")
 
     @field_validator("to")
@@ -552,9 +536,7 @@ class CheckoutTemplateSendRequestValidator(BaseModel):
             raise ValueError("Recipient phone number cannot be empty")
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:

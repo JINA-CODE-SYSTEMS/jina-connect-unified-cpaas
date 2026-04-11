@@ -127,7 +127,6 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
 DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
     # ── OWNER: full control ──────────────────────────────────────────────
     "owner": {p: True for p in ALL_PERMISSIONS},
-
     # ── ADMIN: everything except ownership ops ───────────────────────────
     "admin": {
         **{p: True for p in ALL_PERMISSIONS},
@@ -135,7 +134,6 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "tenant.transfer": False,
         "wa_app.delete": False,
     },
-
     # ── MANAGER: operational control ─────────────────────────────────────
     "manager": {
         "tenant.view": True,
@@ -168,7 +166,6 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "chatflow.toggle": True,
         "analytics.view": True,
     },
-
     # ── AGENT: limited operational access ────────────────────────────────
     "agent": {
         "tenant.view": True,
@@ -182,7 +179,6 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "chatflow.view": True,
         "analytics.view": True,
     },
-
     # ── VIEWER: read-only ────────────────────────────────────────────────
     "viewer": {
         "tenant.view": True,
@@ -203,6 +199,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
 # Helper functions
 # ---------------------------------------------------------------------------
 
+
 def has_permission(tenant_role, permission: str) -> bool:
     """
     Check whether *tenant_role* grants *permission*.
@@ -212,9 +209,7 @@ def has_permission(tenant_role, permission: str) -> bool:
     """
     from tenants.models import RolePermission
 
-    perm = RolePermission.objects.filter(
-        role=tenant_role, permission=permission
-    ).first()
+    perm = RolePermission.objects.filter(role=tenant_role, permission=permission).first()
     if perm is not None:
         return perm.allowed
     # No explicit record → deny

@@ -6,35 +6,54 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('razorpay', '0002_initial'),
-        ('tenants', '0002_initial'),
-        ('transaction', '0001_initial'),
+        ("razorpay", "0002_initial"),
+        ("tenants", "0002_initial"),
+        ("transaction", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenanttransaction',
-            name='created_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created_by', to=settings.AUTH_USER_MODEL),
+            model_name="tenanttransaction",
+            name="created_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_created_by",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
         migrations.AddField(
-            model_name='tenanttransaction',
-            name='razor_pay_order',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='tenant_transactions', to='razorpay.razorpayorder'),
+            model_name="tenanttransaction",
+            name="razor_pay_order",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="tenant_transactions",
+                to="razorpay.razorpayorder",
+            ),
         ),
         migrations.AddField(
-            model_name='tenanttransaction',
-            name='tenant',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tenant_transactions', to='tenants.tenant'),
+            model_name="tenanttransaction",
+            name="tenant",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE, related_name="tenant_transactions", to="tenants.tenant"
+            ),
         ),
         migrations.AddField(
-            model_name='tenanttransaction',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_updated_by', to=settings.AUTH_USER_MODEL),
+            model_name="tenanttransaction",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="%(class)s_updated_by",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]

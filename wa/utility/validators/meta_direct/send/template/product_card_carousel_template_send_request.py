@@ -11,7 +11,7 @@ product details pulled automatically.
 import re
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Parameter Models
@@ -20,12 +20,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class BodyTextParameter(BaseModel):
     """Body parameter with text"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Text value for the body parameter")
 
 
 class BodyCurrencyParameter(BaseModel):
     """Body parameter with currency"""
+
     type: Literal["currency"] = "currency"
     currency: dict = Field(
         ...,
@@ -35,6 +37,7 @@ class BodyCurrencyParameter(BaseModel):
 
 class BodyDateTimeParameter(BaseModel):
     """Body parameter with date_time"""
+
     type: Literal["date_time"] = "date_time"
     date_time: dict = Field(..., description="DateTime object with fallback_value")
 
@@ -50,12 +53,14 @@ BodyParameter = Union[BodyTextParameter, BodyCurrencyParameter, BodyDateTimePara
 
 class QuickReplyButtonParameter(BaseModel):
     """Button parameter for quick_reply buttons"""
+
     type: Literal["payload"] = "payload"
     payload: str = Field(..., description="Payload for quick reply button")
 
 
 class URLButtonParameter(BaseModel):
     """Button parameter for URL buttons with dynamic suffix"""
+
     type: Literal["text"] = "text"
     text: str = Field(..., description="Dynamic URL suffix value")
 
@@ -67,6 +72,7 @@ class URLButtonParameter(BaseModel):
 
 class CardQuickReplyButtonComponentSend(BaseModel):
     """Quick reply button component for product card"""
+
     type: Literal["button"] = "button"
     sub_type: Literal["quick_reply"] = "quick_reply"
     index: int = Field(..., ge=0, le=1, description="Button index (0 or 1)")
@@ -77,18 +83,15 @@ class CardQuickReplyButtonComponentSend(BaseModel):
 
 class CardURLButtonComponentSend(BaseModel):
     """URL button component for product card"""
+
     type: Literal["button"] = "button"
     sub_type: Literal["url"] = "url"
     index: int = Field(..., ge=0, le=1, description="Button index (0 or 1)")
-    parameters: List[URLButtonParameter] = Field(
-        ..., min_length=1, max_length=1, description="URL button parameters"
-    )
+    parameters: List[URLButtonParameter] = Field(..., min_length=1, max_length=1, description="URL button parameters")
 
 
 # Union type for card button components
-CardButtonComponentSend = Union[
-    CardQuickReplyButtonComponentSend, CardURLButtonComponentSend
-]
+CardButtonComponentSend = Union[CardQuickReplyButtonComponentSend, CardURLButtonComponentSend]
 
 
 # ============================================================================
@@ -98,6 +101,7 @@ CardButtonComponentSend = Union[
 
 class ProductCardSend(BaseModel):
     """A single product card in the carousel for send request"""
+
     card_index: int = Field(..., ge=0, le=9, description="Card index (0-based)")
     components: List[CardButtonComponentSend] = Field(
         ..., min_length=1, max_length=2, description="Card button components"
@@ -121,9 +125,7 @@ class ProductCardSend(BaseModel):
 
             comp_type = comp.get("type")
             if comp_type != "button":
-                raise ValueError(
-                    f"Product card components must be of type 'button', got {comp_type}"
-                )
+                raise ValueError(f"Product card components must be of type 'button', got {comp_type}")
 
             sub_type = comp.get("sub_type")
             try:
@@ -136,17 +138,11 @@ class ProductCardSend(BaseModel):
                             elif isinstance(param, dict):
                                 param_type = param.get("type")
                                 if param_type == "payload":
-                                    parsed_params.append(
-                                        QuickReplyButtonParameter(**param)
-                                    )
+                                    parsed_params.append(QuickReplyButtonParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown quick_reply parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown quick_reply parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(CardQuickReplyButtonComponentSend(**comp))
                 elif sub_type == "url":
@@ -160,13 +156,9 @@ class ProductCardSend(BaseModel):
                                 if param_type == "text":
                                     parsed_params.append(URLButtonParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown URL button parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown URL button parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(CardURLButtonComponentSend(**comp))
                 else:
@@ -184,14 +176,14 @@ class ProductCardSend(BaseModel):
 
 class BodyComponentSend(BaseModel):
     """Body component for sending template message"""
+
     type: Literal["body"] = "body"
-    parameters: List[BodyParameter] = Field(
-        ..., min_length=1, description="Body parameters"
-    )
+    parameters: List[BodyParameter] = Field(..., min_length=1, description="Body parameters")
 
 
 class ProductCarouselComponentSend(BaseModel):
     """Product carousel component for sending template message"""
+
     type: Literal["product_carousel"] = "product_carousel"
     cards: List[ProductCardSend] = Field(
         ...,
@@ -210,16 +202,13 @@ class ProductCarouselComponentSend(BaseModel):
         expected = list(range(len(v)))
         if sorted(indices) != expected:
             raise ValueError(
-                f"Card indices must be sequential starting from 0. "
-                f"Expected {expected}, got {sorted(indices)}"
+                f"Card indices must be sequential starting from 0. Expected {expected}, got {sorted(indices)}"
             )
         return v
 
 
 # Union type for send components
-SendProductCardCarouselTemplateComponent = Union[
-    BodyComponentSend, ProductCarouselComponentSend
-]
+SendProductCardCarouselTemplateComponent = Union[BodyComponentSend, ProductCarouselComponentSend]
 
 
 # ============================================================================
@@ -229,6 +218,7 @@ SendProductCardCarouselTemplateComponent = Union[
 
 class LanguageInput(BaseModel):
     """Language input for template request"""
+
     code: str = Field(
         ...,
         min_length=2,
@@ -251,6 +241,7 @@ class LanguageInput(BaseModel):
 
 class ProductCardCarouselTemplateSendBody(BaseModel):
     """Template body for product card carousel template send request"""
+
     name: str = Field(
         ...,
         min_length=1,
@@ -306,13 +297,9 @@ class ProductCardCarouselTemplateSendBody(BaseModel):
                                 elif param_type == "date_time":
                                     parsed_params.append(BodyDateTimeParameter(**param))
                                 else:
-                                    raise ValueError(
-                                        f"Unknown body parameter type: {param_type}"
-                                    )
+                                    raise ValueError(f"Unknown body parameter type: {param_type}")
                             else:
-                                raise ValueError(
-                                    f"Parameter must be a dictionary, got {type(param)}"
-                                )
+                                raise ValueError(f"Parameter must be a dictionary, got {type(param)}")
                         comp["parameters"] = parsed_params
                     parsed.append(BodyComponentSend(**comp))
                 elif comp_type == "product_carousel":
@@ -325,9 +312,7 @@ class ProductCardCarouselTemplateSendBody(BaseModel):
                             elif isinstance(card, dict):
                                 parsed_cards.append(ProductCardSend(**card))
                             else:
-                                raise ValueError(
-                                    f"Card must be a dictionary, got {type(card)}"
-                                )
+                                raise ValueError(f"Card must be a dictionary, got {type(card)}")
                         comp["cards"] = parsed_cards
                     parsed.append(ProductCarouselComponentSend(**comp))
                 else:
@@ -383,19 +368,11 @@ class ProductCardCarouselTemplateSendRequestValidator(BaseModel):
         >>> request = ProductCardCarouselTemplateSendRequestValidator(**data)
     """
 
-    messaging_product: Literal["whatsapp"] = Field(
-        "whatsapp", description="Messaging product (must be 'whatsapp')"
-    )
-    recipient_type: Literal["individual"] = Field(
-        "individual", description="Recipient type (must be 'individual')"
-    )
+    messaging_product: Literal["whatsapp"] = Field("whatsapp", description="Messaging product (must be 'whatsapp')")
+    recipient_type: Literal["individual"] = Field("individual", description="Recipient type (must be 'individual')")
     to: str = Field(..., description="Recipient phone number")
-    type: Literal["template"] = Field(
-        "template", description="Message type (must be 'template')"
-    )
-    template: ProductCardCarouselTemplateSendBody = Field(
-        ..., description="Template details"
-    )
+    type: Literal["template"] = Field("template", description="Message type (must be 'template')")
+    template: ProductCardCarouselTemplateSendBody = Field(..., description="Template details")
 
     @field_validator("to")
     @classmethod
@@ -406,9 +383,7 @@ class ProductCardCarouselTemplateSendRequestValidator(BaseModel):
         cleaned = re.sub(r"[^\d+]", "", v)
         # Validate phone number format
         if not re.match(r"^\+?[0-9]{10,15}$", cleaned):
-            raise ValueError(
-                "Invalid phone number format. Must be 10-15 digits, optionally starting with +"
-            )
+            raise ValueError("Invalid phone number format. Must be 10-15 digits, optionally starting with +")
         return cleaned
 
     def to_meta_payload(self) -> dict:
@@ -468,9 +443,7 @@ class ProductCardCarouselTemplateSendRequestValidator(BaseModel):
                                                 "type": "button",
                                                 "sub_type": "url",
                                                 "index": 1,
-                                                "parameters": [
-                                                    {"type": "text", "text": "SKU001"}
-                                                ],
+                                                "parameters": [{"type": "text", "text": "SKU001"}],
                                             },
                                         ],
                                     },
@@ -492,9 +465,7 @@ class ProductCardCarouselTemplateSendRequestValidator(BaseModel):
                                                 "type": "button",
                                                 "sub_type": "url",
                                                 "index": 1,
-                                                "parameters": [
-                                                    {"type": "text", "text": "SKU002"}
-                                                ],
+                                                "parameters": [{"type": "text", "text": "SKU002"}],
                                             },
                                         ],
                                     },

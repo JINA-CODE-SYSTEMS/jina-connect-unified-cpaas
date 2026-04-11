@@ -4,15 +4,29 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('transaction', '0002_initial'),
+        ("transaction", "0002_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tenanttransaction',
-            name='transaction_type',
-            field=models.CharField(choices=[('PENDING RECHARGE', 'PENDING RECHARGE'), ('SUCCESS RECHARGE', 'SUCCESS RECHARGE'), ('FAILED RECHARGE', 'FAILED RECHARGE'), ('CONSUMPTION', 'CONSUMPTION'), ('REFUND', 'REFUND'), ('VOICE_OUTBOUND', 'Voice Outbound Call'), ('VOICE_INBOUND', 'Voice Inbound Call'), ('VOICE_NUMBER_RENT', 'Voice Number Rental'), ('VOICE_AI_AGENT', 'Voice AI Agent'), ('VOICE_RECORDING', 'Voice Recording')], default='CONSUMPTION', max_length=20),
+            model_name="tenanttransaction",
+            name="transaction_type",
+            field=models.CharField(
+                choices=[
+                    ("PENDING RECHARGE", "PENDING RECHARGE"),
+                    ("SUCCESS RECHARGE", "SUCCESS RECHARGE"),
+                    ("FAILED RECHARGE", "FAILED RECHARGE"),
+                    ("CONSUMPTION", "CONSUMPTION"),
+                    ("REFUND", "REFUND"),
+                    ("VOICE_OUTBOUND", "Voice Outbound Call"),
+                    ("VOICE_INBOUND", "Voice Inbound Call"),
+                    ("VOICE_NUMBER_RENT", "Voice Number Rental"),
+                    ("VOICE_AI_AGENT", "Voice AI Agent"),
+                    ("VOICE_RECORDING", "Voice Recording"),
+                ],
+                default="CONSUMPTION",
+                max_length=20,
+            ),
         ),
     ]

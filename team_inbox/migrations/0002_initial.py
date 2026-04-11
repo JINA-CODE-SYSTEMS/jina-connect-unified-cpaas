@@ -6,43 +6,60 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('team_inbox', '0001_initial'),
-        ('tenants', '0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more'),
-        ('wa', '0001_initial'),
+        ("team_inbox", "0001_initial"),
+        ("tenants", "0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more"),
+        ("wa", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='messages',
-            name='outgoing_message',
-            field=models.ForeignKey(blank=True, help_text='Link to WAMessage for outgoing message status tracking', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='team_inbox_messages', to='wa.wamessage'),
+            model_name="messages",
+            name="outgoing_message",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Link to WAMessage for outgoing message status tracking",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="team_inbox_messages",
+                to="wa.wamessage",
+            ),
         ),
         migrations.AddField(
-            model_name='messages',
-            name='read_by',
-            field=models.ForeignKey(blank=True, help_text='First team member who read this message', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='messages_read', to=settings.AUTH_USER_MODEL),
+            model_name="messages",
+            name="read_by",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="First team member who read this message",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="messages_read",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
         migrations.AddField(
-            model_name='messages',
-            name='tenant',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='tenants.tenant'),
+            model_name="messages",
+            name="tenant",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE, related_name="messages", to="tenants.tenant"
+            ),
         ),
         migrations.AddField(
-            model_name='messages',
-            name='tenant_user',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL),
+            model_name="messages",
+            name="tenant_user",
+            field=models.ForeignKey(
+                blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL
+            ),
         ),
         migrations.AddIndex(
-            model_name='event',
-            index=models.Index(fields=['tenant', 'contact', '-timestamp'], name='team_inbox__tenant__5b1e30_idx'),
+            model_name="event",
+            index=models.Index(fields=["tenant", "contact", "-timestamp"], name="team_inbox__tenant__5b1e30_idx"),
         ),
         migrations.AddIndex(
-            model_name='event',
-            index=models.Index(fields=['event_type', '-timestamp'], name='team_inbox__event_t_deaf98_idx'),
+            model_name="event",
+            index=models.Index(fields=["event_type", "-timestamp"], name="team_inbox__event_t_deaf98_idx"),
         ),
     ]

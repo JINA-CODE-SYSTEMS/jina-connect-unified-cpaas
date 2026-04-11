@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -36,11 +36,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if not tenant:
             return User.objects.none()
 
-        tenant_user_ids = (
-            TenantUser.objects
-            .filter(tenant=tenant, is_active=True)
-            .values_list("user_id", flat=True)
-        )
+        tenant_user_ids = TenantUser.objects.filter(tenant=tenant, is_active=True).values_list("user_id", flat=True)
         return User.objects.filter(id__in=tenant_user_ids).order_by("-id")
 
     # ------------------------------------------------------------------
@@ -72,9 +68,7 @@ class UserViewSet(viewsets.ModelViewSet):
     # ------------------------------------------------------------------
     def partial_update(self, request, *args, **kwargs):
         pk = kwargs.get("pk")
-        if str(pk) != "me" and (
-            not str(pk).isdigit() or int(pk) != request.user.pk
-        ):
+        if str(pk) != "me" and (not str(pk).isdigit() or int(pk) != request.user.pk):
             return Response(
                 {"detail": "You can only edit your own profile."},
                 status=status.HTTP_403_FORBIDDEN,

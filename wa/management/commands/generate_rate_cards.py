@@ -7,10 +7,12 @@ Usage:
     python manage.py generate_rate_cards --effective-from 2026-03-01
     python manage.py generate_rate_cards --dry-run
 """
+
 from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+
 from tenants.models import Tenant
 from wa.services.rate_card_service import RateCardService
 
@@ -71,30 +73,20 @@ class Command(BaseCommand):
                 return
 
             count = svc.generate_rate_cards(effective_from=effective_from)
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Generated {count} rate card entries for '{tenant.name}'"
-                )
-            )
+            self.stdout.write(self.style.SUCCESS(f"Generated {count} rate card entries for '{tenant.name}'"))
         else:
             # All tenants
             if dry_run:
                 from tenants.models import TenantWAApp
-                tenant_ids = list(
-                    TenantWAApp.objects.values_list("tenant_id", flat=True).distinct()
-                )
+
+                tenant_ids = list(TenantWAApp.objects.values_list("tenant_id", flat=True).distinct())
                 self.stdout.write(f"Would generate rate cards for {len(tenant_ids)} tenants")
                 return
 
-            results = RateCardService.generate_all_tenant_rate_cards(
-                effective_from=effective_from
-            )
+            results = RateCardService.generate_all_tenant_rate_cards(effective_from=effective_from)
             total = sum(results.values())
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"Generated {total} total rate card entries "
-                    f"across {len(results)} tenants"
-                )
+                self.style.SUCCESS(f"Generated {total} total rate card entries across {len(results)} tenants")
             )
             for tid, count in results.items():
                 self.stdout.write(f"  Tenant {tid}: {count} entries")

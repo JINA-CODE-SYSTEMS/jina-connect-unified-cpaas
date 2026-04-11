@@ -13,4 +13,4 @@ def cleanup_old_notifications():
     cutoff = timezone.now() - timedelta(days=90)
     deleted, _ = Notification.objects.filter(created_at__lt=cutoff).delete()
     if deleted:
-        logger.info('Cleaned up %d notifications older than 90 days', deleted)
+        logger.info("Cleaned up %d notifications older than 90 days", deleted)

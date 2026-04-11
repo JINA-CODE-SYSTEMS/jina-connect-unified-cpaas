@@ -6,11 +6,11 @@ at /tenants/members/.
 Ownership transfer lives on TenantViewSet at /tenants/transfer-ownership/.
 """
 
-from abstract.viewsets.base import BaseTenantModelViewSet
-from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+from abstract.viewsets.base import BaseTenantModelViewSet
 from tenants.models import TenantRole, TenantUser
 from tenants.rbac_validators import check_target_priority, get_requester_tenant_user
 from tenants.serializers import (
@@ -19,7 +19,6 @@ from tenants.serializers import (
     MemberSerializer,
 )
 from tenants.services.member_service import add_member_to_tenant
-from users.models import User
 
 
 class MemberManagementViewSet(BaseTenantModelViewSet):
@@ -102,7 +101,8 @@ class MemberManagementViewSet(BaseTenantModelViewSet):
 
         tenant = requester_tu.tenant
         role = TenantRole.objects.get(
-            id=serializer.validated_data["role_id"], tenant=tenant,
+            id=serializer.validated_data["role_id"],
+            tenant=tenant,
         )
 
         try:
@@ -121,15 +121,10 @@ class MemberManagementViewSet(BaseTenantModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        data = MemberSerializer(
-            TenantUser.objects.select_related("user", "role").get(pk=tenant_user.pk)
-        ).data
+        data = MemberSerializer(TenantUser.objects.select_related("user", "role").get(pk=tenant_user.pk)).data
 
         if is_new_user:
-            data["message"] = (
-                "User created. Verification email sent — "
-                "user must verify before logging in."
-            )
+            data["message"] = "User created. Verification email sent — user must verify before logging in."
         else:
             data["message"] = "Existing user added to tenant."
 
@@ -261,8 +256,10 @@ class MemberManagementViewSet(BaseTenantModelViewSet):
             EmailVerificationService.send_verification_email(user, token)
         except Exception:
             import logging
+
             logging.getLogger(__name__).exception(
-                "Failed to send verification email to %s", user.email,
+                "Failed to send verification email to %s",
+                user.email,
             )
             return Response(
                 {"detail": "Verification token created but email sending failed. Try again later."},

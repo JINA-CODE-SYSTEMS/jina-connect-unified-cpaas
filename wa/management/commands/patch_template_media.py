@@ -26,7 +26,6 @@ Usage:
 import logging
 import mimetypes
 import os
-import tempfile
 
 import requests
 from django.core.files.base import ContentFile
@@ -79,8 +78,7 @@ class Command(BaseCommand):
 
         # Build queryset
         qs = (
-            WATemplate.objects
-            .filter(
+            WATemplate.objects.filter(
                 template_type__in=MEDIA_TEMPLATE_TYPES,
                 tenant_media__isnull=True,
             )
@@ -100,23 +98,13 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("No templates need patching."))
             return
 
-        self.stdout.write(
-            f"Found {len(templates)} template(s) to patch"
-            f"{' (DRY RUN)' if not apply else ''}:\n"
-        )
+        self.stdout.write(f"Found {len(templates)} template(s) to patch{' (DRY RUN)' if not apply else ''}:\n")
 
         for tpl in templates:
-            self.stdout.write(
-                f"  • {tpl.element_name}  type={tpl.template_type}  "
-                f"wa_app={tpl.wa_app_id}  id={tpl.id}"
-            )
+            self.stdout.write(f"  • {tpl.element_name}  type={tpl.template_type}  wa_app={tpl.wa_app_id}  id={tpl.id}")
 
         if not apply:
-            self.stdout.write(
-                self.style.WARNING(
-                    "\nDry run — no changes made. Re-run with --apply to patch."
-                )
-            )
+            self.stdout.write(self.style.WARNING("\nDry run — no changes made. Re-run with --apply to patch."))
             return
 
         # ── Apply ────────────────────────────────────────────────────
@@ -124,28 +112,20 @@ class Command(BaseCommand):
         failed = 0
 
         for tpl in templates:
-            self.stdout.write(f"\n{'='*60}")
+            self.stdout.write(f"\n{'=' * 60}")
             self.stdout.write(f"Patching: {tpl.element_name} ({tpl.id})")
 
             try:
                 self._patch_template(tpl)
                 success += 1
-                self.stdout.write(
-                    self.style.SUCCESS(f"  ✓ Patched successfully")
-                )
+                self.stdout.write(self.style.SUCCESS("  ✓ Patched successfully"))
             except Exception as exc:
                 failed += 1
-                self.stderr.write(
-                    self.style.ERROR(f"  ✗ Failed: {exc}")
-                )
-                logger.exception(
-                    f"patch_template_media failed for {tpl.element_name}"
-                )
+                self.stderr.write(self.style.ERROR(f"  ✗ Failed: {exc}"))
+                logger.exception(f"patch_template_media failed for {tpl.element_name}")
 
-        self.stdout.write(f"\n{'='*60}")
-        self.stdout.write(
-            self.style.SUCCESS(f"Done. Success: {success}, Failed: {failed}")
-        )
+        self.stdout.write(f"\n{'=' * 60}")
+        self.stdout.write(self.style.SUCCESS(f"Done. Success: {success}, Failed: {failed}"))
 
     # ─────────────────────────────────────────────────────────────────
     def _patch_template(self, template: WATemplate):
@@ -168,9 +148,7 @@ class Command(BaseCommand):
         ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ".png"
         filename = f"template_media_{template.element_name}{ext}"
 
-        self.stdout.write(
-            f"  Downloaded {len(resp.content)} bytes, type={content_type}"
-        )
+        self.stdout.write(f"  Downloaded {len(resp.content)} bytes, type={content_type}")
 
         # ── 2. Create TenantMedia with local file ───────────────────
         with transaction.atomic():
@@ -189,14 +167,12 @@ class Command(BaseCommand):
             tm.save(update_fields=["wa_handle_id"])
             self.stdout.write(f"  Gupshup handle: {handle_id}")
         else:
-            self.stdout.write(
-                self.style.WARNING("  Gupshup upload skipped or failed (non-fatal)")
-            )
+            self.stdout.write(self.style.WARNING("  Gupshup upload skipped or failed (non-fatal)"))
 
         # ── 4. Link TenantMedia → template ──────────────────────────
         template.tenant_media = tm
         template.save(update_fields=["tenant_media"])
-        self.stdout.write(f"  Linked tenant_media to template")
+        self.stdout.write("  Linked tenant_media to template")
 
     # ─────────────────────────────────────────────────────────────────
     def _upload_to_gupshup(self, wa_app, tenant_media, content_type):
@@ -214,13 +190,10 @@ class Command(BaseCommand):
         app_id = wa_app.app_id
         app_secret = wa_app.app_secret
         if not app_id or not app_secret:
-            self.stdout.write(
-                self.style.WARNING("  Missing Gupshup app_id/app_secret, skipping upload")
-            )
+            self.stdout.write(self.style.WARNING("  Missing Gupshup app_id/app_secret, skipping upload"))
             return None
 
-        from wa.utility.apis.gupshup.template_api import \
-            TemplateAPI as GupshupTemplateAPI
+        from wa.utility.apis.gupshup.template_api import TemplateAPI as GupshupTemplateAPI
 
         api = GupshupTemplateAPI(appId=app_id, token=app_secret)
 
@@ -234,9 +207,7 @@ class Command(BaseCommand):
             )
             return result  # typically {"handleId": "..."}
         except Exception as exc:
-            self.stderr.write(
-                self.style.WARNING(f"  Gupshup upload error: {exc}")
-            )
+            self.stderr.write(self.style.WARNING(f"  Gupshup upload error: {exc}"))
             return None
         finally:
             tenant_media.media.close()
