@@ -103,7 +103,7 @@ class WAAPI(BaseModel):
             try:
                 error_details = response.json()
                 error_msg += f"\nResponse: {json.dumps(error_details, indent=2)}"
-            except:
+            except Exception:
                 error_msg += f"\nResponse text: {response.text}"
 
             # Print the request details for debugging
@@ -169,7 +169,7 @@ class WAAPI(BaseModel):
             try:
                 error_details = response.json()
                 error_msg += f"\nResponse: {json.dumps(error_details, indent=2)}"
-            except:
+            except Exception:
                 error_msg += f"\nResponse text: {response.text}"
 
             # Print the request details for debugging

@@ -61,7 +61,7 @@ class Messages(BaseTenantModelForFilterUser):
     direction = models.CharField(max_length=10, choices=MessageDirectionChoices.choices)
     platform = models.CharField(max_length=10, choices=MessagePlatformChoices.choices)
     author = models.CharField(max_length=10, choices=AuthorChoices.choices)
-    created_by = None  # This we will use as a property only
+    created_by = None  # Overridden as @property below
     updated_by = None  # this is not required
     contact = models.ForeignKey(TenantContact, on_delete=models.CASCADE, related_name="messages", null=True, blank=True)
     tenant_user = models.ForeignKey(
@@ -106,7 +106,7 @@ class Messages(BaseTenantModelForFilterUser):
     objects = MessagesManager()
 
     @property
-    def created_by(self):
+    def created_by(self):  # noqa: F811
         if self.author == AuthorChoices.USER:
             return self.tenant_user.get_full_name() if self.tenant_user else "Unknown User"
         elif self.author == AuthorChoices.CONTACT:

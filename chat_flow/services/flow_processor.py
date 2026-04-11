@@ -1417,7 +1417,7 @@ class ReactFlowConverter:
             has_button_ids = any(btn.id for node in validated_flow.nodes for btn in node.data.buttons)
             if has_button_ids:
                 return validated_flow.model_dump()
-        except:
+        except Exception:
             # Current data doesn't validate, proceed with migration
             pass
 
@@ -1452,7 +1452,7 @@ class ReactFlowConverter:
                         }
                         for i, btn in enumerate(template_buttons)
                     ]
-                except:
+                except Exception:
                     # If template not found, keep empty buttons
                     pass
 
@@ -1466,7 +1466,7 @@ class ReactFlowConverter:
                 try:
                     validated_button = NodeButton(**button_data)
                     validated_buttons.append(validated_button.model_dump())
-                except:
+                except Exception:
                     # Keep original data if validation fails
                     validated_buttons.append(button_data)
 
@@ -1542,7 +1542,7 @@ class ReactFlowConverter:
         try:
             validated_viewport = ReactFlowViewport(**viewport_data)
             viewport_dict = validated_viewport.model_dump()
-        except:
+        except Exception:
             viewport_dict = viewport_data
 
         # Create final migrated structure

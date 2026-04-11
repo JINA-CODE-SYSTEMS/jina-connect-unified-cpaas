@@ -36,7 +36,7 @@ Example:
 
 # Import all rule modules to trigger auto-registration
 # These imports are necessary to register the rules!
-from . import api, button, delay, handoff, session_message, structural, template
+from . import api, button, delay, handoff, session_message, structural, template  # noqa: F401
 
 # Import base classes for external use
 from .base import EdgeRule, FlowRule, NodeRule, RuleCategory, RuleSeverity, RuleViolation, ValidationResult

@@ -140,7 +140,7 @@ class TemplateAPI(WABAAPI):
             try:
                 error_details = response.json()
                 error_msg += f"\nResponse: {error_details}"
-            except:
+            except Exception:
                 error_msg += f"\nResponse text: {response.text}"
             raise Exception(error_msg)
 
@@ -215,7 +215,7 @@ class TemplateAPI(WABAAPI):
             try:
                 error_details = response.json()
                 error_msg += f"\nResponse: {error_details}"
-            except:
+            except Exception:
                 error_msg += f"\nResponse text: {response.text}"
             raise Exception(error_msg)
 

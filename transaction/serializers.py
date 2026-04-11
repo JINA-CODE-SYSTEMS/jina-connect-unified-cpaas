@@ -25,7 +25,7 @@ class TenantTransactionSerializer(BaseSerializer):
         if obj.broadcast_history_id and obj.broadcast:
             try:
                 return obj.broadcast.history.get(history_id=obj.broadcast_history_id)
-            except:
+            except Exception:
                 pass
         return None
 

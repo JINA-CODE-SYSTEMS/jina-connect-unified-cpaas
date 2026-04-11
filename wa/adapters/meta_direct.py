@@ -29,7 +29,7 @@ try:
     from silk.profiling.profiler import silk_profile
 except (ImportError, RuntimeError):
 
-    def silk_profile(name=""):  # noqa: no-op fallback
+    def silk_profile(name=""):  # noqa: F811 — no-op fallback
         def decorator(func):
             return func
 

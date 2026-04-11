@@ -6,10 +6,9 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-logger = logging.getLogger(__name__)
+import team_inbox.signals  # noqa: F401, E402 — ensure signals are loaded for broadcasting
 
-# Ensure team_inbox signals are loaded for broadcasting new messages
-import team_inbox.signals  # noqa: F401
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Charge-Breakdown Async Task (Issue #190)

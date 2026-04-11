@@ -220,7 +220,7 @@ def sync_template_with_bsp_task(self, template_id: int, wa_id: int):
         logger.error(f"Template {template_id} not found")
         return {"status": "error", "reason": "template_not_found"}
     except TenantWAApp.DoesNotExist:
-        logger.error(f"TenantWAApp {wa_app_id} not found")
+        logger.error(f"TenantWAApp {wa_id} not found")
         return {"status": "error", "reason": "wa_app_not_found"}
     except self.MaxRetriesExceededError:
         logger.error(f"Max retries exceeded for template sync: {template_id}")
@@ -373,7 +373,7 @@ def submit_template_to_gupshup(self, template_id: int):
             template.status = StatusChoices.FAILED
             template.save(update_fields=["status"])
             logger.debug("Updated template %s with error message.", template.element_name)
-        except:
+        except Exception:
             pass
 
         raise Exception(f"Failed to submit template to Gupshup: {str(e)}")
@@ -1148,7 +1148,7 @@ def _process_meta_template_webhook(instance, payload: dict):
                 new_status = status_map.get(event, TemplateStatus.PENDING)
                 cat_str = (value.get("message_template_category") or "").upper()
                 category = category_map.get(cat_str, TemplateCategory.MARKETING)
-                safe_name = template_name or f"unknown_{meta_template_id or pk}"
+                safe_name = template_name or f"unknown_{meta_template_id}"
 
                 template = WATemplate.objects.create(
                     wa_app=wa_app,

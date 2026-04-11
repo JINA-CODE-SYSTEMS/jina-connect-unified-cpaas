@@ -285,7 +285,7 @@ class ESFService:
         try:
             if hasattr(self.wa_app, "waba_info") and self.wa_app.waba_info:
                 waba_account_status = self.wa_app.waba_info.account_status
-        except:
+        except Exception:
             pass
 
         return {

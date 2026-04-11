@@ -4,9 +4,6 @@ Abstract broadcast models that can be extended by platform-specific apps (WhatsA
 
 import logging
 
-from abstract.models import BaseTenantModelForFilterUser
-
-logger = logging.getLogger(__name__)
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
@@ -15,10 +12,12 @@ from djmoney.models.fields import MoneyField
 from moneyed import Decimal
 from simple_history.models import HistoricalRecords
 
+from abstract.models import BaseTenantModelForFilterUser
 from contacts.models import TenantContact
 from message_templates.models import TemplateNumber
 from tenants.models import Tenant
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
