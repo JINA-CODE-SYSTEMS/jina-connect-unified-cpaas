@@ -4,20 +4,37 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('contacts', '0003_tenantcontact_dnc_tenantcontact_last_called_at_and_more'),
+        ("contacts", "0003_tenantcontact_dnc_tenantcontact_last_called_at_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tenantcontact',
-            name='lead_status',
-            field=models.CharField(blank=True, choices=[('NEW', 'New'), ('CONTACTED', 'Contacted'), ('QUALIFIED', 'Qualified'), ('UNQUALIFIED', 'Unqualified'), ('CONVERTED', 'Converted')], help_text='Lead qualification status', max_length=20, null=True),
+            model_name="tenantcontact",
+            name="lead_status",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("NEW", "New"),
+                    ("CONTACTED", "Contacted"),
+                    ("QUALIFIED", "Qualified"),
+                    ("UNQUALIFIED", "Unqualified"),
+                    ("CONVERTED", "Converted"),
+                ],
+                help_text="Lead qualification status",
+                max_length=20,
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='tenantcontact',
-            name='preferred_channel',
-            field=models.CharField(blank=True, choices=[('SMS', 'SMS'), ('VOICE', 'Voice'), ('WHATSAPP', 'WhatsApp')], help_text='Preferred communication channel', max_length=10, null=True),
+            model_name="tenantcontact",
+            name="preferred_channel",
+            field=models.CharField(
+                blank=True,
+                choices=[("SMS", "SMS"), ("VOICE", "Voice"), ("WHATSAPP", "WhatsApp")],
+                help_text="Preferred communication channel",
+                max_length=10,
+                null=True,
+            ),
         ),
     ]
