@@ -62,6 +62,9 @@ ALL_PERMISSIONS = [
     "chatflow.edit",
     "chatflow.delete",
     "chatflow.toggle",
+    # Products
+    "product.view",
+    "product.manage",
     # Analytics
     "analytics.view",
 ]
@@ -112,6 +115,8 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
     "chatflow.edit": "Edit existing chatflow automations",
     "chatflow.delete": "Delete chatflow automations",
     "chatflow.toggle": "Enable or disable chatflow automations",
+    "product.view": "View product catalog",
+    "product.manage": "Manage products and catalog",
     "analytics.view": "View analytics and reports",
 }
 
@@ -164,9 +169,10 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "chatflow.edit": True,
         "chatflow.delete": True,
         "chatflow.toggle": True,
+        "product.view": True,
+        "product.manage": True,
         "analytics.view": True,
     },
-    # ── AGENT: limited operational access ────────────────────────────────
     "agent": {
         "tenant.view": True,
         "users.view": True,
@@ -177,6 +183,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "inbox.view": True,
         "inbox.reply": True,
         "chatflow.view": True,
+        "product.view": True,
         "analytics.view": True,
     },
     # ── VIEWER: read-only ────────────────────────────────────────────────
@@ -190,6 +197,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "contact.view": True,
         "inbox.view": True,
         "chatflow.view": True,
+        "product.view": True,
         "analytics.view": True,
     },
 }

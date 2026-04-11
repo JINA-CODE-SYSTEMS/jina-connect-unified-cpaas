@@ -57,7 +57,6 @@ class BroadcastRenderedContentTestCase(TestCase):
             wa_app=self.wa_app,
             number=self.template_number,
             element_name="welcome_template",
-            example="Hi John, welcome to Test Company Ltd!",
             language_code="en",
             category="UTILITY",
             template_type="TEXT",
@@ -115,7 +114,7 @@ class BroadcastRenderedContentTestCase(TestCase):
         self.assertIn("Test Company Ltd", rendered)  # company_name from tenant
         self.assertIn("TRV123456", rendered)  # booking_id from placeholder_data
         self.assertIn("Dubai, UAE", rendered)  # destination from placeholder_data
-        self.assertIn("2025", rendered)  # today_date should contain current year
+        self.assertIn(str(datetime.now().year), rendered)  # today_date should contain current year
 
         print(f"✅ Mixed placeholders: {rendered}")
 
@@ -170,17 +169,17 @@ class BroadcastRenderedContentTestCase(TestCase):
 
         print(f"✅ Empty name fallback: {rendered}")
 
-    @patch("broadcast.models.datetime")
-    def test_render_content_with_date_time_variables(self, mock_datetime):
+    @patch("django.utils.timezone.localtime")
+    def test_render_content_with_date_time_variables(self, mock_localtime):
         """Test rendering with date and time reserved variables"""
-        # Mock datetime to return predictable values
+        # Mock timezone.localtime() to return predictable values
         mock_now = Mock()
         mock_now.strftime.side_effect = lambda fmt: {
             "%B %d, %Y": "November 05, 2025",
             "%I:%M %p": "02:30 PM",
         }.get(fmt, "2025")
         mock_now.year = 2025
-        mock_datetime.now.return_value = mock_now
+        mock_localtime.return_value = mock_now
 
         self.wa_template.content = (
             "Today is {{ today_date }} and current time is {{ current_time }}. Year: {{ current_year }}"

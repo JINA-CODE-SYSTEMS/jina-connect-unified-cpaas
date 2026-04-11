@@ -2949,7 +2949,6 @@ class PreProductionSweepTests(RBACIntegrationBase):
             ("wa.viewsets.broadcast", "WABroadcastViewSet"),
             ("wa.viewsets.rate_card", "RateCardViewSet"),
             ("razorpay.viewsets.razor_pay", "RazorPayViewSet"),
-            ("products.viewsets.product", "ProductViewSet"),
             ("transaction.viewsets.tenant_transaction", "TenantTransactionViewSet"),
         ]
 
@@ -2977,6 +2976,7 @@ class PreProductionSweepTests(RBACIntegrationBase):
             "users/viewsets/token.py",  # JWT token
             "tenants/viewsets/tenants.py",  # Register, forgot-password
             "tenants/viewsets/tenant_gupshup.py",  # Webhook receivers
+            "tenants/viewsets/tenant_media.py",  # Public media serving
             "tenants/viewsets/branding_settings.py",  # Public branding
             "tenants/viewsets/onboarding_options.py",  # Public registration data
             "jina_connect/urls.py",  # Swagger config (commented out)

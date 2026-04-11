@@ -242,7 +242,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         """✅ CAROUSEL payload must NOT have a top-level HEADER component."""
         payload = self._get_meta_payload(CAROUSEL_IMAGE_PAYLOAD)
         types = [c["type"] for c in payload["components"]]
-        self.assertNotIn("HEADER", types)
+        self.assertNotIn("header", types)
 
     def test_carousel_card_count_matches_input(self):
         """✅ Number of cards in CAROUSEL component matches input cards."""
@@ -253,7 +253,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
     def test_carousel_has_body_component(self):
         """✅ CAROUSEL payload has a top-level BODY with the message text."""
         payload = self._get_meta_payload(CAROUSEL_IMAGE_PAYLOAD)
-        body = next(c for c in payload["components"] if c["type"] == "BODY")
+        body = next(c for c in payload["components"] if c["type"] == "body")
         self.assertIn("name", body["text"])  # {{name}} placeholder
 
     # ── Per-card structure ────────────────────────────────────────────
@@ -265,9 +265,9 @@ class TestCarouselMetaPayload(TemplateTestBase):
 
         for i, card in enumerate(carousel["cards"]):
             card_types = [sc["type"] for sc in card["components"]]
-            self.assertIn("HEADER", card_types, f"Card {i} missing HEADER")
-            self.assertIn("BODY", card_types, f"Card {i} missing BODY")
-            self.assertIn("BUTTONS", card_types, f"Card {i} missing BUTTONS")
+            self.assertIn("header", card_types, f"Card {i} missing HEADER")
+            self.assertIn("body", card_types, f"Card {i} missing BODY")
+            self.assertIn("buttons", card_types, f"Card {i} missing BUTTONS")
 
     def test_card_header_format_image(self):
         """✅ IMAGE carousel cards have HEADER format=IMAGE."""
@@ -275,7 +275,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         for card in carousel["cards"]:
-            header = next(sc for sc in card["components"] if sc["type"] == "HEADER")
+            header = next(sc for sc in card["components"] if sc["type"] == "header")
             self.assertEqual(header["format"], "IMAGE")
 
     def test_card_header_format_video(self):
@@ -284,7 +284,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         for card in carousel["cards"]:
-            header = next(sc for sc in card["components"] if sc["type"] == "HEADER")
+            header = next(sc for sc in card["components"] if sc["type"] == "header")
             self.assertEqual(header["format"], "VIDEO")
 
     def test_card_header_has_media_handle(self):
@@ -293,7 +293,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         card_0 = carousel["cards"][0]
-        header = next(sc for sc in card_0["components"] if sc["type"] == "HEADER")
+        header = next(sc for sc in card_0["components"] if sc["type"] == "header")
         self.assertIn("example", header)
         self.assertIn("header_handle", header["example"])
         self.assertEqual(header["example"]["header_handle"], ["h:111111"])
@@ -304,7 +304,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         card_0 = carousel["cards"][0]
-        header = next(sc for sc in card_0["components"] if sc["type"] == "HEADER")
+        header = next(sc for sc in card_0["components"] if sc["type"] == "header")
         self.assertNotIn("example", header)
 
     def test_card_body_text(self):
@@ -313,7 +313,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         card_0 = carousel["cards"][0]
-        body = next(sc for sc in card_0["components"] if sc["type"] == "BODY")
+        body = next(sc for sc in card_0["components"] if sc["type"] == "body")
         self.assertEqual(body["text"], "Widget A - $29")
 
     def test_card_buttons_url_type(self):
@@ -322,8 +322,8 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         card_0 = carousel["cards"][0]
-        buttons_comp = next(sc for sc in card_0["components"] if sc["type"] == "BUTTONS")
-        url_btn = next(b for b in buttons_comp["buttons"] if b["type"] == "URL")
+        buttons_comp = next(sc for sc in card_0["components"] if sc["type"] == "buttons")
+        url_btn = next(b for b in buttons_comp["buttons"] if b["type"] == "url")
         self.assertEqual(url_btn["text"], "View")
         self.assertEqual(url_btn["url"], "https://example.com/a")
 
@@ -333,10 +333,10 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         card_1 = carousel["cards"][1]
-        buttons_comp = next(sc for sc in card_1["components"] if sc["type"] == "BUTTONS")
+        buttons_comp = next(sc for sc in card_1["components"] if sc["type"] == "buttons")
         btn_types = [b["type"] for b in buttons_comp["buttons"]]
-        self.assertIn("QUICK_REPLY", btn_types)
-        self.assertIn("URL", btn_types)
+        self.assertIn("quick_reply", btn_types)
+        self.assertIn("url", btn_types)
 
     def test_card_without_body_omits_body_component(self):
         """✅ Card with empty body omits BODY sub-component."""
@@ -352,11 +352,11 @@ class TestCarouselMetaPayload(TemplateTestBase):
 
         # Card 0 has empty body → should NOT have BODY sub-component
         card_0_types = [sc["type"] for sc in carousel["cards"][0]["components"]]
-        self.assertNotIn("BODY", card_0_types)
+        self.assertNotIn("body", card_0_types)
 
         # Card 1 has body → should have BODY sub-component
         card_1_types = [sc["type"] for sc in carousel["cards"][1]["components"]]
-        self.assertIn("BODY", card_1_types)
+        self.assertIn("body", card_1_types)
 
     def test_card_without_buttons_omits_buttons_component(self):
         """✅ Card with no buttons omits BUTTONS sub-component."""
@@ -371,10 +371,10 @@ class TestCarouselMetaPayload(TemplateTestBase):
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
 
         card_0_types = [sc["type"] for sc in carousel["cards"][0]["components"]]
-        self.assertNotIn("BUTTONS", card_0_types)
+        self.assertNotIn("buttons", card_0_types)
 
         card_1_types = [sc["type"] for sc in carousel["cards"][1]["components"]]
-        self.assertIn("BUTTONS", card_1_types)
+        self.assertIn("buttons", card_1_types)
 
     # ── Non-carousel not affected ─────────────────────────────────────
 
@@ -386,7 +386,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         types = [c["type"] for c in payload_resp.data["components"]]
         self.assertNotIn("CAROUSEL", types)
         # TEXT may have HEADER
-        self.assertIn("BODY", types)
+        self.assertIn("body", types)
 
     def test_parameter_format_named_for_carousel(self):
         """✅ CAROUSEL with named placeholders has parameter_format=NAMED."""
@@ -409,7 +409,7 @@ class TestCarouselMetaPayload(TemplateTestBase):
         }
         payload = self._get_meta_payload(data)
         carousel = next(c for c in payload["components"] if c["type"] == "CAROUSEL")
-        header = next(sc for sc in carousel["cards"][0]["components"] if sc["type"] == "HEADER")
+        header = next(sc for sc in carousel["cards"][0]["components"] if sc["type"] == "header")
         self.assertEqual(header["format"], "IMAGE")
 
 

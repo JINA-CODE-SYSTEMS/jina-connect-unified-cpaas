@@ -161,7 +161,7 @@ class TestToMetaPayload(TestCase):
         self.assertIn("components", payload)
 
         # BODY component
-        body = next(c for c in payload["components"] if c["type"] == "BODY")
+        body = next(c for c in payload["components"] if c["type"] == "body")
         self.assertIn("{{name}}", body["text"])
         self.assertIn("{{company}}", body["text"])
 
@@ -172,7 +172,7 @@ class TestToMetaPayload(TestCase):
         template = make_template(self.wa_app, header="Welcome!")
         payload = template.to_meta_payload()
 
-        header = next((c for c in payload["components"] if c["type"] == "HEADER"), None)
+        header = next((c for c in payload["components"] if c["type"] == "header"), None)
         self.assertIsNotNone(header)
         self.assertEqual(header["text"], "Welcome!")
         self.assertEqual(header["format"], "TEXT")
@@ -181,7 +181,7 @@ class TestToMetaPayload(TestCase):
         template = make_template(self.wa_app, footer="Opt out")
         payload = template.to_meta_payload()
 
-        footer = next((c for c in payload["components"] if c["type"] == "FOOTER"), None)
+        footer = next((c for c in payload["components"] if c["type"] == "footer"), None)
         self.assertIsNotNone(footer)
         self.assertEqual(footer["text"], "Opt out")
 
@@ -195,10 +195,10 @@ class TestToMetaPayload(TestCase):
         )
         payload = template.to_meta_payload()
 
-        buttons = next((c for c in payload["components"] if c["type"] == "BUTTONS"), None)
+        buttons = next((c for c in payload["components"] if c["type"] == "buttons"), None)
         self.assertIsNotNone(buttons)
         self.assertEqual(len(buttons["buttons"]), 2)
-        self.assertEqual(buttons["buttons"][0]["type"], "QUICK_REPLY")
+        self.assertEqual(buttons["buttons"][0]["type"], "quick_reply")
         self.assertEqual(buttons["buttons"][1]["url"], "https://example.com")
 
     def test_named_params_generates_body_text_named_params(self):
@@ -209,7 +209,7 @@ class TestToMetaPayload(TestCase):
             example_body=["Alice", "ORD-123"],
         )
         payload = template.to_meta_payload()
-        body = next(c for c in payload["components"] if c["type"] == "BODY")
+        body = next(c for c in payload["components"] if c["type"] == "body")
 
         self.assertIn("body_text_named_params", body["example"])
         named_params = body["example"]["body_text_named_params"]
@@ -251,18 +251,18 @@ class TestToMetaPayload(TestCase):
 
         # Card 1 has HEADER(IMAGE) + BODY + BUTTONS
         card1 = carousel["cards"][0]["components"]
-        card1_header = next(c for c in card1 if c["type"] == "HEADER")
+        card1_header = next(c for c in card1 if c["type"] == "header")
         self.assertEqual(card1_header["format"], "IMAGE")
         self.assertEqual(card1_header["example"]["header_handle"], ["media_handle_1"])
 
-        card1_body = next(c for c in card1 if c["type"] == "BODY")
+        card1_body = next(c for c in card1 if c["type"] == "body")
         self.assertEqual(card1_body["text"], "Card 1 text")
 
-        card1_buttons = next(c for c in card1 if c["type"] == "BUTTONS")
+        card1_buttons = next(c for c in card1 if c["type"] == "buttons")
         self.assertEqual(card1_buttons["buttons"][0]["url"], "https://example.com")
 
         # Card 2 has VIDEO header
-        card2_header = next(c for c in carousel["cards"][1]["components"] if c["type"] == "HEADER")
+        card2_header = next(c for c in carousel["cards"][1]["components"] if c["type"] == "header")
         self.assertEqual(card2_header["format"], "VIDEO")
 
     def test_carousel_removes_top_level_header(self):
@@ -280,7 +280,7 @@ class TestToMetaPayload(TestCase):
         )
         payload = template.to_meta_payload()
 
-        top_level_header = [c for c in payload["components"] if c["type"] == "HEADER"]
+        top_level_header = [c for c in payload["components"] if c["type"] == "header"]
         self.assertEqual(len(top_level_header), 0)
 
 
@@ -623,7 +623,7 @@ class TestMetaDirectUploadMedia(TestCase):
             patch("wa.utility.apis.meta.media_api.MetaMediaAPI") as MockMediaAPI,
         ):
             mock_api_instance = MagicMock()
-            mock_api_instance.upload_media_from_file_object.return_value = {"id": "media_12345"}
+            mock_api_instance.upload_media_for_template.return_value = "media_12345"
             MockMediaAPI.return_value = mock_api_instance
 
             result = adapter.upload_media(
@@ -649,7 +649,7 @@ class TestMetaDirectUploadMedia(TestCase):
             patch("wa.utility.apis.meta.media_api.MetaMediaAPI") as MockMediaAPI,
         ):
             mock_api_instance = MagicMock()
-            mock_api_instance.upload_media_from_file_object.side_effect = Exception("Upload failed")
+            mock_api_instance.upload_media_for_template.side_effect = Exception("Upload failed")
             MockMediaAPI.return_value = mock_api_instance
 
             result = adapter.upload_media(

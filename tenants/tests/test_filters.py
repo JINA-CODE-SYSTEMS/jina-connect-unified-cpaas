@@ -19,29 +19,32 @@ class TenantFilterTestCase(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        self.user = User.objects.create_user(email="test@example.com", password="testpass123")
+        self.user = User.objects.create_user(username="testuser", email="test@example.com", password="testpass123")
 
         # Create tenants with different contact counts
         self.tenant_low = Tenant.objects.create(
             name="Low Contact Tenant",
-            tenant_config={},
             balance=Money(100, "INR"),
+            credit_line=Money(0, "INR"),
+            threshold_alert=Money(10, "INR"),
             created_by=self.user,
             updated_by=self.user,
         )
 
         self.tenant_medium = Tenant.objects.create(
             name="Medium Contact Tenant",
-            tenant_config={},
             balance=Money(200, "INR"),
+            credit_line=Money(0, "INR"),
+            threshold_alert=Money(10, "INR"),
             created_by=self.user,
             updated_by=self.user,
         )
 
         self.tenant_high = Tenant.objects.create(
             name="High Contact Tenant",
-            tenant_config={},
             balance=Money(300, "INR"),
+            credit_line=Money(0, "INR"),
+            threshold_alert=Money(10, "INR"),
             created_by=self.user,
             updated_by=self.user,
         )

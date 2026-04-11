@@ -1,9 +1,8 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.test import TestCase
-from djmoney.contrib.exchange.models import convert_money
+from djmoney.contrib.exchange.models import ExchangeBackend, Rate, convert_money
 from djmoney.money import Money
 
 from abstract.models import TransactionTypeChoices
@@ -27,7 +26,13 @@ class TenantRechargeWithCurrencyConversionTestCase(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        call_command("update_rates")  # populates test DB with live or backend rates
+        # Seed exchange rates locally instead of calling the live API
+        backend, _ = ExchangeBackend.objects.get_or_create(
+            name="openexchangerates.org",
+            defaults={"base_currency": "USD"},
+        )
+        Rate.objects.get_or_create(currency="INR", backend=backend, defaults={"value": Decimal("83.0")})
+        Rate.objects.get_or_create(currency="USD", backend=backend, defaults={"value": Decimal("1.0")})
 
     def setUp(self):
         """Set up test data"""
@@ -58,9 +63,6 @@ class TenantRechargeWithCurrencyConversionTestCase(TestCase):
         Test: Tenant has USD balance, recharge is done in INR
         Expected: INR amount should be converted to USD and added to balance
         """
-        # Update exchange rates for accurate testing
-        call_command("update_rates")
-
         # Use real currency conversion: 830 INR to USD
         inr_amount = Money(830, "INR")
         expected_usd_equivalent = convert_money(inr_amount, "USD")

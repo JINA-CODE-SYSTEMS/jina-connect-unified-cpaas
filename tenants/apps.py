@@ -6,4 +6,4 @@ class TenantsConfig(AppConfig):
     name = "tenants"
 
     def ready(self):
-        pass
+        import tenants.signals  # noqa: F401

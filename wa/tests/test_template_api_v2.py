@@ -581,7 +581,8 @@ class TestTemplateSync(TemplateTestBase):
         # Adapter was called
         self._mock_adapter.submit_template.assert_called()
 
-    def test_sync_returns_502_on_adapter_failure(self):
+    @patch("wa.tasks.retry_submit_template.apply_async")
+    def test_sync_returns_502_on_adapter_failure(self, _mock_retry):
         """\u274c Sync returns 502 when BSP adapter reports failure."""
         from wa.adapters.base import AdapterResult
 
@@ -650,10 +651,10 @@ class TestTemplateMetaPayload(TemplateTestBase):
 
         # Should have at least BODY component
         component_types = [c["type"] for c in payload["components"]]
-        self.assertIn("BODY", component_types)
+        self.assertIn("body", component_types)
 
-    def test_meta_payload_converts_named_to_numbered(self):
-        """✅ Named placeholders {{name}} become {{1}} in META payload."""
+    def test_meta_payload_keeps_named_placeholders(self):
+        """✅ Named placeholders {{name}} are kept as-is in META payload (parameter_format=NAMED)."""
         create_resp = self.create_template(
             content="Hi {{customer_name}}, order {{order_id}} is ready.",
         )
@@ -662,11 +663,10 @@ class TestTemplateMetaPayload(TemplateTestBase):
         resp = self.client.get(self.action_url(pk, "meta-payload"))
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
-        body_component = next(c for c in resp.data["components"] if c["type"] == "BODY")
-        # Should have numbered placeholders
-        self.assertIn("{{1}}", body_component["text"])
-        self.assertIn("{{2}}", body_component["text"])
-        self.assertNotIn("{{customer_name}}", body_component["text"])
+        body_component = next(c for c in resp.data["components"] if c["type"] == "body")
+        # Open-source uses parameter_format=NAMED — placeholders stay as named
+        self.assertIn("{{customer_name}}", body_component["text"])
+        self.assertIn("{{order_id}}", body_component["text"])
 
 
 class TestTemplateLookups(TemplateTestBase):

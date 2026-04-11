@@ -7,7 +7,8 @@ from django.dispatch import receiver
 from djmoney.contrib.exchange.models import convert_money
 from djmoney.money import Money
 
-from transaction.models import TenantTransaction, TransactionTypeChoices
+from abstract.models import TransactionTypeChoices
+from transaction.models import TenantTransaction
 
 logger = logging.getLogger(__name__)
 
