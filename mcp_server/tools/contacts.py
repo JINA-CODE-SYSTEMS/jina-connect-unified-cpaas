@@ -33,11 +33,7 @@ def search_contacts(
     qs = TenantContact.objects.filter(tenant=tenant)
 
     if query:
-        qs = qs.filter(
-            Q(phone__icontains=query)
-            | Q(first_name__icontains=query)
-            | Q(last_name__icontains=query)
-        )
+        qs = qs.filter(Q(phone__icontains=query) | Q(first_name__icontains=query) | Q(last_name__icontains=query))
 
     if tag:
         qs = qs.filter(tag__icontains=tag)
