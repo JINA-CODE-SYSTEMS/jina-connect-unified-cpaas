@@ -146,7 +146,7 @@ class TemplateAPI(WAAPI):
             print(f"  --form 'file=@\"{file_path}\"'")
             print("=" * 80)
 
-            response = requests.post(url, headers=headers, files=files, data=data)
+            response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
         if response.status_code not in [200, 201]:
             error_msg = f"Media upload failed with status code {response.status_code}"
@@ -221,7 +221,7 @@ class TemplateAPI(WAAPI):
         print(f"  --form 'file=@\"{filename}\"'")
         print("=" * 80)
 
-        response = requests.post(url, headers=headers, files=files, data=data)
+        response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
         if response.status_code not in [200, 201]:
             error_msg = f"Media upload failed with status code {response.status_code}"
@@ -284,7 +284,7 @@ class TemplateAPI(WAAPI):
         self._last_curl_command = curl_cmd
         print(f"[Gupshup Sync] {curl_cmd}")
 
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=30)
 
         if response.status_code not in [200, 201, 202]:
             error_msg = f"Template sync failed with status {response.status_code}"
@@ -319,7 +319,7 @@ class TemplateAPI(WAAPI):
         self._last_curl_command = curl_cmd
         print(f"[Gupshup GetTemplate] {curl_cmd}")
 
-        response = requests.get(url, headers=self.headers, params=params)
+        response = requests.get(url, headers=self.headers, params=params, timeout=30)
 
         if response.status_code != 200:
             print(f"[Gupshup] Failed to fetch template: {response.status_code} - {response.text}")
@@ -353,7 +353,7 @@ class TemplateAPI(WAAPI):
         if limit is not None:
             params["limit"] = limit
 
-        response = requests.get(url, headers=self.headers, params=params if params else None)
+        response = requests.get(url, headers=self.headers, params=params if params else None, timeout=30)
 
         if response.status_code != 200:
             print(f"[Gupshup] Failed to fetch templates: {response.status_code}")
@@ -377,7 +377,7 @@ class TemplateAPI(WAAPI):
 
         url = f"{self._templates_base}/{template_id}"
 
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=30)
 
         if response.status_code != 200:
             print(f"[Gupshup] Failed to fetch template {template_id}: {response.status_code}")

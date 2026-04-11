@@ -721,7 +721,7 @@ class GupshupAdapter(BaseBSPAdapter):
             headers = {"Authorization": api.token}
 
             self._log("info", f"[STEP 3/4] Calling Gupshup — DELETE {url}")
-            resp = http.delete(url, headers=headers)
+            resp = http.delete(url, headers=headers, timeout=30)
             response = resp.json() if resp.text else {}
             self._log("debug", f"[STEP 3/4] Response: {response}")
         except Exception as exc:

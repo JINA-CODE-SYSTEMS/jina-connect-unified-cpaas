@@ -291,7 +291,8 @@ class MediaConverter:
                 input_path = input_file.name
 
             # Create output temp file
-            output_path = tempfile.mktemp(suffix=".mp4")
+            _fd, output_path = tempfile.mkstemp(suffix=".mp4")
+            os.close(_fd)
 
             try:
                 # Get video duration for bitrate calculation
@@ -351,7 +352,8 @@ class MediaConverter:
                 if output_size > max_size_bytes:
                     # Try with lower resolution
                     os.remove(output_path)
-                    output_path = tempfile.mktemp(suffix=".mp4")
+                    _fd, output_path = tempfile.mkstemp(suffix=".mp4")
+                    os.close(_fd)
 
                     cmd = [
                         "ffmpeg",
@@ -438,7 +440,8 @@ class MediaConverter:
                 input_path = input_file.name
 
             # Create output temp file
-            output_path = tempfile.mktemp(suffix=target_ext)
+            _fd, output_path = tempfile.mkstemp(suffix=target_ext)
+            os.close(_fd)
 
             try:
                 if target_ext == ".ogg":
@@ -536,7 +539,8 @@ class MediaConverter:
                 input_file.write(file.read())
                 input_path = input_file.name
 
-            output_path = tempfile.mktemp(suffix=".pdf")
+            _fd, output_path = tempfile.mkstemp(suffix=".pdf")
+            os.close(_fd)
 
             try:
                 # Ghostscript compression command

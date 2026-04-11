@@ -470,6 +470,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
                 url,
                 headers=api.json_headers,
                 params={"name": template.element_name},
+                timeout=30,
             )
             response = resp.json()
             self._log("debug", f"[STEP 3/4] Response: {response}")
@@ -532,7 +533,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         try:
             import requests as http
 
-            resp = http.get(url, headers=api.json_headers)
+            resp = http.get(url, headers=api.json_headers, timeout=30)
             response = resp.json()
         except Exception as exc:
             self._log("error", f"list_templates API call FAILED — {exc}", exc_info=True)

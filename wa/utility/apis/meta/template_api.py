@@ -133,7 +133,7 @@ class TemplateAPI(WABAAPI):
             print(f"  --form 'file=@\"{file_path}\"'")
             print("=" * 80)
 
-            response = requests.post(url, headers=headers, files=files, data=data)
+            response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
         if response.status_code not in [200, 201]:
             error_msg = f"Media upload failed with status code {response.status_code}"
@@ -208,7 +208,7 @@ class TemplateAPI(WABAAPI):
         print(f"  --form 'file=@\"{filename}\"'")
         print("=" * 80)
 
-        response = requests.post(url, headers=headers, files=files, data=data)
+        response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
         if response.status_code not in [200, 201]:
             error_msg = f"Media upload failed with status code {response.status_code}"

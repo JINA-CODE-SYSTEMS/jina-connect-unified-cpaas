@@ -154,13 +154,13 @@ class WAAPI(BaseModel):
         print(curl_cmd)
 
         if method == "GET":
-            response = requests.get(url, headers=headers, params=params or processed_data)
+            response = requests.get(url, headers=headers, params=params or processed_data, timeout=30)
         elif method == "POST":
-            response = requests.post(url, headers=headers, data=processed_data, params=params)
+            response = requests.post(url, headers=headers, data=processed_data, params=params, timeout=30)
         elif method == "PUT":
-            response = requests.put(url, headers=headers, data=processed_data, params=params)
+            response = requests.put(url, headers=headers, data=processed_data, params=params, timeout=30)
         elif method == "DELETE":
-            response = requests.delete(url, headers=headers, data=processed_data, params=params)
+            response = requests.delete(url, headers=headers, data=processed_data, params=params, timeout=30)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -220,13 +220,13 @@ class WAAPI(BaseModel):
         print(curl_cmd)
 
         if method == "GET":
-            response = requests.get(url, headers=headers, params=params or data)
+            response = requests.get(url, headers=headers, params=params or data, timeout=30)
         elif method == "POST":
-            response = requests.post(url, headers=headers, json=data, params=params)
+            response = requests.post(url, headers=headers, json=data, params=params, timeout=30)
         elif method == "PUT":
-            response = requests.put(url, headers=headers, json=data, params=params)
+            response = requests.put(url, headers=headers, json=data, params=params, timeout=30)
         elif method == "DELETE":
-            response = requests.delete(url, headers=headers, json=data, params=params)
+            response = requests.delete(url, headers=headers, json=data, params=params, timeout=30)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 

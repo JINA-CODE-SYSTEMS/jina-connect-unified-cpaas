@@ -2562,7 +2562,7 @@ class ChatFlowExecutor:
                     url = f"https://mermaid.ink/img/{mermaid_encoded}"
 
                     # Fetch PNG from mermaid.ink
-                    with urllib.request.urlopen(url, timeout=10) as response:
+                    with urllib.request.urlopen(url, timeout=10) as response:  # nosec B310 — URL is constructed from internal mermaid graph data
                         png_bytes = response.read()
 
                     display(Image(png_bytes))

@@ -345,6 +345,7 @@ class MetaMediaAPI(WAAPI):
                 headers=self.auth_header,
                 files=files,
                 data=data,
+                timeout=60,
             )
 
         return self._handle_response(response, "Media upload")
@@ -411,6 +412,7 @@ class MetaMediaAPI(WAAPI):
             headers=self.auth_header,
             files=files,
             data=data,
+            timeout=60,
         )
 
         return self._handle_response(response, "Media upload (file object)")
@@ -469,6 +471,7 @@ class MetaMediaAPI(WAAPI):
             url,
             headers=self.json_headers,
             params=params,
+            timeout=30,
         )
 
         return self._handle_response(response, "Get media URL")
@@ -517,6 +520,7 @@ class MetaMediaAPI(WAAPI):
             url,
             headers=self.json_headers,
             params=params,
+            timeout=30,
         )
 
         return self._handle_response(response, "Delete media")
@@ -564,6 +568,7 @@ class MetaMediaAPI(WAAPI):
             media_url,
             headers=self.auth_header,
             stream=True,
+            timeout=60,
         )
 
         if response.status_code == 404:
@@ -627,6 +632,7 @@ class MetaMediaAPI(WAAPI):
             media_url,
             headers=self.auth_header,
             stream=True,
+            timeout=60,
         )
 
         if response.status_code == 404:
@@ -722,7 +728,7 @@ class MetaMediaAPI(WAAPI):
             "access_token": self.token,
         }
 
-        response = requests.post(url, params=params)
+        response = requests.post(url, params=params, timeout=30)
         result = self._handle_response(response, "Create resumable upload session")
         session_id = result.get("id")
         if not session_id:
@@ -750,7 +756,7 @@ class MetaMediaAPI(WAAPI):
             "file_offset": "0",
         }
 
-        response = requests.post(url, data=file_bytes, headers=headers)
+        response = requests.post(url, data=file_bytes, headers=headers, timeout=60)
         result = self._handle_response(response, "Upload file to resumable session")
         handle = result.get("h")
         if not handle:

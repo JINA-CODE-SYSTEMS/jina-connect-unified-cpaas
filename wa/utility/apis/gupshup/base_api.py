@@ -87,13 +87,13 @@ class WAAPI(BaseModel):
         print(curl_cmd)
 
         if method == "GET":
-            response = requests.get(url, headers=headers, params=processed_data)
+            response = requests.get(url, headers=headers, params=processed_data, timeout=30)
         elif method == "POST":
-            response = requests.post(url, headers=headers, data=processed_data)
+            response = requests.post(url, headers=headers, data=processed_data, timeout=30)
         elif method == "PUT":
-            response = requests.put(url, headers=headers, data=processed_data)
+            response = requests.put(url, headers=headers, data=processed_data, timeout=30)
         elif method == "DELETE":
-            response = requests.delete(url, headers=headers, data=processed_data)
+            response = requests.delete(url, headers=headers, data=processed_data, timeout=30)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -153,13 +153,13 @@ class WAAPI(BaseModel):
         print(curl_cmd)
 
         if method == "GET":
-            response = requests.get(url, headers=headers, params=data)
+            response = requests.get(url, headers=headers, params=data, timeout=30)
         elif method == "POST":
-            response = requests.post(url, headers=headers, json=data)
+            response = requests.post(url, headers=headers, json=data, timeout=30)
         elif method == "PUT":
-            response = requests.put(url, headers=headers, json=data)
+            response = requests.put(url, headers=headers, json=data, timeout=30)
         elif method == "DELETE":
-            response = requests.delete(url, headers=headers, json=data)
+            response = requests.delete(url, headers=headers, json=data, timeout=30)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -293,7 +293,7 @@ class WAAPI(BaseModel):
         data = form_data.get("file_type", {})
         files = form_data.get("file_path", {})
 
-        response = requests.post(url, headers=headers, data=data, files=files)
+        response = requests.post(url, headers=headers, data=data, files=files, timeout=60)
 
         if response.status_code != 200 and response.status_code != 201:
             raise Exception(f"Form submission failed with status code {response.status_code}: {response.text}")

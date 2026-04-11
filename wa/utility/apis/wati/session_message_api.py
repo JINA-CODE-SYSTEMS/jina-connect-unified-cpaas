@@ -170,7 +170,7 @@ class SessionMessageAPI(WAAPI):
             print(f"  --form 'file=@\"{file_path}\"'")
             print("=" * 80)
 
-            response = requests.post(url, headers=headers, files=files)
+            response = requests.post(url, headers=headers, files=files, timeout=30)
 
         if response.status_code not in [200, 201]:
             error_msg = f"Session file upload failed with status code {response.status_code}"
