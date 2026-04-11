@@ -532,6 +532,7 @@ GUPSHUP_PASSWORD = config("GUPSHUP_PASSWORD", "")
 # Log directory - configurable via environment variable
 # Default: /var/log/jina-connect (production) or ./logs (local)
 LOG_DIR = config("LOG_DIR", default=str(BASE_DIR / "logs"))
+os.makedirs(LOG_DIR, exist_ok=True)
 
 LOGGING = {
     "version": 1,
