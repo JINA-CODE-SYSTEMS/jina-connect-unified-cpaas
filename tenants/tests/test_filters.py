@@ -6,7 +6,7 @@ Run with: python manage.py test tenants.tests.test_filters
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from djmoney import Money
+from moneyed import Money
 
 from contacts.models import TenantContact
 from tenants.models import Tenant, TenantWAApp
