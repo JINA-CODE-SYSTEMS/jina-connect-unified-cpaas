@@ -265,7 +265,7 @@ The hosted product remains. The open source is real. Both use the same core.
 ## Links
 
 - [Documentation](https://docs.jinaconnect.com) *(coming soon)*
-- [Hosted product](https://jinaconnect.com)
+- [Hosted product](https://jinaconnect.com) *(coming soon)*
 - [Discord community](https://discord.gg/jinaconnect) *(coming soon)*
 - [Discussions](../../discussions) — questions, ideas, show-and-tell
 - [Issues](../../issues) — bugs and feature requests
