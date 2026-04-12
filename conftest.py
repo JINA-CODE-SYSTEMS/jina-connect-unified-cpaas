@@ -21,7 +21,4 @@ def pytest_configure(config):
         settings.CELERY_TASK_EAGER_PROPAGATES = True
         settings.CELERY_BROKER_URL = ""
 
-    # Disable Silk binary profiler during tests — it writes .prof files
-    # to MEDIA_ROOT which may not exist in CI.
-    settings.SILKY_PYTHON_PROFILER = False
-    settings.SILKY_PYTHON_PROFILER_BINARY = False
+

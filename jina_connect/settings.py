@@ -124,6 +124,8 @@ if DEBUG:
     SILKY_MAX_RECORDED_REQUESTS = 5_000  # auto-purge after this many
     SILKY_MAX_RECORDED_REQUESTS_CHECK_PERCENT = 10
     SILKY_META = True  # adds silk overhead info
+    # Ensure media/ exists for Silk .prof file storage (CI has no pre-existing media dir)
+    os.makedirs(os.path.join(BASE_DIR, "media"), exist_ok=True)
 
 # CSRF_TRUSTED_ORIGINS = [
 #     "*"
