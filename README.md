@@ -248,13 +248,13 @@ AGPL v3. See [LICENSE](LICENSE) for the full text.
 
 **Why AGPL?** Because we want this to stay open. AGPL's network-use clause prevents well-funded competitors from running our code as a hosted service without contributing back, while keeping the code fully free for developers, agencies, and self-hosted users. It's the same license Grafana, Mastodon, and Nextcloud use for the same reason.
 
-**For enterprises whose legal teams can't accept AGPL:** a commercial license is available. Email hello@jinacodesystems.com with your use case.
+**For enterprises whose legal teams can't accept AGPL:** a commercial license is available. Email tapan@jinacode.systems with your use case.
 
 ---
 
 ## About
 
-Built by [Jina Code Systems LLP](https://jinacodesystems.com) in India.
+Built by [Jina Code Systems LLP](https://jinacode.systems) in India.
 
 Jina Connect started as our own hosted CPaaS product. We open-sourced the core because we believe customer communication infrastructure should be open, multi-channel, multi-provider, and AI-native — and because the market deserves an alternative to single-vendor lock-in.
 
