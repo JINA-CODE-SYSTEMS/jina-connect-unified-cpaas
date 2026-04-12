@@ -1,349 +1,276 @@
 # Jina Connect — Unified CPaaS
 
-> The open-source, multi-provider WhatsApp platform.
-> Self-hostable. Agency-safe. MCP-native.
+**Open-source communication infrastructure for WhatsApp, Telegram, SMS, RCS, and Voice. Multi-provider. AI-native. Self-hostable.**
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://python.org)
-[![Django 5.1](https://img.shields.io/badge/Django-5.1-092E20.svg)](https://djangoproject.com)
-
----
-
-## What is Jina Connect?
-
-Jina Connect is a **unified CPaaS (Communication Platform as a Service)** that lets you send WhatsApp messages, manage broadcast campaigns, and build visual chatflows — all through a single self-hosted platform.
-
-Unlike closed alternatives (WATI, Gupshup, AiSensy) that lock you into a single WhatsApp Business Solution Provider, Jina Connect supports **multiple BSPs through a pluggable adapter pattern**. Switch providers with zero code changes. No vendor lock-in.
-
-### Why Jina Connect?
-
-- **Multi-Provider** — Connect Meta Direct, Gupshup, WATI, or any BSP through a single adapter interface
-- **Self-Hostable** — Run on your own infrastructure. Your data stays with you
-- **MCP-Native** — The only MCP server that routes WhatsApp messages across multiple providers. Drop into Claude, Cursor, or VS Code Copilot
-- **Agency-Ready** — White-label, sub-tenants, markup pricing — built for agencies managing multiple clients
-- **Full-Stack** — WhatsApp + Broadcasts + ChatFlows + Team Inbox in one platform
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
+[![MCP](https://img.shields.io/badge/MCP-ready-purple.svg)](#mcp-server)
 
 ---
 
-## Current Status
+## What it is
 
-> **This is the initial open-source release.** The core Django application is fully functional — all modules, models, APIs, and business logic are included. What's missing is the deployment layer (Docker, docs for local setup). See [What's Pending](#whats-pending) below.
+Jina Connect is a complete, self-hostable CPaaS platform — the communication infrastructure your business, agency, or AI product runs on. One stack, every customer channel: **WhatsApp**, **Telegram**, **SMS**, **RCS**, and **Voice**. Broadcasts, automated flows, templates, contacts, team inbox, billing, and AI-agent access through MCP — all in one self-hostable project.
 
-### What's Included
+**WhatsApp ships production-ready today.** Telegram, SMS, RCS, and Voice are on the roadmap, each built on the same unified channel abstraction. Pick a channel, write once, and the same primitives (send, broadcast, flow, inbox, analytics) work everywhere.
 
-| Module | Status | Description |
-|--------|--------|-------------|
-| **WhatsApp Engine** (`wa/`) | ✅ Complete | Multi-BSP messaging — templates, media, interactive, carousel, OTP, commerce. Webhook ingestion with signature verification. Adapters for Meta Direct, Gupshup, WATI |
-| **Broadcast Engine** (`broadcast/`) | ✅ Complete | Campaign lifecycle, batch processing, per-recipient tracking, URL click analytics, cost estimation |
-| **ChatFlow Builder** (`chat_flow/`) | ✅ Complete | Visual drag-and-drop conversation designer. Node types: template, delay, branch, handoff. Stateful graph execution via LangGraph |
-| **Team Inbox** (`team_inbox/`) | ✅ Complete | Unified inbox with real-time WebSocket streaming, conversation assignment, bulk actions |
-| **Contacts** (`contacts/`) | ✅ Complete | Multi-source contacts, lead scoring, assignment engine, tagging, CSV import/export |
-| **Multi-Tenancy & RBAC** (`tenants/`, `users/`) | ✅ Complete | Workspace isolation, custom roles (OWNER/ADMIN/MANAGER/AGENT/VIEWER), granular per-endpoint permissions, API key auth |
-| **Billing** (`transaction/`, `razorpay/`) | ✅ Complete | Wallet system, transaction ledger, Razorpay payment gateway integration |
-| **Message Templates** (`message_templates/`) | ✅ Complete | Template CRUD, approval workflow, BSP-specific validation and submission |
-| **Notifications** (`notifications/`) | ✅ Complete | In-app alerts via WebSocket — template approvals, broadcast status, low balance |
-| **CI Pipeline** (`.github/workflows/ci.yml`) | ✅ Complete | Lint (ruff), security scan (bandit), tests (pytest), Django system checks, secret detection (TruffleHog) |
+It also ships the first and only **multi-provider MCP server for business messaging**, letting AI agents (Claude, ChatGPT, Cursor, custom LLM apps) operate your communication channels natively through 13 tool-callable functions.
 
-### What's Pending
-
-| Item | Phase | Notes |
-|------|-------|-------|
-| Docker Compose setup | Phase 1 | One-command local development (`docker compose up`) |
-| Dockerfile | Phase 1 | Production-ready image with health checks |
-| Local setup documentation | Phase 1 | Step-by-step guide without Docker |
-| Seed data / demo fixtures | Phase 1 | Bootstrap a demo tenant with sample data |
-| Environment variable reference | Phase 1 | Document every config option in `.env.example` |
-| OpenAPI 3.1 spec export | Phase 2 | Auto-generated, versioned API docs |
-| Python & Node.js SDKs | Phase 2 | `pip install jina-connect` / `npm install @jina-connect/sdk` |
-| MCP Server | Phase 3 | WhatsApp tools for Claude, Cursor, Copilot |
-| White-label & agency features | Phase 4 | Sub-tenants, markup pricing, agency dashboard |
+**If you're building products, campaigns, or AI agents that talk to customers — and you don't want to be locked into one channel or one vendor — this is your infrastructure.**
 
 ---
 
-## Architecture
+## Why it exists
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│                       Jina Connect                             │
-│                                                                │
-│  ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌────────────────┐  │
-│  │ REST API │ │WebSocket │ │MCP Server │ │Webhook Ingress │  │
-│  │  (DRF)   │ │(Channels)│ │  (MIT)    │ │(Meta/Gupshup)  │  │
-│  └────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────┬─────────┘  │
-│       └─────────────┴─────────────┴──────────────┘            │
-│                           │                                    │
-│               ┌───────────▼────────────┐                      │
-│               │   Django Application   │                      │
-│               │                        │                      │
-│               │  wa/ · broadcast/      │                      │
-│               │  chat_flow/            │                      │
-│               │  team_inbox/ · contacts│                      │
-│               └───────────┬────────────┘                      │
-│                           │                                    │
-│               ┌───────────▼────────────┐                      │
-│               │   BSP Adapter Layer    │                      │
-│               │                        │                      │
-│               │ Meta · Gupshup · WATI  │                      │
-│               │      · Custom...       │                      │
-│               └────────────────────────┘                      │
-│                                                                │
-│  PostgreSQL · Redis · Celery Workers                          │
-└────────────────────────────────────────────────────────────────┘
-```
+Every commercial CPaaS tool on the market is closed SaaS. Switching channels or providers means rewriting integrations. Self-hosting isn't possible. AI agents have to be rebuilt per vendor. Agencies juggle one dashboard per client, per channel, per provider.
+
+We're building the open-source alternative that solves all of this at once:
+
+- **Every customer channel, one stack.** WhatsApp today, Telegram + SMS + RCS + Voice coming. The same primitives across all of them.
+- **Multi-provider by design.** For each channel, swap providers without rewriting code. WhatsApp already routes across Meta Cloud API and Gupshup; more channels and providers land the same way.
+- **AI-native from day one.** The MCP server lets any AI agent operate your channels the way a human would — create templates, send campaigns, query analytics — without glue code.
+- **Self-hostable.** `docker-compose up` and you have a full Jina Connect instance. Keep it on your own infrastructure, forever.
+- **AGPL v3.** Fork it, audit it, extend it. Commercial license available for enterprises whose legal teams require it.
 
 ---
 
-## Project Structure
+## Quickstart
 
+```bash
+# Clone and start
+git clone https://github.com/jina-code-systems/jina-connect-unified-cpaas.git
+cd jina-connect-unified-cpaas
+docker-compose up
+
+# Visit http://localhost:8000
+
+# Seed demo data (sample tenant, contacts, and templates)
+docker-compose exec web python manage.py seed_demo
 ```
-jina-connect-unified-cpaas/
-├── wa/                  # WhatsApp engine — BSP adapters, webhook processing, message routing
-├── broadcast/           # Campaign management — scheduling, batching, delivery tracking
-├── chat_flow/           # Visual chatflow builder — graph execution, node types
-├── team_inbox/          # Real-time inbox — WebSocket consumers, conversation management
-├── contacts/            # Contact management — import/export, lead scoring, tagging
-├── message_templates/   # Template CRUD — approval workflow, BSP validation
-├── tenants/             # Multi-tenancy — workspace isolation, RBAC, permissions
-├── users/               # Authentication — JWT, API keys, deep linking
-├── transaction/         # Wallet & ledger — balance tracking, transaction history
-├── razorpay/            # Payment gateway — Razorpay integration
-├── notifications/       # In-app notifications — WebSocket alerts
-├── abstract/            # Shared base classes — models, serializers, viewsets
-├── jina_connect/        # Django project config — settings, urls, celery, ASGI
-├── docs/                # Internal documentation — PRDs, user guides, BSP specs
-├── .github/workflows/   # CI pipeline
-├── .env.example         # Environment variable template
-├── requirements.txt     # Python dependencies
-└── pyproject.toml       # Tool configuration (pytest, ruff, bandit)
-```
+
+From a fresh clone to your first WhatsApp message sent: **under 5 minutes**. If it takes longer, [open an issue](../../issues) — we'll fix it.
+
+---
+
+## What's in the box
+
+Everything below is open-source, shipped in this repo, and works out of the box.
+
+### Channels
+
+**Unified channel engine (`wa` today, more coming)** — The core abstraction that lets every other app (broadcast, flows, inbox, analytics) work across any communication channel. The same "send" primitive handles WhatsApp today and will handle Telegram, SMS, RCS, and Voice as they ship.
+
+| Channel | Status | Providers supported |
+|---|---|---|
+| **WhatsApp Business** | ✅ Production-ready | Meta Cloud API, Gupshup |
+| **Telegram Bot API** | 🚧 Coming soon | Native Telegram Bot API |
+| **SMS** | 🚧 Coming soon | Twilio, MSG91, Fast2SMS |
+| **RCS Business Messaging** | 🚧 Coming soon | Meta RCS, Google RCS |
+| **Voice (calls, IVR)** | 🚧 Coming soon | SIP trunking, Twilio Voice |
+
+Each channel plugs into the same unified abstraction, so features you use today (campaigns, flows, inbox, analytics) work on new channels the moment the adapter lands.
+
+**Message templates (`message_templates`)** — Template lifecycle across channels. Create, submit for approval (where required by the channel, like WhatsApp), track status, manage variables.
+
+### Outbound engagement
+
+**Broadcast engine (`broadcast`)** — Campaign management for outbound marketing. Draft → schedule → send lifecycle, batch processing with per-channel rate limiting, URL click tracking, and pre-send cost estimation. Works today on WhatsApp; expands to SMS and RCS automatically when those adapters ship.
+
+**Chat flow builder (`chat_flow`)** — Visual flow designer for automated customer journeys. Node-edge graph model, conditional branching rules engine, multi-turn session tracking. Channel-agnostic by design — a flow you build for WhatsApp can route over SMS when that adapter arrives.
+
+### Inbound and support
+
+**Team inbox (`team_inbox`)** — Real-time unified inbox across channels. WebSocket-based message delivery, activity event stream, sequential ordering across multiple agents. One conversation view no matter which channel the customer reached you on.
+
+**Contacts (`contacts`)** — Contact management at scale. Multi-source ingestion (CSV, API, webhook), lead scoring, tagging, segmentation. Channel-neutral: the same contact can be reached via WhatsApp today, SMS tomorrow, or Voice next month, all from the same record.
+
+### Platform
+
+**Multi-tenancy (`tenants`)** — Every feature is tenant-aware. Full RBAC, per-tenant branding, wallet management, API key provisioning. Run multiple isolated client workspaces on one deployment — essential for agencies.
+
+**Users and auth (`users`)** — JWT-based authentication. Login, registration, cross-tenant user management.
+
+**Transaction ledger (`transaction`)** — Wallet operations with full audit trail. Debit/credit tracking, holds for pending operations, multi-currency support. Every billable action across every channel writes to this ledger.
+
+**Payments (`razorpay`)** — Razorpay integration for wallet top-ups (India-first). Other gateways slot in through the payment abstraction.
+
+**Notifications (`notifications`)** — In-app alerts and WebSocket-based real-time updates used across all apps.
+
+### MCP server — the AI-native differentiator
+
+**`mcp_server`** — A FastMCP-based stateless HTTP MCP server exposing **13 tools** for AI agents:
+
+| Tool category | Tools |
+|---|---|
+| Template lifecycle | validate, create, list, get by name, check status, delete |
+| Messaging | send single message, send bulk |
+| Contacts & segments | manage contacts, query segments |
+| Campaigns | trigger broadcast, check campaign status |
+| Analytics | query delivery/read stats |
+
+Today the MCP server operates WhatsApp. As Telegram, SMS, RCS, and Voice adapters ship, the same tools start routing across channels — your AI agent can send a WhatsApp message, fall back to SMS, and escalate to a voice call using the same tool calls.
+
+Works with Claude Desktop, Claude.ai, ChatGPT, Cursor, VS Code Copilot, Windsurf, and any MCP-compatible client. Two transports today: `stdio` and streamable HTTP. SSE transport coming soon. Authentication via tenant API keys — one MCP server can safely serve multiple tenants.
+
+**What makes this unique:** every competing business-messaging MCP server is locked to a single provider and usually a single channel. This one is multi-provider from day one and multi-channel by design.
+
+---
+
+## Who it's for
+
+**Developers and technical founders** building products that need customer messaging across any channel. Stop rewriting template management, webhook handling, and channel-specific quirks. Start with a foundation that works for WhatsApp today and extends to every other channel as those adapters land.
+
+**Marketing agencies** managing customer communication for multiple clients across multiple providers and channels. One dashboard. One bill. Consistent features across channels. Client portability if you ever leave us — the code is yours.
+
+**AI-native builders** putting agents into production. Give Claude, ChatGPT, or your custom LLM direct access to business messaging through the MCP server. Start with WhatsApp, expand to SMS and Voice as those land. No glue code. No provider lock-in.
+
+**D2C and e-commerce teams** who want proper team collaboration, rich automation, and audit trails across every channel their customers actually use — without paying enterprise SaaS prices.
 
 ---
 
 ## Roadmap
 
-Development is organized into 5 phases:
+The roadmap below is organized by CPaaS capability. Each capability has a current state and what's coming next. Treat dates as directional — open-source pace depends on community feedback as much as our roadmap.
 
-### Phase 1 — Open-Source Foundation
+### 📱 Messaging Channels
 
-**Goal:** Clone → `docker compose up` → working Jina Connect instance in under 5 minutes.
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **WhatsApp Business API** | Meta Cloud API, Gupshup | WATI adapter, Twilio adapter | Sinch, Infobip, MessageBird |
+| **Telegram Bot API** | — | Native Telegram adapter with bot commands, inline keyboards, file handling | Telegram Mini Apps, payments |
+| **SMS** | — | Twilio, MSG91, Fast2SMS adapters | Region-specific carriers, short-code support |
+| **RCS Business Messaging** | — | Meta RCS, Google RCS adapters | Rich cards, suggested replies, verified sender |
+| **Voice (calls, IVR)** | — | SIP trunking, basic IVR flows, Twilio Voice adapter | Advanced call routing, recording, transcription, agent handoff |
 
-- One-command local setup with Docker Compose (PostgreSQL, Redis, Celery, Daphne, Nginx)
-- Production-ready Docker image with health checks and restart policies
-- Seed data to bootstrap a demo tenant with contacts, templates, and a sample chatflow
-- Full environment variable reference so every config option is documented
+### 📤 Outbound Campaigns
 
-### Phase 2 — Developer Experience
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **Broadcast campaigns (WhatsApp)** | Draft → schedule → send, batch processing, URL tracking, cost estimation | Advanced segmentation, A/B testing, drip sequences | Multi-channel orchestration (WhatsApp + SMS + email in one campaign) |
+| **Quality score management** | Rate limiting per provider | Automated quality score alerts, auto-throttling | Predictive sending windows based on recipient behavior |
+| **Click-to-WhatsApp (CTWA) optimization** | — *(coming soon)* | CTWA routing optimization, Meta ads integration | CTWA attribution, cost-per-conversation analytics |
+| **Voice campaigns** | — *(coming soon)* | Bulk outbound calling with IVR menus, call recording | Predictive dialing, agent-assisted campaigns |
 
-**Goal:** Integrate Jina Connect into any app using clear APIs, SDKs, and examples.
+### 🤖 Automation and Flows
 
-- **OpenAPI 3.1 spec** — auto-generated, versioned API docs at `/api/v1/`
-- **Python SDK** — `pip install jina-connect` with async support
-- **Node.js SDK** — `npm install @jina-connect/sdk` with TypeScript types
-- **Per-tenant rate limiting** — configurable per-endpoint throttling
-- **Cursor-based pagination** — consistent across all list endpoints
-- **Standardized error responses** — structured error schema with codes and details
-- **Webhook delivery retry** — exponential backoff for outbound webhooks
-- **Example projects:**
-  - Send a WhatsApp template message (Python)
-  - Receive and process webhooks (Flask/FastAPI)
-  - Schedule and monitor a broadcast campaign
-  - Build an FAQ chatbot using the ChatFlow API
-  - Send the same message through Meta Direct and Gupshup, compare delivery
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **Visual chat flow builder** | Node-edge designer, conditional branching, multi-turn sessions | Template gallery, flow analytics, webhook triggers | AI-assisted flow generation, natural language flow editing |
+| **Cross-channel flows** | WhatsApp only | SMS fallback if WhatsApp undelivered, escalate to voice on failure | Full cross-channel orchestration with channel preferences per contact |
+| **Rules engine** | Conditional routing, session-based context | Time-based triggers, scheduled automations | ML-based next-best-action |
 
-### Phase 3 — MCP Server & AI-Native
+### 👥 Customer Conversations
 
-**Goal:** The only MCP server that routes WhatsApp messages across multiple providers.
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **Team inbox** | Real-time WebSocket delivery, multi-agent, activity events, sequential ordering (WhatsApp) | Inbox unified across WhatsApp + SMS + Telegram, internal notes, canned responses | Sentiment analysis, priority routing, SLA tracking |
+| **Contact management** | Multi-source ingestion, scoring, tagging, segmentation | CRM integrations (HubSpot, Salesforce), custom fields | Unified customer profile across all channels |
 
-- **MCP Messaging Tools** — `send_template`, `send_message`, `get_message_status`, `list_templates` through any configured BSP
-- **MCP Contact Tools** — `search_contacts`, `create_contact`, `update_contact`
-- **MCP Campaign Tools** — `create_broadcast`, `schedule_broadcast`, `get_broadcast_status`
-- **MCP Provider Tools** — `list_providers`, `get_provider_health`, `switch_provider`
-- **Multi-provider routing** — same tool call, multiple BSP backends. Route by cost, reliability, or tenant preference
-- **Knowledge Base RAG** — upload documents/PDFs, AI agent answers from tenant knowledge base
-- **Conversation memory** — multi-turn context with LangGraph checkpointing
-- **Multi-LLM router** — auto-fallback between OpenAI → Anthropic → local models
-- **Server-Sent Events** — real-time event stream as an alternative to polling
-- **Outbound webhooks** — tenant-configurable URLs for all event types with delivery logs and manual retry
+### 🧠 AI Agent Integration (MCP)
 
-### Phase 4 — Agency & Enterprise
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **MCP server** | 13 tools, stateless HTTP, stdio + streamable HTTP, WhatsApp operations. SSE *(coming soon)* | Multi-channel routing in MCP tools (WhatsApp + SMS + Voice from same tool calls), richer analytics | Agent-to-agent handoff, contextual memory across channels, voice-to-text bridges |
+| **AI-native content** | — *(coming soon)* | AI-assisted template writing, compliance checking per channel | Localization agents, tone adaptation, multi-language flows |
 
-**Goal:** Agencies white-label and resell. Enterprises self-host with confidence.
+### 💰 Billing and Commerce
 
-- **Full white-label** — custom domain, branding (logo, favicon, colors), email templates
-- **Sub-tenant hierarchy** — Agency → Client relationship with rollup billing
-- **Agency dashboard** — cross-client overview of message volume, costs, delivery rates
-- **Revenue share / markup** — agencies set per-client pricing above platform cost
-- **A/B testing** — split test template variants within a broadcast
-- **Smart scheduling** — AI-optimized send times based on historical open rates
-- **Drip campaigns** — multi-step automated sequences triggered by events
-- **GDPR compliance** — tenant data export and full data purge endpoints
-- **SSO** — SAML 2.0 / OpenID Connect for enterprise identity providers
-- **Additional BSP adapters** — AiSensy, Interakt, Yellow.ai, Twilio
-- **Adapter SDK** — base class + test harness for community-contributed adapters
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **Wallet and transactions** | Debit/credit ledger, multi-currency, holds | Prepaid/postpaid switching, usage-based billing per channel | Invoice generation, tax handling |
+| **Payment gateways** | Razorpay (India) | Stripe (global), PayPal, local gateways per region | Pay-via-WhatsApp transaction flows |
+| **Commerce catalog** | — *(coming soon)* | — | WhatsApp Commerce catalog, Instagram Shop integration *(partial availability in hosted Jina Connect today; open-sourcing planned)* |
 
-### Phase 5 — Community & Ecosystem
+### 🏢 Platform and Governance
 
-**Goal:** An active community contributing adapters, integrations, and content.
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **Multi-tenancy and RBAC** | Full tenant isolation, role-based access, per-tenant branding, API keys | Fine-grained permissions, audit logs | SSO (SAML, OIDC), compliance certifications |
+| **Self-hosting** | docker-compose with Postgres, Redis, Daphne, Celery | Kubernetes Helm charts, one-click cloud deployments | Managed self-hosting, auto-updates |
+| **Commercial licensing** | AGPL v3 + commercial option on request | Formalized commercial license tiers | Partner/reseller programs |
 
-- **Zapier / Make integration** — no-code automation triggers and actions
-- **n8n node** — open-source workflow automation
-- **Shopify app** — order notifications, abandoned cart recovery via WhatsApp
-- **WooCommerce plugin** — order status updates via WhatsApp
-- **HubSpot integration** — contact sync, WhatsApp as a CRM channel
-- **Template gallery** — community-contributed chatflow templates (FAQ bot, appointment booking, e-commerce)
-- **Adapter registry** — directory of community BSP adapters
+### 🔌 Integrations
+
+| Capability | Now | Next | Later |
+|---|---|---|---|
+| **E-commerce** | — *(coming soon)* | Shopify, WooCommerce adapters | Magento, BigCommerce, custom webhooks |
+| **CRMs** | — *(coming soon)* | HubSpot, Zoho, Salesforce connectors | Pipedrive, Freshworks, custom CRM adapters |
+| **Analytics and BI** | Basic delivery/read stats | Grafana dashboards, CSV export, webhook stream | Segment, Mixpanel, Amplitude sinks |
 
 ---
 
-## Feature Comparison
+## How we compare
 
-| Feature | Jina Connect | WATI | Gupshup | AiSensy |
-|---------|:------------:|:----:|:-------:|:-------:|
-| Open Source | ✅ AGPL-3.0 | ❌ | ❌ | ❌ |
-| Self-Hostable | ✅ | ❌ | ❌ | ❌ |
-| Multi-BSP | ✅ | ❌ | ❌ | ❌ |
-| MCP Server | 🔜 Phase 3 | ❌ | ❌ | ❌ |
-| Visual ChatFlow | ✅ | ✅ | ⚠️ | ⚠️ |
-| White-Label | 🔜 Phase 4 | ❌ | ❌ | ❌ |
-| Vendor Lock-In | None | 🔒 | 🔒 | 🔒 |
+| | Jina Connect | WATI | Gupshup | Twilio | AiSensy |
+|---|---|---|---|---|---|
+| **Open source** | ✅ AGPL v3 | ❌ | ❌ | ❌ | ❌ |
+| **Self-hostable** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Multi-channel** | ✅ WhatsApp + roadmap for SMS/RCS/Telegram/Voice | ❌ WhatsApp only | ⚠️ Partial | ✅ Multi-channel | ❌ WhatsApp only |
+| **Multi-provider per channel** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **MCP server** | ✅ Multi-provider | ✅ WATI only | ❌ | ✅ Twilio only | ❌ |
+| **Team inbox** | ✅ | ✅ | ⚠️ Limited | ⚠️ Limited | ✅ |
+| **Visual flow builder** | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **Starting price (hosted)** | ₹2,000/mo | ₹2,499/mo | Usage-based | Usage-based | ₹999/mo |
+| **Price-independent of vendor** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
----
-
-## Tech Stack
-
-- **Backend:** Django 5.1, Django REST Framework, Django Channels (ASGI)
-- **Task Queue:** Celery + Redis
-- **Database:** PostgreSQL
-- **Real-Time:** WebSocket via Daphne
-- **ChatFlow Engine:** LangGraph (stateful graph execution)
-- **Payments:** Razorpay (pluggable)
+Twilio is the most direct comparison on breadth (they also do multi-channel CPaaS), but Twilio is closed, expensive, and has no open-source story. Jina Connect is the only platform that combines multi-channel, multi-provider, open-source, and AI-native in one package.
 
 ---
 
-## Getting Started
+## Hosted vs. Self-Hosted
 
-### Prerequisites
+You have two ways to run Jina Connect:
 
-- **Python 3.11+**
-- **PostgreSQL 15+**
-- **Redis 7+**
+**Self-hosted (free forever).** Clone this repo, `docker-compose up`, and you have a complete Jina Connect instance. You own the infrastructure, the data, and the operations. Licensed under AGPL v3 — use it however you want within the license terms. This path is best for technical teams who want full control.
 
-#### macOS
+**Hosted (Jina Connect SaaS).** We run Jina Connect for you. Managed infrastructure, SLA, automatic upgrades, priority support, and extensions that aren't yet in the open-source repo (including some Voice AI capabilities currently in private development, and the WhatsApp Commerce catalog). Pricing starts at ₹2,000/month. Best for agencies and D2C brands who want to ship faster without infrastructure work.
 
-```bash
-brew install python@3.11 postgresql@15 redis
-brew services start postgresql@15
-brew services start redis
-```
+Both paths use the same core. Self-hosted users can migrate to hosted (or vice versa) without data loss.
 
-#### Ubuntu / Debian
+---
 
-```bash
-sudo apt update
-sudo apt install -y python3.11 python3.11-venv postgresql redis-server libmagic1
-sudo systemctl start postgresql redis-server
-```
+## Contributing
 
-### 1. Clone & Set Up Virtual Environment
+This project follows a [benevolent dictator governance model](GOVERNANCE.md) with a named maintainer from the Jina Code Systems LLP dev team. We welcome contributions, with a few principles:
 
-```bash
-git clone https://github.com/jina-connect/jina-connect-unified-cpaas.git
-cd jina-connect-unified-cpaas
+- **Small, focused PRs** get reviewed fast. Large architectural changes should start as a discussion issue first.
+- **Tests are required** for new features and for any change that touches the channel engine, broadcast, flows, or tenants.
+- **Saying "no" is a valid outcome.** Not every feature belongs in the core. If we decline a PR, we'll explain why — and you're welcome to maintain it as a fork.
+- **Response time commitment:** issues and PRs get a first response within 48 hours. Not "done" — just acknowledged.
 
-python3.11 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 2. Create the Database
-
-```bash
-# Create the PostgreSQL database (default name: jc6)
-createdb jc6
-
-# Or via psql:
-# psql -U postgres -c "CREATE DATABASE jc6;"
-```
-
-### 3. Configure Environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` — the defaults work for local development. At minimum, verify:
-
-```env
-DB_NAME=jc6
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_HOST=localhost
-SECRET_KEY=change-me-in-production
-DEBUG=True
-```
-
-### 4. Run Migrations
-
-```bash
-python manage.py migrate
-```
-
-### 5. Create a Superuser
-
-```bash
-python manage.py createsuperuser
-```
-
-### 6. Start the Development Server
-
-You need **3 terminal sessions** (or use a process manager like `honcho` / `foreman`):
-
-**Terminal 1 — Django (ASGI via Daphne):**
-```bash
-# Daphne for WebSocket + HTTP support
-daphne -b 0.0.0.0 -p 8000 jina_connect.asgi:application
-
-# Or for simple HTTP-only development:
-# python manage.py runserver
-```
-
-**Terminal 2 — Celery Worker (async tasks):**
-```bash
-celery -A jina_connect worker --loglevel=info
-```
-
-**Terminal 3 — Celery Beat (scheduled tasks):**
-```bash
-celery -A jina_connect beat --loglevel=info
-```
-
-### 7. Verify It's Working
-
-- **Admin panel:** http://localhost:8000/admin/
-- **API docs (Swagger):** http://localhost:8000/swagger/
-- **API docs (ReDoc):** http://localhost:8000/redoc/
-- **Version endpoint:** http://localhost:8000/version/
-
-### Connecting a WhatsApp BSP
-
-Once the server is running, you need to connect at least one BSP to send/receive messages:
-
-1. **Create a tenant** via the admin panel or API (`POST /tenants/`)
-2. **Add a WhatsApp App** to the tenant with your BSP credentials:
-   - **Meta Direct** — requires Meta App Secret, permanent token, and phone number ID
-   - **Gupshup** — requires Gupshup App ID, API key, and phone number
-   - **WATI** — requires WATI API endpoint and auth token
-3. **Configure webhooks** — point your BSP's webhook URL to `https://your-domain/wa/webhook/{bsp}/`
-
-> See `.env.example` for all BSP-specific environment variables.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 
 ## License
 
-The core platform is licensed under [AGPL-3.0](LICENSE). You can self-host, modify, and redistribute — but modified versions deployed as a network service must keep the source open.
+AGPL v3. See [LICENSE](LICENSE) for the full text.
 
-The MCP server (Phase 3) will be licensed under **MIT** for maximum ecosystem adoption.
+**Why AGPL?** Because we want this to stay open. AGPL's network-use clause prevents well-funded competitors from running our code as a hosted service without contributing back, while keeping the code fully free for developers, agencies, and self-hosted users. It's the same license Grafana, Mastodon, and Nextcloud use for the same reason.
 
-Commercial licensing is available for organizations that cannot comply with AGPL. Contact: *TBD*
+**For enterprises whose legal teams can't accept AGPL:** a commercial license is available. Email hello@jinacodesystems.com with your use case.
+
+---
+
+## About
+
+Built by [Jina Code Systems LLP](https://jinacodesystems.com) in India.
+
+Jina Connect started as our own hosted CPaaS product. We open-sourced the core because we believe customer communication infrastructure should be open, multi-channel, multi-provider, and AI-native — and because the market deserves an alternative to single-vendor lock-in.
+
+The hosted product remains. The open source is real. Both use the same core.
+
+---
+
+## Links
+
+- [Documentation](https://docs.jinaconnect.com) *(coming soon)*
+- [Hosted product](https://jinaconnect.com)
+- [Discord community](https://discord.gg/jinaconnect) *(coming soon)*
+- [Discussions](../../discussions) — questions, ideas, show-and-tell
+- [Issues](../../issues) — bugs and feature requests
+- [Twitter/X](https://twitter.com/jinaconnect) *(coming soon)*
+
+---
+
+*v1 — April 2026. Working document, updated as the product evolves.*
