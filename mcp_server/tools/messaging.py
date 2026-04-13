@@ -92,7 +92,12 @@ def send_message(
         text: The message text to send.
         channel: Channel — WHATSAPP (default) or TELEGRAM.
     """
-    if channel.upper() == "TELEGRAM":
+    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM"}
+    normalized = channel.strip().upper()
+    if normalized not in _ALLOWED_CHANNELS:
+        return {"error": f"Unsupported channel '{channel}'. Allowed: {', '.join(sorted(_ALLOWED_CHANNELS))}"}
+
+    if normalized == "TELEGRAM":
         return _send_telegram_message(api_key, phone, text)
 
     from contacts.models import TenantContact

@@ -52,7 +52,8 @@ class TestContactUpsert:
         assert contact.last_name == "Doe"
         assert contact.telegram_username == "johndoe"
 
-    def test_updates_existing_contact(self):
+    def test_does_not_overwrite_existing_contact(self):
+        """Existing contacts are NOT overwritten with untrusted Telegram data."""
         TenantContact.objects.create(
             tenant=self.tenant,
             phone="+919000000001",
@@ -64,8 +65,9 @@ class TestContactUpsert:
         _handle_message(event)
 
         contact = TenantContact.objects.get(tenant=self.tenant, telegram_chat_id=22222)
-        assert contact.first_name == "New"
-        assert contact.last_name == "Updated"
+        # Fields should remain unchanged — get_or_create does not overwrite
+        assert contact.first_name == "Old"
+        assert contact.last_name == "Name"
 
     def test_missing_fields_default_to_empty(self):
         event = self._make_event(chat_id=33333, first_name="", last_name="", username=None)

@@ -7,6 +7,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models import F
 
 from abstract.models import BaseWebhookDumps
 from contacts.models import TenantContact
@@ -37,6 +38,7 @@ class TelegramBotApp(models.Model):
     webhook_secret = models.CharField(
         max_length=64,
         blank=True,
+        unique=True,
         help_text="Random secret for X-Telegram-Bot-Api-Secret-Token validation",
     )
     webhook_url = models.URLField(max_length=512, blank=True, help_text="Auto-generated webhook URL")
@@ -68,6 +70,14 @@ class TelegramBotApp(models.Model):
         if not self.bot_token:
             return ""
         return f"***{self.bot_token[-4:]}"
+
+    def increment_daily_counter(self) -> bool:
+        """Atomically increment messages_sent_today. Returns False if over daily_limit."""
+        updated = TelegramBotApp.objects.filter(
+            pk=self.pk,
+            messages_sent_today__lt=F("daily_limit"),
+        ).update(messages_sent_today=F("messages_sent_today") + 1)
+        return updated > 0
 
 
 class TelegramWebhookEvent(BaseWebhookDumps):
@@ -110,7 +120,13 @@ class TelegramOutboundMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
     bot_app = models.ForeignKey(TelegramBotApp, on_delete=models.CASCADE, related_name="outbound_messages")
-    contact = models.ForeignKey(TenantContact, on_delete=models.CASCADE, related_name="telegram_outbound")
+    contact = models.ForeignKey(
+        TenantContact,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="telegram_outbound",
+    )
     chat_id = models.BigIntegerField(help_text="Target Telegram chat ID")
     message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES)
     request_payload = models.JSONField(blank=True, null=True, help_text="What was sent to Telegram")

@@ -35,16 +35,27 @@ def create_broadcast(
 
     tenant, wa_app = resolve_tenant(api_key)
 
-    platform = channel.upper()
+    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM"}
+    platform = channel.strip().upper()
+    if platform not in _ALLOWED_CHANNELS:
+        return {"error": f"Unsupported channel '{channel}'. Allowed: {', '.join(sorted(_ALLOWED_CHANNELS))}"}
+
+    MAX_BATCH = 10_000
+    if len(phone_numbers) > MAX_BATCH:
+        return {"error": f"Batch too large ({len(phone_numbers)}). Maximum is {MAX_BATCH}."}
 
     if platform == "TELEGRAM":
-        # Telegram broadcasts don't require WA templates
+        # Validate chat IDs are numeric
         contacts = []
         for chat_id in phone_numbers:
+            try:
+                numeric_id = int(chat_id)
+            except (ValueError, TypeError):
+                return {"error": f"Invalid Telegram chat_id: {chat_id!r}. Must be an integer."}
             contact, _ = TenantContact.objects.get_or_create(
                 tenant=tenant,
-                telegram_chat_id=int(chat_id),
-                defaults={"first_name": f"TG-{chat_id}", "source": "TELEGRAM"},
+                telegram_chat_id=numeric_id,
+                defaults={"first_name": f"TG-{numeric_id}", "source": "TELEGRAM"},
             )
             contacts.append(contact)
 

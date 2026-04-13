@@ -649,11 +649,9 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
 
 # ── Platform handler dispatch registry ─────────────────────────────────────
 # Add new platforms here instead of growing an if/elif chain.
-_PLATFORM_HANDLERS = {
-    "WHATSAPP": "handle_whatsapp_message",
-    "TELEGRAM": "handle_telegram_message",
-    "SMS": "handle_sms_message",
-}
+# Maps to actual function refs — populated after the functions are defined
+# (see bottom of file).
+_PLATFORM_HANDLERS: dict = {}
 
 
 def route_to_platform_handler(message):
@@ -674,9 +672,8 @@ def route_to_platform_handler(message):
         logger.error(error_msg)
         return {"success": False, "error": error_msg}
 
-    handler = globals()[handler_name]
     try:
-        return handler(message)
+        return handler_name(message)
     except Exception as e:
         error_msg = f"Error in platform handler for {platform}: {str(e)}"
         logger.exception(error_msg)
@@ -912,3 +909,13 @@ def handle_sms_message(message):
         error_msg = f"SMS sending failed: {str(e)}"
         logger.exception(error_msg)
         return {"success": False, "error": error_msg}
+
+
+# ── Populate platform handler registry (must come after function definitions)
+_PLATFORM_HANDLERS.update(
+    {
+        "WHATSAPP": handle_whatsapp_message,
+        "TELEGRAM": handle_telegram_message,
+        "SMS": handle_sms_message,
+    }
+)

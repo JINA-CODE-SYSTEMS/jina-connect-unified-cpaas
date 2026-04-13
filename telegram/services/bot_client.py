@@ -68,7 +68,25 @@ class TelegramBotClient:
                     timeout=self._timeout,
                 )
 
-                body = resp.json()
+                # Guard against non-JSON responses (e.g. HTML error pages from 5xx)
+                try:
+                    body = resp.json()
+                except (ValueError, requests.exceptions.JSONDecodeError):
+                    if 500 <= resp.status_code < 600 and attempt < self._max_retries:
+                        backoff = 2**attempt
+                        logger.warning(
+                            "[TelegramBotClient] Non-JSON %s response on %s, retrying in %ss (token=%s)",
+                            resp.status_code,
+                            method,
+                            backoff,
+                            self._masked,
+                        )
+                        time.sleep(backoff)
+                        continue
+                    raise TelegramAPIError(
+                        resp.status_code,
+                        f"Non-JSON response (HTTP {resp.status_code})",
+                    )
 
                 if body.get("ok"):
                     return body["result"]

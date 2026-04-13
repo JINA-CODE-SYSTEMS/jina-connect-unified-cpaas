@@ -87,6 +87,13 @@ class TelegramMessageSender(BaseChannelAdapter):
         if err := self._check_rate_limit():
             return err
 
+        # Validate URL scheme
+        from urllib.parse import urlparse
+
+        parsed = urlparse(media_url)
+        if parsed.scheme not in ("https", "http"):
+            return {"success": False, "message_id": "", "error": f"Invalid media URL scheme: {parsed.scheme!r}"}
+
         method_map = {
             "image": self.client.send_photo,
             "photo": self.client.send_photo,
@@ -168,6 +175,8 @@ class TelegramMessageSender(BaseChannelAdapter):
     # ── Convenience methods ───────────────────────────────────────────────
 
     def send_location(self, chat_id: str | int, latitude: float, longitude: float, contact=None) -> Dict[str, Any]:
+        if err := self._check_rate_limit():
+            return err
         try:
             result = self.client.send_location(chat_id=int(chat_id), latitude=latitude, longitude=longitude)
             outbound = self._persist_outbound(
@@ -188,6 +197,8 @@ class TelegramMessageSender(BaseChannelAdapter):
     def send_contact_card(
         self, chat_id: str | int, phone_number: str, first_name: str, last_name: str = None, contact=None
     ) -> Dict[str, Any]:
+        if err := self._check_rate_limit():
+            return err
         try:
             result = self.client.send_contact(
                 chat_id=int(chat_id),

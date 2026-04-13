@@ -74,14 +74,14 @@ def _handle_message(event):
 
     tenant = event.bot_app.tenant
 
-    # Upsert contact
-    contact, created = TenantContact.objects.update_or_create(
+    # Upsert contact — only set names on creation, never overwrite existing data
+    contact, created = TenantContact.objects.get_or_create(
         tenant=tenant,
         telegram_chat_id=chat_id,
         defaults={
-            "first_name": from_user.get("first_name", ""),
-            "last_name": from_user.get("last_name", ""),
-            "telegram_username": from_user.get("username"),
+            "first_name": (from_user.get("first_name") or "")[:150],
+            "last_name": (from_user.get("last_name") or "")[:150],
+            "telegram_username": (from_user.get("username") or "")[:150],
             "source": ContactSource.TELEGRAM,
         },
     )

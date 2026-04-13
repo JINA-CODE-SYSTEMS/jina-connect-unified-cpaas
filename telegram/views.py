@@ -39,6 +39,11 @@ class TelegramWebhookView(View):
 
     def post(self, request, bot_app_id):
         """Receive and persist a Telegram Update."""
+        # 0. Payload size guard (Telegram updates are typically < 64 KB)
+        MAX_PAYLOAD_BYTES = 1 * 1024 * 1024  # 1 MB
+        if int(request.headers.get("Content-Length", 0)) > MAX_PAYLOAD_BYTES or len(request.body) > MAX_PAYLOAD_BYTES:
+            return JsonResponse({"ok": True})
+
         # 1. Resolve bot app
         try:
             bot_app = TelegramBotApp.objects.get(pk=bot_app_id, is_active=True)
