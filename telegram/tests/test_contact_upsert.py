@@ -2,7 +2,6 @@
 Tests for contact upsert logic in Telegram event processing.
 """
 import pytest
-from django.test import TestCase
 
 from contacts.models import TenantContact
 from telegram.models import TelegramBotApp, TelegramWebhookEvent

@@ -7,7 +7,6 @@ asynchronously via the post_save signal → Celery task.
 """
 from __future__ import annotations
 
-import hashlib
 import hmac
 import json
 import logging

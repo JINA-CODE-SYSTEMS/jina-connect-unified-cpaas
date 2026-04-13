@@ -6,11 +6,9 @@ from simple_history.models import HistoricalRecords
 
 from abstract.models import BaseEntity, BaseModelWithOwner, BaseTenantModelForFilterUser, BaseWallet
 from abstract.validator import validate_phone_with_series
+from jina_connect.platform_choices import PlatformChoices  # canonical source
 from tenants.managers import TenantManager
 from users.models import User
-
-
-from jina_connect.platform_choices import PlatformChoices  # canonical source
 
 
 class IndustryChoices(models.TextChoices):

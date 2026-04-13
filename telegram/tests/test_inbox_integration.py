@@ -2,7 +2,6 @@
 Integration test: webhook → event → Celery task → inbox message created.
 """
 import json
-from unittest.mock import patch
 
 import pytest
 from django.test import RequestFactory
