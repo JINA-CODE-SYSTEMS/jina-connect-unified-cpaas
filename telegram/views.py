@@ -5,6 +5,7 @@ Telegram POSTs Update objects here. We validate the secret token,
 persist the event, and return 200 immediately. Processing happens
 asynchronously via the post_save signal → Celery task.
 """
+
 from __future__ import annotations
 
 import hmac

@@ -1,6 +1,7 @@
 """
 Tests for TelegramMessageSender — send text/media, persistence, rate limiting.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +11,6 @@ from telegram.services.message_sender import TelegramMessageSender
 
 @pytest.mark.django_db
 class TestTelegramMessageSender:
-
     @pytest.fixture(autouse=True)
     def setup(self, bot_app, contact):
         self.bot_app = bot_app

@@ -1,6 +1,7 @@
 """
 Tests for broadcast → Telegram integration (handle_telegram_message).
 """
+
 from unittest.mock import patch
 
 import pytest
@@ -14,7 +15,6 @@ from tenants.models import Tenant
 
 @pytest.mark.django_db
 class TestBroadcastTelegramIntegration:
-
     @pytest.fixture(autouse=True)
     def setup(self):
         self.tenant = Tenant.objects.create(name="BC TG Tenant")

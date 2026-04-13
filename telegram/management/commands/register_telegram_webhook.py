@@ -5,6 +5,7 @@ Usage:
     python manage.py register_telegram_webhook --bot-app-id <uuid>
     python manage.py register_telegram_webhook --bot-app-id <uuid> --delete
 """
+
 from django.core.management.base import BaseCommand, CommandError
 
 from telegram.models import TelegramBotApp
@@ -52,9 +53,7 @@ class Command(BaseCommand):
                 secret_token=bot_app.webhook_secret,
                 allowed_updates=["message", "callback_query", "edited_message"],
             )
-            self.stdout.write(self.style.SUCCESS(
-                f"Webhook registered: {bot_app.webhook_url}"
-            ))
+            self.stdout.write(self.style.SUCCESS(f"Webhook registered: {bot_app.webhook_url}"))
         except TelegramAPIError as exc:
             raise CommandError(f"Failed to register webhook: {exc.description}")
 
@@ -65,19 +64,21 @@ class Command(BaseCommand):
                 bot_app.bot_username = me.get("username", bot_app.bot_username)
                 bot_app.bot_user_id = me.get("id", bot_app.bot_user_id)
                 bot_app.save(update_fields=["bot_username", "bot_user_id"])
-                self.stdout.write(self.style.SUCCESS(
-                    f"Bot info updated: @{bot_app.bot_username} (ID: {bot_app.bot_user_id})"
-                ))
+                self.stdout.write(
+                    self.style.SUCCESS(f"Bot info updated: @{bot_app.bot_username} (ID: {bot_app.bot_user_id})")
+                )
             except TelegramAPIError as exc:
                 self.stdout.write(self.style.WARNING(f"Could not fetch bot info: {exc.description}"))
 
         # Set default bot commands
         try:
-            client.set_my_commands([
-                {"command": "start", "description": "Start a conversation"},
-                {"command": "help", "description": "Show help"},
-                {"command": "stop", "description": "Stop notifications"},
-            ])
+            client.set_my_commands(
+                [
+                    {"command": "start", "description": "Start a conversation"},
+                    {"command": "help", "description": "Show help"},
+                    {"command": "stop", "description": "Stop notifications"},
+                ]
+            )
             self.stdout.write(self.style.SUCCESS("Bot commands set: /start, /help, /stop"))
         except TelegramAPIError as exc:
             self.stdout.write(self.style.WARNING(f"Could not set bot commands: {exc.description}"))

@@ -1,6 +1,7 @@
 """
 Shared fixtures for Telegram test suite.
 """
+
 import pytest
 
 from contacts.models import TenantContact

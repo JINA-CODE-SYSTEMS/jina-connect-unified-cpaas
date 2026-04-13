@@ -59,11 +59,15 @@ class TenantContact(BaseTenantModelForFilterUser):
 
     # --- Telegram identity fields ---
     telegram_chat_id = models.BigIntegerField(
-        null=True, blank=True, db_index=True,
+        null=True,
+        blank=True,
+        db_index=True,
         help_text="Telegram chat ID for this contact",
     )
     telegram_username = models.CharField(
-        max_length=255, blank=True, null=True,
+        max_length=255,
+        blank=True,
+        null=True,
         help_text="Telegram @username (without @)",
     )
 

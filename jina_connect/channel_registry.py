@@ -9,6 +9,7 @@ Usage:
 
 New channels register at app ready() time via register_channel().
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,8 +39,5 @@ def get_channel_adapter(platform: str, tenant) -> "BaseChannelAdapter":
     """
     factory = _CHANNEL_REGISTRY.get(platform.upper())
     if not factory:
-        raise NotImplementedError(
-            f"No channel adapter for '{platform}'. "
-            f"Available: {list(_CHANNEL_REGISTRY.keys())}"
-        )
+        raise NotImplementedError(f"No channel adapter for '{platform}'. Available: {list(_CHANNEL_REGISTRY.keys())}")
     return factory(tenant)

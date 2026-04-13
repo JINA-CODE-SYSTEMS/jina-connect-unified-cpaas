@@ -253,14 +253,10 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
         )
 
     def send_media(self, chat_id, media_type, media_url, caption=None, **kwargs):
-        raise NotImplementedError(
-            f"{self.PROVIDER_NAME} adapter does not yet implement send_media()."
-        )
+        raise NotImplementedError(f"{self.PROVIDER_NAME} adapter does not yet implement send_media().")
 
     def send_keyboard(self, chat_id, text, keyboard, **kwargs):
-        raise NotImplementedError(
-            f"{self.PROVIDER_NAME} adapter does not yet implement send_keyboard()."
-        )
+        raise NotImplementedError(f"{self.PROVIDER_NAME} adapter does not yet implement send_keyboard().")
 
     def get_channel_name(self) -> str:
         return "WHATSAPP"

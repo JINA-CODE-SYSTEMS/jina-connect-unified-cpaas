@@ -17,9 +17,7 @@ class WaConfig(AppConfig):
 
             wa_app = tenant.wa_apps.first()
             if not wa_app:
-                raise ValueError(
-                    f"Tenant {tenant.pk} has no WhatsApp app configured."
-                )
+                raise ValueError(f"Tenant {tenant.pk} has no WhatsApp app configured.")
             return get_bsp_adapter(wa_app)
 
         register_channel("WHATSAPP", _wa_adapter_factory)

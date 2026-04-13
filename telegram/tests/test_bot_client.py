@@ -1,6 +1,7 @@
 """
 Tests for TelegramBotClient — HTTP methods, error handling, retry logic, token masking.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -14,6 +14,7 @@ Architecture:
         └── BaseBSPAdapter(BaseChannelAdapter)
                 └── MetaDirectAdapter | GupshupAdapter
 """
+
 from __future__ import annotations
 
 import logging

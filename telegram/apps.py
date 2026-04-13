@@ -20,9 +20,7 @@ class TelegramConfig(AppConfig):
                 is_active=True,
             ).first()
             if not bot_app:
-                raise ValueError(
-                    f"Tenant {tenant.pk} has no active Telegram bot configured."
-                )
+                raise ValueError(f"Tenant {tenant.pk} has no active Telegram bot configured.")
             from telegram.services.message_sender import TelegramMessageSender
 
             return TelegramMessageSender(bot_app)

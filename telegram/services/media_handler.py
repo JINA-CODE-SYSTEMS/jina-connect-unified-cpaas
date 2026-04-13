@@ -1,6 +1,7 @@
 """
 Telegram media handler — download files from Telegram servers.
 """
+
 from __future__ import annotations
 
 import logging

@@ -4,10 +4,10 @@ Telegram Bot API constants — error mapping, event classification, callback for
 
 # Telegram Bot API error codes → internal status
 TELEGRAM_ERROR_MAP = {
-    400: "FAILED",   # Bad Request
-    401: "FAILED",   # Unauthorized (invalid token)
+    400: "FAILED",  # Bad Request
+    401: "FAILED",  # Unauthorized (invalid token)
     403: "BLOCKED",  # Bot blocked by user
-    404: "FAILED",   # Chat not found
+    404: "FAILED",  # Chat not found
     429: "PENDING",  # Rate limited — retry
     500: "PENDING",  # Server error — retry
 }

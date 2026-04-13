@@ -5,6 +5,7 @@ Extracted from broadcast/tasks.py _create_team_inbox_message_from_broadcast()
 so that both broadcast outbound and Telegram/SMS inbound can share the same
 creation path.
 """
+
 from __future__ import annotations
 
 import logging

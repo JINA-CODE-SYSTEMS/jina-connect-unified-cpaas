@@ -1,6 +1,7 @@
 """
 TelegramWebhookEvent ViewSet — read-only event audit + retry action.
 """
+
 import logging
 
 from rest_framework import viewsets
@@ -22,9 +23,7 @@ class TelegramWebhookEventViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ["event_type", "is_processed"]
 
     def get_queryset(self):
-        return TelegramWebhookEvent.objects.filter(
-            tenant__tenant_users__user=self.request.user
-        ).order_by("-created_at")
+        return TelegramWebhookEvent.objects.filter(tenant__tenant_users__user=self.request.user).order_by("-created_at")
 
     @action(detail=True, methods=["post"])
     def retry(self, request, pk=None):

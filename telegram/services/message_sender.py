@@ -5,6 +5,7 @@ integration.
 Implements the BaseChannelAdapter interface so it can be returned by the
 channel registry.
 """
+
 from __future__ import annotations
 
 import logging
@@ -168,9 +169,7 @@ class TelegramMessageSender(BaseChannelAdapter):
 
     def send_location(self, chat_id: str | int, latitude: float, longitude: float, contact=None) -> Dict[str, Any]:
         try:
-            result = self.client.send_location(
-                chat_id=int(chat_id), latitude=latitude, longitude=longitude
-            )
+            result = self.client.send_location(chat_id=int(chat_id), latitude=latitude, longitude=longitude)
             outbound = self._persist_outbound(
                 chat_id=int(chat_id),
                 message_type="LOCATION",
@@ -186,7 +185,9 @@ class TelegramMessageSender(BaseChannelAdapter):
         except Exception as exc:
             return self._handle_send_error(exc, int(chat_id), "LOCATION", contact)
 
-    def send_contact_card(self, chat_id: str | int, phone_number: str, first_name: str, last_name: str = None, contact=None) -> Dict[str, Any]:
+    def send_contact_card(
+        self, chat_id: str | int, phone_number: str, first_name: str, last_name: str = None, contact=None
+    ) -> Dict[str, Any]:
         try:
             result = self.client.send_contact(
                 chat_id=int(chat_id),
@@ -256,6 +257,7 @@ class TelegramMessageSender(BaseChannelAdapter):
 
         # Persist failed outbound
         from telegram.models import TelegramOutboundMessage
+
         try:
             TelegramOutboundMessage.objects.create(
                 tenant=self.bot_app.tenant,

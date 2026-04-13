@@ -1,6 +1,7 @@
 """
 Redis-backed per-bot rate limiter for Telegram message sending.
 """
+
 from __future__ import annotations
 
 import logging

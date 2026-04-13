@@ -1,6 +1,7 @@
 """
 Telegram Celery tasks — webhook event processing.
 """
+
 import logging
 
 from celery import shared_task
@@ -276,9 +277,7 @@ def _handle_chatflow_routing_telegram(contact, message_content: dict):
         from chat_flow.services.graph_executor import get_executor
 
         flow = ChatFlow.objects.get(id=chatflow_id)
-        session = UserChatFlowSession.objects.filter(
-            contact=contact, flow=flow, is_active=True
-        ).first()
+        session = UserChatFlowSession.objects.filter(contact=contact, flow=flow, is_active=True).first()
 
         if not session:
             return
@@ -288,16 +287,14 @@ def _handle_chatflow_routing_telegram(contact, message_content: dict):
         user_input = None
 
         if msg_type == "button_reply":
-            user_input = (
-                message_content.get("body", {}).get("text")
-                or message_content.get("button_id")
-            )
+            user_input = message_content.get("body", {}).get("text") or message_content.get("button_id")
         elif msg_type == "text":
             user_input = message_content.get("body", {}).get("text", "")
         else:
             logger.info(
                 "[chatflow_routing_telegram] Unhandled type '%s' for contact %s",
-                msg_type, contact.pk,
+                msg_type,
+                contact.pk,
             )
 
         if not user_input:
@@ -308,7 +305,10 @@ def _handle_chatflow_routing_telegram(contact, message_content: dict):
 
         logger.info(
             "[chatflow_routing_telegram] contact=%s flow=%s node=%s complete=%s",
-            contact.pk, chatflow_id, result.get("current_node_id"), result.get("is_complete"),
+            contact.pk,
+            chatflow_id,
+            result.get("current_node_id"),
+            result.get("is_complete"),
         )
 
         if result.get("is_complete"):
@@ -319,5 +319,6 @@ def _handle_chatflow_routing_telegram(contact, message_content: dict):
     except Exception:
         logger.exception(
             "[chatflow_routing_telegram] Error for contact %s in flow %s",
-            contact.pk, chatflow_id,
+            contact.pk,
+            chatflow_id,
         )

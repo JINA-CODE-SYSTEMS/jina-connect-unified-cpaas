@@ -10,6 +10,7 @@ Security:
     - Bot token is NEVER logged; use ``masked_token`` for diagnostics.
     - Retries on 429 (rate-limited) and 5xx with exponential backoff.
 """
+
 from __future__ import annotations
 
 import logging
@@ -78,7 +79,7 @@ class TelegramBotClient:
 
                 # Rate limited — honour retry_after
                 if error_code == 429:
-                    retry_after = parameters.get("retry_after", 2 ** attempt)
+                    retry_after = parameters.get("retry_after", 2**attempt)
                     logger.warning(
                         "[TelegramBotClient] 429 rate-limited on %s, retry_after=%s (attempt %s/%s, token=%s)",
                         method,
@@ -93,7 +94,7 @@ class TelegramBotClient:
 
                 # 5xx — transient server error
                 if 500 <= error_code < 600 and attempt < self._max_retries:
-                    backoff = 2 ** attempt
+                    backoff = 2**attempt
                     logger.warning(
                         "[TelegramBotClient] %s on %s, retrying in %ss (attempt %s/%s, token=%s)",
                         error_code,
@@ -111,7 +112,7 @@ class TelegramBotClient:
             except requests.RequestException as exc:
                 last_exc = exc
                 if attempt < self._max_retries:
-                    backoff = 2 ** attempt
+                    backoff = 2**attempt
                     logger.warning(
                         "[TelegramBotClient] Network error on %s: %s, retrying in %ss (attempt %s/%s, token=%s)",
                         method,

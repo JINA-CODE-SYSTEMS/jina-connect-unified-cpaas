@@ -1,6 +1,7 @@
 """
 Tests for TelegramWebhookView — secret validation, idempotency, event classification.
 """
+
 import json
 import uuid
 
@@ -14,7 +15,6 @@ from tenants.models import Tenant
 
 @pytest.mark.django_db
 class TestTelegramWebhookView:
-
     @pytest.fixture(autouse=True)
     def setup(self):
         self.factory = RequestFactory()
@@ -51,9 +51,7 @@ class TestTelegramWebhookView:
         }
         response = self._post(payload, secret=self.bot_app.webhook_secret)
         assert response.status_code == 200
-        assert TelegramWebhookEvent.objects.filter(
-            bot_app=self.bot_app, update_id=100001
-        ).exists()
+        assert TelegramWebhookEvent.objects.filter(bot_app=self.bot_app, update_id=100001).exists()
 
     def test_event_type_classified_as_message(self):
         payload = {
@@ -96,9 +94,7 @@ class TestTelegramWebhookView:
         }
         self._post(payload, secret=self.bot_app.webhook_secret)
         self._post(payload, secret=self.bot_app.webhook_secret)
-        assert TelegramWebhookEvent.objects.filter(
-            bot_app=self.bot_app, update_id=100006
-        ).count() == 1
+        assert TelegramWebhookEvent.objects.filter(bot_app=self.bot_app, update_id=100006).count() == 1
 
     def test_unknown_bot_app_returns_200(self):
         fake_id = uuid.uuid4()

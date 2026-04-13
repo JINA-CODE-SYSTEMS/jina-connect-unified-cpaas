@@ -1,6 +1,7 @@
 """
 Integration test: webhook → event → Celery task → inbox message created.
 """
+
 import json
 
 import pytest

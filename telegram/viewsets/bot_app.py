@@ -1,6 +1,7 @@
 """
 TelegramBotApp ViewSet — CRUD + custom actions for bot management.
 """
+
 import logging
 
 from rest_framework import status, viewsets
@@ -21,9 +22,7 @@ class TelegramBotAppViewSet(viewsets.ModelViewSet):
     serializer_class = TelegramBotAppSerializer
 
     def get_queryset(self):
-        return TelegramBotApp.objects.filter(
-            tenant__tenant_users__user=self.request.user
-        )
+        return TelegramBotApp.objects.filter(tenant__tenant_users__user=self.request.user)
 
     def get_serializer_class(self):
         if self.action == "create":

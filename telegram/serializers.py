@@ -1,6 +1,7 @@
 """
 Telegram DRF serializers.
 """
+
 from rest_framework import serializers
 
 from telegram.models import TelegramBotApp, TelegramOutboundMessage, TelegramWebhookEvent
@@ -45,9 +46,7 @@ class TelegramBotAppCreateSerializer(serializers.ModelSerializer):
             client = TelegramBotClient(token=value)
             client.get_me()
         except TelegramAPIError as exc:
-            raise serializers.ValidationError(
-                f"Invalid bot token: {exc.description}"
-            ) from exc
+            raise serializers.ValidationError(f"Invalid bot token: {exc.description}") from exc
         return value
 
 

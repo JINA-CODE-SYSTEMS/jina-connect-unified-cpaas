@@ -3,6 +3,7 @@ Inline keyboard helpers for Telegram Bot API.
 
 Builds InlineKeyboardMarkup objects and parses callback_data strings.
 """
+
 from __future__ import annotations
 
 import re
@@ -10,9 +11,7 @@ from typing import Optional
 
 from telegram.constants import CALLBACK_DATA_MAX_LENGTH, CALLBACK_DATA_VERSION
 
-_CALLBACK_RE = re.compile(
-    r"^(?P<version>v\d+):(?P<action>\w+):(?P<id>[^:]+):(?P<nonce>[^:]+)$"
-)
+_CALLBACK_RE = re.compile(r"^(?P<version>v\d+):(?P<action>\w+):(?P<id>[^:]+):(?P<nonce>[^:]+)$")
 
 
 def build_inline_keyboard(buttons: list[list[dict]]) -> dict:
@@ -37,9 +36,7 @@ def build_inline_keyboard(buttons: list[list[dict]]) -> dict:
             if "callback_data" in btn:
                 cb = btn["callback_data"]
                 if len(cb.encode("utf-8")) > CALLBACK_DATA_MAX_LENGTH:
-                    raise ValueError(
-                        f"callback_data exceeds {CALLBACK_DATA_MAX_LENGTH} bytes: {cb!r}"
-                    )
+                    raise ValueError(f"callback_data exceeds {CALLBACK_DATA_MAX_LENGTH} bytes: {cb!r}")
                 tg_btn["callback_data"] = cb
             elif "url" in btn:
                 tg_btn["url"] = btn["url"]
@@ -56,9 +53,7 @@ def build_callback_data(action: str, node_id: str, nonce: str) -> str:
     """
     data = f"{CALLBACK_DATA_VERSION}:{action}:{node_id}:{nonce}"
     if len(data.encode("utf-8")) > CALLBACK_DATA_MAX_LENGTH:
-        raise ValueError(
-            f"callback_data exceeds {CALLBACK_DATA_MAX_LENGTH} bytes: {data!r}"
-        )
+        raise ValueError(f"callback_data exceeds {CALLBACK_DATA_MAX_LENGTH} bytes: {data!r}")
     return data
 
 

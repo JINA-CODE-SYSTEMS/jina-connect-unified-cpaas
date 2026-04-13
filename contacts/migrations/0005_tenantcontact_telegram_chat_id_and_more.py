@@ -4,20 +4,21 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('contacts', '0004_alter_tenantcontact_lead_status_and_more'),
+        ("contacts", "0004_alter_tenantcontact_lead_status_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenantcontact',
-            name='telegram_chat_id',
-            field=models.BigIntegerField(blank=True, db_index=True, help_text='Telegram chat ID for this contact', null=True),
+            model_name="tenantcontact",
+            name="telegram_chat_id",
+            field=models.BigIntegerField(
+                blank=True, db_index=True, help_text="Telegram chat ID for this contact", null=True
+            ),
         ),
         migrations.AddField(
-            model_name='tenantcontact',
-            name='telegram_username',
-            field=models.CharField(blank=True, help_text='Telegram @username (without @)', max_length=255, null=True),
+            model_name="tenantcontact",
+            name="telegram_username",
+            field=models.CharField(blank=True, help_text="Telegram @username (without @)", max_length=255, null=True),
         ),
     ]

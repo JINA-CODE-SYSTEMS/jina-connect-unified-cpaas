@@ -6,6 +6,7 @@ Replaces 3 duplicate implementations in broadcast/tasks.py:
 - _convert_template_buttons_to_inbox_format() (inline lambda)
 - _convert_template_cards_to_inbox_format() (inline lambda)
 """
+
 from __future__ import annotations
 
 import re

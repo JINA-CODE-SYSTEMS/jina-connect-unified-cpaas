@@ -867,7 +867,9 @@ def handle_telegram_message(message):
 
         logger.info(
             "Telegram broadcast message %s to chat_id %s: success=%s",
-            message.pk, chat_id, result.get("success"),
+            message.pk,
+            chat_id,
+            result.get("success"),
         )
         return result
 

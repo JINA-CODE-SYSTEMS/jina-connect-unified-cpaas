@@ -1,6 +1,7 @@
 """
 Telegram app models — bot configuration, webhook events, outbound messages.
 """
+
 import secrets
 import uuid
 
@@ -26,27 +27,19 @@ class TelegramBotApp(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey(
-        Tenant, on_delete=models.CASCADE, related_name="telegram_bots"
-    )
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="telegram_bots")
     bot_token = models.CharField(
         max_length=255,
         help_text="Telegram Bot API token (stored encrypted at rest via FIELD_ENCRYPTION_KEY).",
     )
-    bot_username = models.CharField(
-        max_length=255, blank=True, help_text="Bot @username (without @)"
-    )
-    bot_user_id = models.BigIntegerField(
-        null=True, blank=True, help_text="Telegram's numeric user ID for this bot"
-    )
+    bot_username = models.CharField(max_length=255, blank=True, help_text="Bot @username (without @)")
+    bot_user_id = models.BigIntegerField(null=True, blank=True, help_text="Telegram's numeric user ID for this bot")
     webhook_secret = models.CharField(
         max_length=64,
         blank=True,
         help_text="Random secret for X-Telegram-Bot-Api-Secret-Token validation",
     )
-    webhook_url = models.URLField(
-        max_length=512, blank=True, help_text="Auto-generated webhook URL"
-    )
+    webhook_url = models.URLField(max_length=512, blank=True, help_text="Auto-generated webhook URL")
     is_active = models.BooleanField(default=True)
     daily_limit = models.IntegerField(default=1000, help_text="Daily message limit")
     messages_sent_today = models.IntegerField(default=0)
@@ -93,9 +86,7 @@ class TelegramWebhookEvent(BaseWebhookDumps):
         related_name="webhook_events",
     )
     update_id = models.BigIntegerField(help_text="Telegram update_id")
-    event_type = models.CharField(
-        max_length=30, choices=EVENT_TYPE_CHOICES, default="UNKNOWN"
-    )
+    event_type = models.CharField(max_length=30, choices=EVENT_TYPE_CHOICES, default="UNKNOWN")
     retry_count = models.IntegerField(default=0)
 
     class Meta:
@@ -118,23 +109,13 @@ class TelegramOutboundMessage(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
-    bot_app = models.ForeignKey(
-        TelegramBotApp, on_delete=models.CASCADE, related_name="outbound_messages"
-    )
-    contact = models.ForeignKey(
-        TenantContact, on_delete=models.CASCADE, related_name="telegram_outbound"
-    )
+    bot_app = models.ForeignKey(TelegramBotApp, on_delete=models.CASCADE, related_name="outbound_messages")
+    contact = models.ForeignKey(TenantContact, on_delete=models.CASCADE, related_name="telegram_outbound")
     chat_id = models.BigIntegerField(help_text="Target Telegram chat ID")
     message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES)
-    request_payload = models.JSONField(
-        blank=True, null=True, help_text="What was sent to Telegram"
-    )
-    provider_message_id = models.BigIntegerField(
-        null=True, blank=True, help_text="message_id from Telegram response"
-    )
-    status = models.CharField(
-        max_length=20, choices=OUTBOUND_STATUS_CHOICES, default="PENDING"
-    )
+    request_payload = models.JSONField(blank=True, null=True, help_text="What was sent to Telegram")
+    provider_message_id = models.BigIntegerField(null=True, blank=True, help_text="message_id from Telegram response")
+    status = models.CharField(max_length=20, choices=OUTBOUND_STATUS_CHOICES, default="PENDING")
     sent_at = models.DateTimeField(null=True, blank=True)
     failed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True, null=True)

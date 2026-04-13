@@ -1,6 +1,7 @@
 """
 Tests for contact upsert logic in Telegram event processing.
 """
+
 import pytest
 
 from contacts.models import TenantContact
@@ -11,7 +12,6 @@ from tenants.models import Tenant
 
 @pytest.mark.django_db
 class TestContactUpsert:
-
     @pytest.fixture(autouse=True)
     def setup(self):
         self.tenant = Tenant.objects.create(name="Upsert Test Tenant")

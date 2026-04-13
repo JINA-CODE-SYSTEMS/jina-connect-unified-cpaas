@@ -1,6 +1,7 @@
 """
 Tests for keyboard builder — build_inline_keyboard, build_callback_data, parse_callback_data.
 """
+
 import pytest
 
 from telegram.services.keyboard_builder import (
@@ -11,7 +12,6 @@ from telegram.services.keyboard_builder import (
 
 
 class TestBuildInlineKeyboard:
-
     def test_single_row_callback_buttons(self):
         buttons = [[{"text": "Yes", "callback_data": "yes"}, {"text": "No", "callback_data": "no"}]]
         result = build_inline_keyboard(buttons)
@@ -49,7 +49,6 @@ class TestBuildInlineKeyboard:
 
 
 class TestBuildCallbackData:
-
     def test_format(self):
         result = build_callback_data("select", "node1", "abc123")
         assert result == "v1:select:node1:abc123"
@@ -60,7 +59,6 @@ class TestBuildCallbackData:
 
 
 class TestParseCallbackData:
-
     def test_valid_data(self):
         result = parse_callback_data("v1:select:node1:abc123")
         assert result is not None
