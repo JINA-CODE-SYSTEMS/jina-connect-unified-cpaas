@@ -224,10 +224,34 @@ class TelegramMessageSender(BaseChannelAdapter):
     # ── Internal helpers ──────────────────────────────────────────────────
 
     def _persist_outbound(self, *, chat_id, message_type, request_payload, result, contact=None):
-        """Create a TelegramOutboundMessage record."""
+        """Create a TelegramOutboundMessage record and a team inbox timeline entry."""
         from telegram.models import TelegramOutboundMessage
 
         try:
+            # 1. Create the inbox timeline entry so outbound messages appear in conversation
+            inbox_message = None
+            if contact:
+                try:
+                    from team_inbox.models import AuthorChoices, MessageDirectionChoices, MessagePlatformChoices
+                    from team_inbox.utils.inbox_message_factory import create_inbox_message
+
+                    inbox_message = create_inbox_message(
+                        tenant=self.bot_app.tenant,
+                        contact=contact,
+                        platform=MessagePlatformChoices.TELEGRAM,
+                        direction=MessageDirectionChoices.OUTGOING,
+                        author=AuthorChoices.USER,
+                        content=_build_inbox_content(message_type, request_payload),
+                        external_message_id=str(result.get("message_id", "")),
+                        is_read=True,
+                    )
+                except Exception:
+                    logger.exception(
+                        "[TelegramMessageSender] Failed to create inbox message for chat_id=%s",
+                        chat_id,
+                    )
+
+            # 2. Persist the Telegram-specific outbound record
             return TelegramOutboundMessage.objects.create(
                 tenant=self.bot_app.tenant,
                 bot_app=self.bot_app,
@@ -238,6 +262,7 @@ class TelegramMessageSender(BaseChannelAdapter):
                 provider_message_id=result.get("message_id"),
                 status="SENT",
                 sent_at=timezone.now(),
+                inbox_message=inbox_message,
             )
         except Exception:
             logger.exception(
@@ -284,3 +309,32 @@ class TelegramMessageSender(BaseChannelAdapter):
             logger.exception("[TelegramMessageSender] Failed to persist error outbound record")
 
         return {"success": False, "message_id": "", "error": error_msg}
+
+
+def _build_inbox_content(message_type: str, request_payload: dict) -> dict:
+    """Map a Telegram outbound payload to the team_inbox content schema."""
+    mt = message_type.upper()
+    if mt == "TEXT":
+        return {"type": "text", "body": {"text": request_payload.get("text", "")}}
+    if mt in ("IMAGE", "PHOTO"):
+        return {
+            "type": "image",
+            "body": {"url": request_payload.get("photo", ""), "caption": request_payload.get("caption", "")},
+        }
+    if mt == "DOCUMENT":
+        return {
+            "type": "document",
+            "body": {"url": request_payload.get("document", ""), "caption": request_payload.get("caption", "")},
+        }
+    if mt == "VIDEO":
+        return {
+            "type": "video",
+            "body": {"url": request_payload.get("video", ""), "caption": request_payload.get("caption", "")},
+        }
+    if mt in ("AUDIO", "VOICE"):
+        return {"type": "audio", "body": {"url": request_payload.get(mt.lower(), "")}}
+    if mt == "LOCATION":
+        return {"type": "location", "body": request_payload}
+    if mt == "CONTACT":
+        return {"type": "contact", "body": request_payload}
+    return {"type": "text", "body": {"text": str(request_payload)}}
