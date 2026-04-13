@@ -110,6 +110,7 @@ INSTALLED_APPS = [
     "message_templates",
     "team_inbox",
     "notifications",
+    "telegram",
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
@@ -297,6 +298,11 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static")
 BASE_URL = config("BASE_URL", "http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_WEBHOOK_BASE_URL = config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))
+
+# ── Telegram Bot API settings ──
+TELEGRAM_MAX_RETRIES = config("TELEGRAM_MAX_RETRIES", 3, cast=int)
+TELEGRAM_REQUEST_TIMEOUT = config("TELEGRAM_REQUEST_TIMEOUT", 30, cast=int)
+
 RAZORPAY_KEY_ID = config("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = config("RAZORPAY_WEBHOOK_SECRET", "")

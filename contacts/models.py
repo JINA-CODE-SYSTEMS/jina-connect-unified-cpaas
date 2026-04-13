@@ -29,6 +29,7 @@ class ContactSource(models.TextChoices):
     WHATSAPP = "WHATSAPP", "WhatsApp"
     TELEGRAM = "TELEGRAM", "Telegram"
     VOICE = "VOICE", "Voice"
+    # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 
 class AssigneeTypeChoices(models.TextChoices):
@@ -55,6 +56,16 @@ class TenantContact(BaseTenantModelForFilterUser):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="contacts")
     tag = models.CharField(max_length=255, help_text="Tag for the contact", blank=True)
     source = models.CharField(max_length=20, choices=ContactSource.choices, default=ContactSource.MANUAL)
+
+    # --- Telegram identity fields ---
+    telegram_chat_id = models.BigIntegerField(
+        null=True, blank=True, db_index=True,
+        help_text="Telegram chat ID for this contact",
+    )
+    telegram_username = models.CharField(
+        max_length=255, blank=True, null=True,
+        help_text="Telegram @username (without @)",
+    )
 
     # --- Voice / Lead fields ---
     lead_status = models.CharField(

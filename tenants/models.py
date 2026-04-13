@@ -10,13 +10,7 @@ from tenants.managers import TenantManager
 from users.models import User
 
 
-class PlatformChoices(models.TextChoices):
-    """Enum for different platforms a tenant can use"""
-
-    WHATSAPP = "WHATSAPP", "WhatsApp"
-    SMS = "SMS", "SMS"
-    EMAIL = "EMAIL", "Email"
-    TELEGRAM = "TELEGRAM", "Telegram"
+from jina_connect.platform_choices import PlatformChoices  # canonical source
 
 
 class IndustryChoices(models.TextChoices):

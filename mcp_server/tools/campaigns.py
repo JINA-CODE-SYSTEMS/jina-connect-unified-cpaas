@@ -17,21 +17,58 @@ def create_broadcast(
     template_name: str,
     phone_numbers: List[str],
     language_code: str = "en",
+    channel: str = "WHATSAPP",
 ) -> dict:
-    """Create a WhatsApp broadcast campaign to multiple recipients.
+    """Create a broadcast campaign to multiple recipients.
 
     Args:
         api_key: Your Jina Connect API key.
         name: Campaign name for tracking.
-        template_name: The element_name of an APPROVED template.
-        phone_numbers: List of recipient phone numbers with country codes.
-        language_code: Template language code (default: "en").
+        template_name: The element_name of an APPROVED template (WhatsApp only).
+        phone_numbers: List of recipient phone numbers (WhatsApp) or Telegram chat IDs.
+        language_code: Template language code (default: "en"). Ignored for Telegram.
+        channel: Channel — WHATSAPP (default) or TELEGRAM.
     """
     from broadcast.models import Broadcast
     from contacts.models import TenantContact
     from wa.models import WATemplate
 
     tenant, wa_app = resolve_tenant(api_key)
+
+    platform = channel.upper()
+
+    if platform == "TELEGRAM":
+        # Telegram broadcasts don't require WA templates
+        contacts = []
+        for chat_id in phone_numbers:
+            contact, _ = TenantContact.objects.get_or_create(
+                tenant=tenant,
+                telegram_chat_id=int(chat_id),
+                defaults={"first_name": f"TG-{chat_id}", "source": "TELEGRAM"},
+            )
+            contacts.append(contact)
+
+        if not contacts:
+            return {"error": "No valid chat IDs provided."}
+
+        broadcast = Broadcast.objects.create(
+            tenant=tenant,
+            name=name,
+            platform="TELEGRAM",
+            status="DRAFT",
+            placeholder_data={"text": template_name},  # Use template_name as text for Telegram
+        )
+        broadcast.recipients.set(contacts)
+
+        return {
+            "broadcast_id": str(broadcast.id),
+            "name": name,
+            "status": broadcast.status,
+            "recipient_count": len(contacts),
+            "channel": "TELEGRAM",
+        }
+
+    # WhatsApp flow
     if not wa_app:
         return {"error": "No WhatsApp app configured for this tenant."}
 

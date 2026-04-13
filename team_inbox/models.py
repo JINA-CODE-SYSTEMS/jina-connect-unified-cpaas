@@ -18,6 +18,7 @@ class MessagePlatformChoices(models.TextChoices):
     TELEGRAM = "TELEGRAM", "Telegram"
     SMS = "SMS", "SMS"
     VOICE = "VOICE", "Voice"
+    # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 
 class MessageDirectionChoices(models.TextChoices):
@@ -119,8 +120,10 @@ class Messages(BaseTenantModelForFilterUser):
     @property
     def expires_at(self) -> Union[int, None]:
         # For WhatsApp messages, set expiration to 24 hours from timestamp
+        # (WhatsApp session window policy).
         if self.platform == MessagePlatformChoices.WHATSAPP:
             return int((self.timestamp.timestamp()) + 24 * 60 * 60)
+        # Telegram and other platforms have no session-window expiry.
         return None
 
     @property

@@ -79,16 +79,22 @@ def send_message(
     api_key: str,
     phone: str,
     text: str,
+    channel: str = "WHATSAPP",
 ) -> dict:
-    """Send a plain text WhatsApp message to a phone number.
+    """Send a plain text message to a phone number or Telegram user.
 
-    Note: The recipient must have an active conversation window (24-hour rule).
+    Note: For WhatsApp, the recipient must have an active conversation window (24-hour rule).
+    For Telegram, the user must have started a conversation with the bot.
 
     Args:
         api_key: Your Jina Connect API key.
-        phone: Recipient phone number with country code.
+        phone: Recipient phone number (WhatsApp) or Telegram chat ID.
         text: The message text to send.
+        channel: Channel — WHATSAPP (default) or TELEGRAM.
     """
+    if channel.upper() == "TELEGRAM":
+        return _send_telegram_message(api_key, phone, text)
+
     from contacts.models import TenantContact
     from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage
 
@@ -191,3 +197,30 @@ def list_templates(
         )
 
     return {"count": len(templates), "templates": templates}
+
+
+# ── Telegram helpers ──────────────────────────────────────────────────────────
+
+
+def _send_telegram_message(api_key: str, chat_id: str, text: str) -> dict:
+    """Send a plain text message via Telegram Bot API."""
+    from telegram.models import TelegramBotApp
+    from telegram.services.message_sender import TelegramMessageSender
+
+    tenant, _ = resolve_tenant(api_key)
+
+    bot_app = TelegramBotApp.objects.filter(tenant=tenant, is_active=True).first()
+    if not bot_app:
+        return {"error": "No active Telegram bot configured for this tenant."}
+
+    sender = TelegramMessageSender(bot_app)
+    result = sender.send_text(chat_id=str(chat_id), text=text)
+
+    if result.get("success"):
+        return {
+            "message_id": result.get("message_id", ""),
+            "status": "SENT",
+            "chat_id": chat_id,
+            "channel": "TELEGRAM",
+        }
+    return {"error": result.get("error", "Failed to send Telegram message.")}
