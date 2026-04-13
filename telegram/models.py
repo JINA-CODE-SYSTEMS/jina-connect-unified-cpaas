@@ -8,6 +8,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import F
+from encrypted_model_fields.fields import EncryptedCharField
 
 from abstract.models import BaseWebhookDumps
 from contacts.models import TenantContact
@@ -29,9 +30,9 @@ class TelegramBotApp(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="telegram_bots")
-    bot_token = models.CharField(
+    bot_token = EncryptedCharField(
         max_length=255,
-        help_text="Telegram Bot API token (stored encrypted at rest via FIELD_ENCRYPTION_KEY).",
+        help_text="Telegram Bot API token (encrypted at rest via FIELD_ENCRYPTION_KEY).",
     )
     bot_username = models.CharField(max_length=255, blank=True, help_text="Bot @username (without @)")
     bot_user_id = models.BigIntegerField(null=True, blank=True, help_text="Telegram's numeric user ID for this bot")
