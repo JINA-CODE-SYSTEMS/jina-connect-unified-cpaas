@@ -16,7 +16,7 @@ phonenumbers==8.13.55
 django-money==3.5.4
 celery==5.4.0
 requests==2.33.0
-pytest==8.3.5
+pytest==9.0.3
 pytest-django==4.10.0
 pydantic==2.10.6
 django-crontab==0.7.1
