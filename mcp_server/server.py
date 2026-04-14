@@ -32,9 +32,9 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 mcp = FastMCP(
     "Jina Connect",
     instructions=(
-        "Jina Connect is a multi-provider WhatsApp CPaaS. "
+        "Jina Connect is a multi-channel CPaaS supporting WhatsApp and Telegram. "
         "Use these tools to send messages, manage templates, contacts, "
-        "broadcasts, and providers — all routed through your configured BSP."
+        "broadcasts, and providers. Specify channel='TELEGRAM' to route via Telegram Bot API."
     ),
     stateless_http=True,
     json_response=True,

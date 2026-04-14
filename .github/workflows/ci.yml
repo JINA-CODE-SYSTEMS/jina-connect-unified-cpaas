@@ -91,6 +91,7 @@ jobs:
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: django-db
       STORAGE_BACKEND: local
+      FIELD_ENCRYPTION_KEY: "ZL1hMR2ZGGlywbmdamK8LPaH-R5F47WYbRfgCOL_UuI="
 
     steps:
       - uses: actions/checkout@v4
@@ -168,6 +169,7 @@ jobs:
       ALLOWED_HOSTS: "*"
       CELERY_BROKER_URL: redis://localhost:6379/0
       STORAGE_BACKEND: local
+      FIELD_ENCRYPTION_KEY: "ZL1hMR2ZGGlywbmdamK8LPaH-R5F47WYbRfgCOL_UuI="
 
     steps:
       - uses: actions/checkout@v4

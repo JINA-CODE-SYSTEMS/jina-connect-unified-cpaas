@@ -63,7 +63,7 @@ Everything below is open-source, shipped in this repo, and works out of the box.
 | Channel | Status | Providers supported |
 |---|---|---|
 | **WhatsApp Business** | ✅ Production-ready | Meta Cloud API, Gupshup |
-| **Telegram Bot API** | 🚧 Coming soon | Native Telegram Bot API |
+| **Telegram Bot API** | ✅ Native Bot API | Bot commands, inline keyboards, file handling |
 | **SMS** | 🚧 Coming soon | Twilio, MSG91, Fast2SMS |
 | **RCS Business Messaging** | 🚧 Coming soon | Meta RCS, Google RCS |
 | **Voice (calls, IVR)** | 🚧 Coming soon | SIP trunking, Twilio Voice |
@@ -137,7 +137,7 @@ The roadmap below is organized by CPaaS capability. Each capability has a curren
 | Capability | Now | Next | Later |
 |---|---|---|---|
 | **WhatsApp Business API** | Meta Cloud API, Gupshup | WATI adapter, Twilio adapter | Sinch, Infobip, MessageBird |
-| **Telegram Bot API** | — | Native Telegram adapter with bot commands, inline keyboards, file handling | Telegram Mini Apps, payments |
+| **Telegram Bot API** | ✅ Native Bot API adapter, inline keyboards, file handling | Telegram Mini Apps, payments | — |
 | **SMS** | — | Twilio, MSG91, Fast2SMS adapters | Region-specific carriers, short-code support |
 | **RCS Business Messaging** | — | Meta RCS, Google RCS adapters | Rich cards, suggested replies, verified sender |
 | **Voice (calls, IVR)** | — | SIP trunking, basic IVR flows, Twilio Voice adapter | Advanced call routing, recording, transcription, agent handoff |
