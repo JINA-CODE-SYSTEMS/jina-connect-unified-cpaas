@@ -64,8 +64,22 @@ def test_parse_dlr_webhook_status_map():
     assert undelivered.status == "UNDELIVERED"
 
 
-def test_validate_webhook_signature():
+def test_validate_webhook_signature_no_secret_returns_false():
+    """When no webhook_secret is configured the provider must fail closed."""
+    provider = Fast2SMSProvider(_app({}))
+    req = SimpleNamespace(headers={})
+    assert provider.validate_webhook_signature(req) is False
+
+
+def test_validate_webhook_signature_correct_header():
     provider = Fast2SMSProvider(_app({"webhook_secret": "s1"}))
     req = SimpleNamespace(headers={"X-Webhook-Secret": "s1"})
 
     assert provider.validate_webhook_signature(req) is True
+
+
+def test_validate_webhook_signature_wrong_header():
+    provider = Fast2SMSProvider(_app({"webhook_secret": "s1"}))
+    req = SimpleNamespace(headers={"X-Webhook-Secret": "wrong"})
+
+    assert provider.validate_webhook_signature(req) is False

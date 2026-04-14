@@ -6,6 +6,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import F
+from encrypted_model_fields.fields import EncryptedTextField
 
 from abstract.models import BaseWebhookDumps
 from contacts.models import TenantContact
@@ -17,10 +18,10 @@ class SMSApp(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="sms_apps")
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default="TWILIO")
-    provider_credentials = models.JSONField(
+    provider_credentials = EncryptedTextField(
         blank=True,
         null=True,
-        help_text="Provider credentials (API keys, auth tokens). Keep encrypted at rest in production.",
+        help_text="Provider credentials (API keys, auth tokens) stored as an encrypted JSON string.",
     )
     sender_id = models.CharField(max_length=20, help_text="Sender ID, short code, or sending number")
     is_active = models.BooleanField(default=True)
@@ -98,7 +99,7 @@ class SMSOutboundMessage(models.Model):
     message_text = models.TextField()
     segment_count = models.IntegerField(default=1)
 
-    provider_message_id = models.CharField(max_length=120, blank=True)
+    provider_message_id = models.CharField(max_length=120, blank=True, db_index=True)
     status = models.CharField(max_length=20, choices=OUTBOUND_STATUS_CHOICES, default="PENDING")
 
     cost = models.DecimalField(max_digits=10, decimal_places=6, default=0)

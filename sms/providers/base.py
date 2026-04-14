@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -40,7 +41,15 @@ class BaseSMSProvider(ABC):
 
     def __init__(self, sms_app):
         self.sms_app = sms_app
-        self.credentials = sms_app.provider_credentials or {}
+        raw = sms_app.provider_credentials or "{}"
+        if isinstance(raw, str):
+            try:
+                self.credentials = json.loads(raw)
+            except (ValueError, TypeError):
+                self.credentials = {}
+        else:
+            # Support dict values from tests (SimpleNamespace) and legacy code
+            self.credentials = raw or {}
 
     @abstractmethod
     def send_sms(

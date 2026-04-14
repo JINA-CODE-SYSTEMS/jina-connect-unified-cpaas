@@ -68,5 +68,5 @@ class Fast2SMSProvider(BaseSMSProvider):
     def validate_webhook_signature(self, request) -> bool:
         secret = self.credentials.get("webhook_secret")
         if not secret:
-            return True
+            return False
         return request.headers.get("X-Webhook-Secret", "") == secret

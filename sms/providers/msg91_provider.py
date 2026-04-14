@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+
 import requests
 
 from sms.providers.base import BaseSMSProvider, SMSDeliveryReport, SMSInboundMessage, SMSSendResult
@@ -55,6 +58,15 @@ class MSG91SMSProvider(BaseSMSProvider):
         )
 
     def validate_webhook_signature(self, request) -> bool:
-        # MSG91 commonly uses fixed source IP allow-listing configured at infra.
-        # Keep permissive here until network-level controls are enforced.
-        return True
+        """Validate MSG91 webhook via HMAC-SHA256 of request body signed with sms_app webhook_secret."""
+        secret = self.sms_app.webhook_secret
+        if not secret:
+            return False
+
+        signature = request.headers.get("X-Msg91-Signature", "")
+        if not signature:
+            return False
+
+        body = request.body if hasattr(request, "body") else b""
+        expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)

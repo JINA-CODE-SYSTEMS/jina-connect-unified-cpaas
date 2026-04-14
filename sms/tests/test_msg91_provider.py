@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from sms.providers.msg91_provider import MSG91SMSProvider
 
@@ -78,6 +79,55 @@ def test_parse_dlr_webhook():
     assert failed.status == "FAILED"
 
 
-def test_validate_webhook_signature_defaults_true():
-    provider = MSG91SMSProvider(_app())
-    assert provider.validate_webhook_signature(SimpleNamespace()) is True
+def test_validate_webhook_signature_no_secret_returns_false():
+    """When no webhook_secret is set the provider must fail closed."""
+    app = SimpleNamespace(provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret="")
+    provider = MSG91SMSProvider(app)
+    assert provider.validate_webhook_signature(SimpleNamespace(headers={}, body=b"")) is False
+
+
+def test_validate_webhook_signature_missing_header_returns_false():
+    """Matching secret set but header absent → fail closed."""
+    secret = "mysecret"
+    app = SimpleNamespace(provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret=secret)
+    provider = MSG91SMSProvider(app)
+    req = SimpleNamespace(headers={}, body=b"data")
+    assert provider.validate_webhook_signature(req) is False
+
+
+def test_validate_webhook_signature_valid():
+    """Correct HMAC-SHA256 signature over request body is accepted."""
+    import hashlib
+    import hmac as hmac_module
+
+    secret = "webhook-secret-123"
+    body = b'{"mobile":"919999999999"}'
+    expected_sig = hmac_module.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+    app = SimpleNamespace(
+        provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret=secret
+    )
+    provider = MSG91SMSProvider(app)
+    req = MagicMock()
+    req.headers = {"X-Msg91-Signature": expected_sig}
+    req.body = body
+    assert provider.validate_webhook_signature(req) is True
+
+
+def test_validate_webhook_signature_tampered_body_rejected():
+    """Signature for original body must reject tampered body."""
+    import hashlib
+    import hmac as hmac_module
+
+    secret = "webhook-secret-123"
+    real_body = b'{"mobile":"919999999999"}'
+    sig = hmac_module.new(secret.encode(), real_body, hashlib.sha256).hexdigest()
+
+    app = SimpleNamespace(
+        provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret=secret
+    )
+    provider = MSG91SMSProvider(app)
+    req = MagicMock()
+    req.headers = {"X-Msg91-Signature": sig}
+    req.body = b'{"mobile":"malicious"}'
+    assert provider.validate_webhook_signature(req) is False
