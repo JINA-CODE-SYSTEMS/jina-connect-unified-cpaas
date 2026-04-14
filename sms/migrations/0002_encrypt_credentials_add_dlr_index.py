@@ -5,20 +5,23 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('sms', '0001_initial'),
+        ("sms", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='smsapp',
-            name='provider_credentials',
-            field=encrypted_model_fields.fields.EncryptedTextField(blank=True, help_text='Provider credentials (API keys, auth tokens) stored as an encrypted JSON string.', null=True),
+            model_name="smsapp",
+            name="provider_credentials",
+            field=encrypted_model_fields.fields.EncryptedTextField(
+                blank=True,
+                help_text="Provider credentials (API keys, auth tokens) stored as an encrypted JSON string.",
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='smsoutboundmessage',
-            name='provider_message_id',
+            model_name="smsoutboundmessage",
+            name="provider_message_id",
             field=models.CharField(blank=True, db_index=True, max_length=120),
         ),
     ]

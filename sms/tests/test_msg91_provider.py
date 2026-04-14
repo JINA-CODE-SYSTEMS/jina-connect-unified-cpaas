@@ -104,9 +104,7 @@ def test_validate_webhook_signature_valid():
     body = b'{"mobile":"919999999999"}'
     expected_sig = hmac_module.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
-    app = SimpleNamespace(
-        provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret=secret
-    )
+    app = SimpleNamespace(provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret=secret)
     provider = MSG91SMSProvider(app)
     req = MagicMock()
     req.headers = {"X-Msg91-Signature": expected_sig}
@@ -123,9 +121,7 @@ def test_validate_webhook_signature_tampered_body_rejected():
     real_body = b'{"mobile":"919999999999"}'
     sig = hmac_module.new(secret.encode(), real_body, hashlib.sha256).hexdigest()
 
-    app = SimpleNamespace(
-        provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret=secret
-    )
+    app = SimpleNamespace(provider_credentials={}, sender_id="JINA", dlt_template_id="F1", webhook_secret=secret)
     provider = MSG91SMSProvider(app)
     req = MagicMock()
     req.headers = {"X-Msg91-Signature": sig}
