@@ -72,7 +72,9 @@ class TestDLRBroadcastPropagation:
             provider_credentials={"account_sid": "AC123", "auth_token": "tok"},
         )
 
-        broadcast = Broadcast.objects.create(name="SMS broadcast 2", tenant=tenant, platform=BroadcastPlatformChoices.SMS)
+        broadcast = Broadcast.objects.create(
+            name="SMS broadcast 2", tenant=tenant, platform=BroadcastPlatformChoices.SMS
+        )
         bm = BroadcastMessage.objects.create(broadcast=broadcast, contact=contact, status=MessageStatusChoices.SENT)
 
         SMSOutboundMessage.objects.create(

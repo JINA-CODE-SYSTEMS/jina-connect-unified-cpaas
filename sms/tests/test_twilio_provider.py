@@ -63,12 +63,14 @@ def test_send_sms_error_response(monkeypatch):
 def test_parse_inbound_webhook():
     provider = TwilioSMSProvider(_app())
 
-    parsed = provider.parse_inbound_webhook({
-        "From": "+14155551111",
-        "To": "+14155550000",
-        "Body": "ping",
-        "MessageSid": "SM-IN-1",
-    })
+    parsed = provider.parse_inbound_webhook(
+        {
+            "From": "+14155551111",
+            "To": "+14155550000",
+            "Body": "ping",
+            "MessageSid": "SM-IN-1",
+        }
+    )
 
     assert parsed.from_number == "+14155551111"
     assert parsed.to_number == "+14155550000"

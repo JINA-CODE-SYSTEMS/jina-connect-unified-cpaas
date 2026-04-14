@@ -89,7 +89,9 @@ class SMSOutboundMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
     sms_app = models.ForeignKey(SMSApp, on_delete=models.CASCADE, related_name="outbound_messages")
-    contact = models.ForeignKey(TenantContact, null=True, blank=True, on_delete=models.SET_NULL, related_name="sms_messages")
+    contact = models.ForeignKey(
+        TenantContact, null=True, blank=True, on_delete=models.SET_NULL, related_name="sms_messages"
+    )
 
     to_number = models.CharField(max_length=32)
     from_number = models.CharField(max_length=32, blank=True)

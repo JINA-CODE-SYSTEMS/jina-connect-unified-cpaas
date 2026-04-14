@@ -1,14 +1,16 @@
 """Send media messages to all connected Telegram users."""
-import os, sys
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jina_connect.settings")
-import django; django.setup()
 
-import requests
-from telegram.services.bot_client import TelegramBotClient
+import os
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jina_connect.settings")
+import django
+
+django.setup()
+
+from contacts.models import TenantContact
+from telegram.models import TelegramBotApp
 from telegram.services.message_sender import TelegramMessageSender
 from tenants.models import Tenant
-from telegram.models import TelegramBotApp
-from contacts.models import TenantContact
 
 TOKEN = "8711890430:AAHDwwOw4oEOrRA00KxCr2eJkLzx6x3Ci_g"
 

@@ -1,7 +1,12 @@
 """Find all users who messaged the bot and send onboarding messages."""
-import os, sys, json
+
+import os
+import sys
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jina_connect.settings")
-import django; django.setup()
+import django
+
+django.setup()
 
 import requests
 
@@ -40,20 +45,22 @@ for uid, info in users.items():
 
 # ── Step 2: Set up DB records ─────────────────────────────────────────
 print("\n[3] Setting up DB records...")
-from tenants.models import Tenant
-from telegram.models import TelegramBotApp
 from contacts.models import TenantContact
+from telegram.models import TelegramBotApp
+from tenants.models import Tenant
 
 tenant, _ = Tenant.objects.get_or_create(name="E2E Test Tenant")
 bot_app, _ = TelegramBotApp.objects.update_or_create(
-    tenant=tenant, bot_user_id=8711890430,
+    tenant=tenant,
+    bot_user_id=8711890430,
     defaults={"bot_token": TOKEN, "bot_username": "Jinaconnectbot", "is_active": True},
 )
 print(f"    ✅ TelegramBotApp pk={bot_app.pk}")
 
 for uid, info in users.items():
     contact, created = TenantContact.objects.update_or_create(
-        tenant=tenant, telegram_chat_id=info["chat_id"],
+        tenant=tenant,
+        telegram_chat_id=info["chat_id"],
         defaults={
             "first_name": info["first_name"] or "User",
             "last_name": info.get("last_name", ""),
@@ -67,8 +74,8 @@ for uid, info in users.items():
 
 # ── Step 3: Send messages via full TelegramMessageSender stack ────────
 print("\n[4] Sending messages...")
-from telegram.services.message_sender import TelegramMessageSender
 from telegram.services.keyboard_builder import build_callback_data
+from telegram.services.message_sender import TelegramMessageSender
 
 sender = TelegramMessageSender(bot_app)
 
@@ -110,7 +117,10 @@ for uid, info in users.items():
     # Message 2: Onboarding with inline keyboard
     keyboard_rows = [
         [
-            {"text": "📖 View Features", "url": "https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas#-features"},
+            {
+                "text": "📖 View Features",
+                "url": "https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas#-features",
+            },
         ],
         [
             {"text": "💬 WhatsApp", "callback_data": build_callback_data("onboard", "whatsapp", "demo")},

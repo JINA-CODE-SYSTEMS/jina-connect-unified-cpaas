@@ -7,7 +7,6 @@ class SMSConfig(AppConfig):
 
     def ready(self):
         import sms.signals  # noqa: F401
-
         from jina_connect.channel_registry import register_channel
 
         def _sms_adapter_factory(tenant):

@@ -12,6 +12,7 @@ Steps performed:
   4. Send a test message via TelegramMessageSender (the full stack)
   5. Clean up DB records
 """
+
 import os
 import sys
 
@@ -19,10 +20,12 @@ import sys
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jina_connect.settings")
 
 import django  # noqa: E402
+
 django.setup()
 
 import requests  # noqa: E402
-from telegram.services.bot_client import TelegramBotClient, TelegramAPIError  # noqa: E402
+
+from telegram.services.bot_client import TelegramAPIError, TelegramBotClient  # noqa: E402
 
 TARGET_USERNAME = "kjha521"  # without @
 BASE = "https://api.telegram.org/bot{token}/{method}"
@@ -91,9 +94,9 @@ def main():
 
     # ── Step 3: Create DB records ─────────────────────────────────────────
     print("\n[3/5] Setting up TelegramBotApp in database...")
-    from tenants.models import Tenant
-    from telegram.models import TelegramBotApp
     from contacts.models import TenantContact
+    from telegram.models import TelegramBotApp
+    from tenants.models import Tenant
 
     tenant, _ = Tenant.objects.get_or_create(name="E2E Test Tenant")
     bot_app, created = TelegramBotApp.objects.update_or_create(

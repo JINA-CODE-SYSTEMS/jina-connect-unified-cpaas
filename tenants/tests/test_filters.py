@@ -189,8 +189,8 @@ class TenantFilterTestCase(TestCase):
 
     def test_product_sms_filter(self):
         """Test filtering tenants by SMS product."""
-        from tenants.filters import TenantFilter
         from sms.models import SMSApp
+        from tenants.filters import TenantFilter
 
         SMSApp.objects.create(
             tenant=self.tenant_low,

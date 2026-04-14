@@ -58,7 +58,9 @@ def test_send_sms_error(monkeypatch):
 def test_parse_inbound_webhook():
     provider = MSG91SMSProvider(_app())
 
-    parsed = provider.parse_inbound_webhook({"mobile": "+14155551111", "sender": "JINA", "message": "ping", "msg_id": "M1"})
+    parsed = provider.parse_inbound_webhook(
+        {"mobile": "+14155551111", "sender": "JINA", "message": "ping", "msg_id": "M1"}
+    )
 
     assert parsed.from_number == "+14155551111"
     assert parsed.to_number == "JINA"

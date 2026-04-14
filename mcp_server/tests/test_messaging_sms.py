@@ -3,6 +3,7 @@ import sys
 import types
 
 import pytest
+
 from sms.models import SMSApp
 from tenants.models import Tenant
 

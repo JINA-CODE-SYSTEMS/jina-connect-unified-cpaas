@@ -1675,10 +1675,9 @@ def send_session_message(
 
             return result
 
-        from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage
-
         # Get the WA app for this tenant (first active app)
         from tenants.models import TenantWAApp
+        from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage
 
         wa_app = TenantWAApp.objects.select_related("waba_info").filter(tenant=contact.tenant, is_active=True).first()
 

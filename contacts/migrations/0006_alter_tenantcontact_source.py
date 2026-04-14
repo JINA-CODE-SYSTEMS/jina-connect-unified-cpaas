@@ -4,15 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('contacts', '0005_tenantcontact_telegram_chat_id_and_more'),
+        ("contacts", "0005_tenantcontact_telegram_chat_id_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tenantcontact',
-            name='source',
-            field=models.CharField(choices=[('MANUAL', 'Manual'), ('WHATSAPP', 'WhatsApp'), ('TELEGRAM', 'Telegram'), ('VOICE', 'Voice'), ('SMS', 'SMS')], default='MANUAL', max_length=20),
+            model_name="tenantcontact",
+            name="source",
+            field=models.CharField(
+                choices=[
+                    ("MANUAL", "Manual"),
+                    ("WHATSAPP", "WhatsApp"),
+                    ("TELEGRAM", "Telegram"),
+                    ("VOICE", "Voice"),
+                    ("SMS", "SMS"),
+                ],
+                default="MANUAL",
+                max_length=20,
+            ),
         ),
     ]
