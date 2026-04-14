@@ -1,8 +1,8 @@
 """
-Jina Connect MCP Server — entrypoint and tool registry.
+Jina Connect MCP Server - entrypoint and tool registry.
 
-Exposes WhatsApp messaging, contacts, campaigns, and provider management
-as MCP tools that any AI client (Claude, Cursor, Copilot) can call.
+Exposes WhatsApp, Telegram, and SMS messaging, contacts, campaigns,
+and provider management as MCP tools that any AI client can call.
 """
 
 from __future__ import annotations
@@ -32,9 +32,10 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 mcp = FastMCP(
     "Jina Connect",
     instructions=(
-        "Jina Connect is a multi-channel CPaaS supporting WhatsApp and Telegram. "
+        "Jina Connect is a multi-channel CPaaS supporting WhatsApp, Telegram, and SMS. "
         "Use these tools to send messages, manage templates, contacts, "
-        "broadcasts, and providers. Specify channel='TELEGRAM' to route via Telegram Bot API."
+        "broadcasts, and providers. Use channel='WHATSAPP', channel='TELEGRAM', "
+        "or channel='SMS' to route via the desired channel adapter."
     ),
     stateless_http=True,
     json_response=True,

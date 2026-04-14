@@ -29,6 +29,7 @@ class ContactSource(models.TextChoices):
     WHATSAPP = "WHATSAPP", "WhatsApp"
     TELEGRAM = "TELEGRAM", "Telegram"
     VOICE = "VOICE", "Voice"
+    SMS = "SMS", "SMS"
     # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+import phonenumbers
+
 from mcp_server.auth import resolve_tenant
 from mcp_server.server import mcp
 
@@ -90,15 +92,17 @@ def send_message(
         api_key: Your Jina Connect API key.
         phone: Recipient phone number (WhatsApp) or Telegram chat ID.
         text: The message text to send.
-        channel: Channel — WHATSAPP (default) or TELEGRAM.
+        channel: Channel — WHATSAPP (default), TELEGRAM, or SMS.
     """
-    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM"}
+    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM", "SMS"}
     normalized = channel.strip().upper()
     if normalized not in _ALLOWED_CHANNELS:
         return {"error": f"Unsupported channel '{channel}'. Allowed: {', '.join(sorted(_ALLOWED_CHANNELS))}"}
 
     if normalized == "TELEGRAM":
         return _send_telegram_message(api_key, phone, text)
+    if normalized == "SMS":
+        return _send_sms_message(api_key, phone, text)
 
     from contacts.models import TenantContact
     from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage
@@ -229,3 +233,38 @@ def _send_telegram_message(api_key: str, chat_id: str, text: str) -> dict:
             "channel": "TELEGRAM",
         }
     return {"error": result.get("error", "Failed to send Telegram message.")}
+
+
+def _send_sms_message(api_key: str, phone: str, text: str) -> dict:
+    """Send a plain text message via SMS provider."""
+    from sms.models import SMSApp
+    from sms.services.message_sender import SMSMessageSender
+
+    normalized_text = (text or "").strip()
+    if not normalized_text:
+        return {"error": "SMS text cannot be empty."}
+
+    try:
+        parsed = phonenumbers.parse(str(phone), None)
+        if not phonenumbers.is_valid_number(parsed):
+            return {"error": f"Invalid SMS phone number: {phone!r}. Use E.164 format, e.g. +14155552671."}
+    except phonenumbers.NumberParseException:
+        return {"error": f"Invalid SMS phone number: {phone!r}. Use E.164 format, e.g. +14155552671."}
+
+    tenant, _ = resolve_tenant(api_key)
+
+    sms_app = SMSApp.objects.filter(tenant=tenant, is_active=True).first()
+    if not sms_app:
+        return {"error": "No active SMS app configured for this tenant."}
+
+    sender = SMSMessageSender(sms_app)
+    result = sender.send_text(chat_id=str(phone), text=normalized_text)
+
+    if result.get("success"):
+        return {
+            "message_id": result.get("message_id", ""),
+            "status": "SENT",
+            "phone": phone,
+            "channel": "SMS",
+        }
+    return {"error": result.get("error", "Failed to send SMS message.")}

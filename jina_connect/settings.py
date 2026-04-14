@@ -111,6 +111,7 @@ INSTALLED_APPS = [
     "team_inbox",
     "notifications",
     "telegram",
+    "sms",
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
@@ -481,6 +482,12 @@ CRONJOBS = [
         "0 3 * * *",
         "notifications.cron.cleanup_old_notifications",
         ">> " + os.path.join(BASE_DIR, "jina_cron_notification_cleanup.log 2>&1"),
+    ),
+    # Reset per-app SMS daily counters at midnight
+    (
+        "0 0 * * *",
+        "sms.cron.reset_daily_sms_counters",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_sms_daily_reset.log 2>&1"),
     ),
     # Example: Uncomment below to sync gupshup auth templates every 15 minutes
     # ("*/15 * * * *", "gupshup.cron.sync_gupshup_auth_templates", ">> " + os.path.join(BASE_DIR, "gupshup_sync.log 2>&1")),

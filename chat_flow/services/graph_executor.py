@@ -1539,7 +1539,6 @@ def send_session_message(
         Dict with send result including outgoing_message_id, status, etc.
     """
     from contacts.models import TenantContact
-    from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage
     from wa.utility.data_model.gupshup.session_message_base import (
         ButtonReply,
         InteractiveBody,
@@ -1570,6 +1569,113 @@ def send_session_message(
     try:
         # Load contact with tenant
         contact = TenantContact.objects.select_related("tenant").get(id=contact_id)
+
+        platform = str((context or {}).get("platform", "WHATSAPP")).upper()
+
+        # ── Telegram branch ─────────────────────────────────────────────────
+        if platform == "TELEGRAM":
+            from telegram.models import TelegramBotApp
+            from telegram.services.message_sender import TelegramMessageSender
+
+            chat_id = contact.telegram_chat_id
+            if not chat_id:
+                result["error"] = f"Contact {contact_id} has no telegram_chat_id"
+                result["status"] = "failed"
+                return result
+
+            bot_app = TelegramBotApp.objects.filter(tenant=contact.tenant, is_active=True).first()
+            if not bot_app:
+                result["error"] = "No active Telegram bot found for tenant"
+                result["status"] = "failed"
+                return result
+
+            sender = TelegramMessageSender(bot_app)
+
+            message_content = node_data.get("message_content", "")
+            body_text = node_data.get("body", "") or message_content
+            buttons = node_data.get("buttons", [])
+            has_quick_reply = any(
+                (b.get("type", "QUICK_REPLY") or "").upper() in ("QUICK_REPLY", "QUICK-REPLY") for b in buttons
+            )
+
+            if has_quick_reply:
+                tg_buttons = []
+                for b in buttons:
+                    b_type = (b.get("type", "QUICK_REPLY") or "").upper()
+                    if b_type not in ("QUICK_REPLY", "QUICK-REPLY"):
+                        continue
+                    label = b.get("title") or b.get("text") or "Option"
+                    value = b.get("id") or label
+                    tg_buttons.append([{"text": label, "callback_data": str(value)[:64]}])
+
+                send_result = sender.send_keyboard(
+                    chat_id=str(chat_id),
+                    text=body_text or "Please choose:",
+                    keyboard=tg_buttons,
+                    contact=contact,
+                )
+            else:
+                send_result = sender.send_text(
+                    chat_id=str(chat_id),
+                    text=body_text or message_content,
+                    contact=contact,
+                )
+
+            if send_result.get("success"):
+                result["success"] = True
+                result["status"] = "queued"
+                result["outgoing_message_id"] = send_result.get("message_id")
+            else:
+                result["status"] = "failed"
+                result["error"] = send_result.get("error") or "Failed to send Telegram session message"
+
+            return result
+
+        # ── SMS branch ──────────────────────────────────────────────────────
+        if platform == "SMS":
+            from sms.models import SMSApp
+            from sms.services.message_sender import SMSMessageSender
+
+            sms_app = SMSApp.objects.filter(tenant=contact.tenant, is_active=True).first()
+            if not sms_app:
+                result["error"] = "No active SMS app found for tenant"
+                result["status"] = "failed"
+                return result
+
+            sender = SMSMessageSender(sms_app)
+
+            message_content = node_data.get("message_content", "")
+            body_text = node_data.get("body", "") or message_content
+            buttons = node_data.get("buttons", [])
+            has_quick_reply = any(
+                (b.get("type", "QUICK_REPLY") or "").upper() in ("QUICK_REPLY", "QUICK-REPLY") for b in buttons
+            )
+
+            if has_quick_reply:
+                send_result = sender.send_keyboard(
+                    chat_id=str(contact.phone),
+                    text=body_text or "Please choose:",
+                    keyboard=buttons,
+                    contact=contact,
+                )
+            else:
+                send_result = sender.send_text(
+                    chat_id=str(contact.phone),
+                    text=body_text or message_content,
+                    contact=contact,
+                )
+
+            if send_result.get("success"):
+                result["success"] = True
+                result["status"] = "queued"
+                result["outgoing_message_id"] = send_result.get("message_id")
+            else:
+                result["status"] = "failed"
+                result["error"] = send_result.get("error") or "Failed to send SMS session message"
+
+            return result
+
+        from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage
 
         # Get the WA app for this tenant (first active app)
         from tenants.models import TenantWAApp

@@ -322,11 +322,15 @@ class Broadcast(BaseTenantModelForFilterUser):
     def _get_sms_message_price(self):
         """
         Get SMS message price.
-        TODO: Implement SMS pricing logic when SMS support is added.
         """
-        # Placeholder for future SMS pricing
-        # Example: return Decimal(self.tenant.sms_price_per_message)
-        return Decimal("0")
+        from sms.models import SMSApp
+
+        sms_app = SMSApp.objects.filter(tenant=self.tenant, is_active=True).first()
+        if not sms_app:
+            return Decimal("0")
+
+        # Default to local price; can be expanded to country-aware pricing later.
+        return Decimal(str(sms_app.price_per_sms or 0))
 
     def _get_telegram_message_price(self):
         """
