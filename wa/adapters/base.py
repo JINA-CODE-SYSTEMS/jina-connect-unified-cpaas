@@ -25,6 +25,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from wa.adapters.channel_base import BaseChannelAdapter
+
 if TYPE_CHECKING:
     from wa.models import WAApp, WASubscription, WATemplate
 
@@ -56,9 +58,12 @@ class AdapterResult:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class BaseBSPAdapter(ABC):
+class BaseBSPAdapter(BaseChannelAdapter, ABC):
     """
     Abstract base class that every BSP adapter must implement.
+
+    Extends BaseChannelAdapter for the shared send_text/send_media/send_keyboard
+    contract, and adds WhatsApp-BSP-specific template and webhook operations.
 
     Sub-classes are initialised with a WAApp instance which carries the BSP
     credentials (token, waba_id, bsp_credentials JSON, etc.).
@@ -235,6 +240,26 @@ class BaseBSPAdapter(ABC):
         Returns ``AdapterResult`` with ``data.deleted_count``.
         """
         ...
+
+    # ── BaseChannelAdapter contract ───────────────────────────────────────
+    # Default implementations for the channel-agnostic send interface.
+    # Concrete BSP adapters (MetaDirect, Gupshup) may override these once
+    # session-message sending is built out.
+
+    def send_text(self, chat_id: str, text: str, **kwargs: Any) -> Dict[str, Any]:
+        raise NotImplementedError(
+            f"{self.PROVIDER_NAME} adapter does not yet implement send_text(). "
+            "Use the BSP-specific template/session APIs."
+        )
+
+    def send_media(self, chat_id, media_type, media_url, caption=None, **kwargs):
+        raise NotImplementedError(f"{self.PROVIDER_NAME} adapter does not yet implement send_media().")
+
+    def send_keyboard(self, chat_id, text, keyboard, **kwargs):
+        raise NotImplementedError(f"{self.PROVIDER_NAME} adapter does not yet implement send_keyboard().")
+
+    def get_channel_name(self) -> str:
+        return "WHATSAPP"
 
     # ── Helpers ───────────────────────────────────────────────────────────
 

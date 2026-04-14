@@ -6,17 +6,9 @@ from simple_history.models import HistoricalRecords
 
 from abstract.models import BaseEntity, BaseModelWithOwner, BaseTenantModelForFilterUser, BaseWallet
 from abstract.validator import validate_phone_with_series
+from jina_connect.platform_choices import PlatformChoices  # canonical source
 from tenants.managers import TenantManager
 from users.models import User
-
-
-class PlatformChoices(models.TextChoices):
-    """Enum for different platforms a tenant can use"""
-
-    WHATSAPP = "WHATSAPP", "WhatsApp"
-    SMS = "SMS", "SMS"
-    EMAIL = "EMAIL", "Email"
-    TELEGRAM = "TELEGRAM", "Telegram"
 
 
 class IndustryChoices(models.TextChoices):

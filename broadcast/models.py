@@ -85,6 +85,7 @@ class BroadcastPlatformChoices(models.TextChoices):
     WHATSAPP = "WHATSAPP", "WhatsApp"
     TELEGRAM = "TELEGRAM", "Telegram"
     SMS = "SMS", "SMS"
+    # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 
 class Broadcast(BaseTenantModelForFilterUser):
@@ -330,10 +331,11 @@ class Broadcast(BaseTenantModelForFilterUser):
     def _get_telegram_message_price(self):
         """
         Get Telegram message price.
-        TODO: Implement Telegram pricing logic when Telegram support is added.
+
+        Telegram Bot API does not charge per-message fees (unlike WhatsApp BSPs).
+        Returns Decimal("0") by default. Override at tenant level if a reseller
+        margin or per-message surcharge is introduced in the future.
         """
-        # Placeholder for future Telegram pricing
-        # Example: return Decimal(self.tenant.telegram_price_per_message)
         return Decimal("0")
 
     def calculate_initial_cost(self):

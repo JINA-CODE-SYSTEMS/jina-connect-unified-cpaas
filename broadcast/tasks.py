@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 import team_inbox.signals  # noqa: F401, E402 — ensure signals are loaded for broadcasting
+from broadcast.utils.placeholder_renderer import render_placeholders
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +119,7 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
     from team_inbox.models import (
         AuthorChoices,
         MessageDirectionChoices,
-        MessageEventIds,
         MessagePlatformChoices,
-        Messages,
     )
 
     result = {"created": False, "message_id": None, "error": None}
@@ -134,9 +133,6 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
         template = None
         if broadcast.template_number and broadcast.template_number.gupshup_template:
             template = broadcast.template_number.gupshup_template
-
-        # Create MessageEventIds entry for timeline ordering
-        event_id = MessageEventIds.objects.create()
 
         # Build content structure matching team_inbox format
         # {"type": "text|image|video|document|audio", "body": {"text": "..."}, ...}
@@ -236,26 +232,24 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
         # Map broadcast platform to team_inbox platform
         platform_map = {
             BroadcastPlatformChoices.WHATSAPP: MessagePlatformChoices.WHATSAPP,
-            # Add more platform mappings as needed
+            BroadcastPlatformChoices.TELEGRAM: MessagePlatformChoices.TELEGRAM,
+            BroadcastPlatformChoices.SMS: MessagePlatformChoices.SMS,
         }
         platform = platform_map.get(broadcast.platform, MessagePlatformChoices.WHATSAPP)
 
-        # Create the Messages entry
-        message = Messages.objects.create(
-            tenant=tenant,
-            message_id=event_id,
-            content=content,
-            direction=MessageDirectionChoices.OUTGOING,
-            platform=platform,
-            author=AuthorChoices.USER,  # Broadcast messages are sent by team
-            contact=contact,
-            tenant_user=broadcast.created_by,  # User who created the broadcast
-            is_read=True,  # Outgoing messages are always "read"
-            external_message_id=broadcast_message.message_id,  # Link to BroadcastMessage for status updates
-        )
+        # Create the Messages entry via shared factory
+        from team_inbox.utils.inbox_message_factory import create_inbox_message
 
-        logger.info(
-            f"[_create_team_inbox_message_from_broadcast] Created Messages entry {message.pk} for broadcast message {broadcast_message.pk}"
+        message = create_inbox_message(
+            tenant=tenant,
+            contact=contact,
+            platform=platform,
+            direction=MessageDirectionChoices.OUTGOING,
+            author=AuthorChoices.USER,
+            content=content,
+            tenant_user=broadcast.created_by,
+            is_read=True,
+            external_message_id=broadcast_message.message_id,
         )
 
         result["created"] = True
@@ -292,26 +286,14 @@ def _convert_template_buttons_to_inbox_format(
     Returns:
         List of buttons in team_inbox format
     """
-    import re
-
     if not template_buttons:
         return []
 
     # Merge data for placeholder substitution (reserved vars take precedence)
     final_data = {**placeholder_data, **reserved_vars}
 
-    def render_placeholders(text: str) -> str:
-        """Replace placeholders in text."""
-        if not text:
-            return text
-
-        def replace_placeholder(match):
-            key = match.group(1).strip()
-            value = final_data.get(key, match.group(0))
-            return str(value) if value else ""
-
-        pattern = r"\{\{\s*(\w+)\s*\}\}"
-        return re.sub(pattern, replace_placeholder, text)
+    def _render(text: str) -> str:
+        return render_placeholders(text, final_data)
 
     # Type mapping from Gupshup to team_inbox
     type_map = {
@@ -333,7 +315,7 @@ def _convert_template_buttons_to_inbox_format(
 
         # Add type-specific fields
         if inbox_type == "url" and btn.get("url"):
-            inbox_btn["url"] = render_placeholders(btn["url"])
+            inbox_btn["url"] = _render(btn["url"])
         elif inbox_type == "call" and btn.get("phone_number"):
             inbox_btn["phone"] = btn["phone_number"]
 
@@ -367,8 +349,6 @@ def _convert_template_cards_to_inbox_format(
     Returns:
         List of cards in team_inbox format
     """
-    import re
-
     cards = template.cards
     if not cards or not isinstance(cards, list):
         return []
@@ -376,18 +356,8 @@ def _convert_template_cards_to_inbox_format(
     # Merge data for placeholder substitution (reserved vars take precedence)
     final_data = {**placeholder_data, **reserved_vars}
 
-    def render_placeholders(text: str) -> str:
-        """Replace placeholders in text."""
-        if not text:
-            return text
-
-        def replace_placeholder(match):
-            key = match.group(1).strip()
-            value = final_data.get(key, match.group(0))
-            return str(value) if value else ""
-
-        pattern = r"\{\{\s*(\w+)\s*\}\}"
-        return re.sub(pattern, replace_placeholder, text)
+    def _render(text: str) -> str:
+        return render_placeholders(text, final_data)
 
     def _detect_media_type(media_name: str) -> str:
         """Detect if media is video or image from filename."""
@@ -435,7 +405,7 @@ def _convert_template_cards_to_inbox_format(
         # Add card body
         card_body = card.get("body", "")
         if card_body:
-            inbox_card["body"] = {"text": render_placeholders(card_body)}
+            inbox_card["body"] = {"text": _render(card_body)}
 
         # Add card buttons
         card_buttons = card.get("buttons", [])
@@ -461,26 +431,12 @@ def _render_template_field(field_content: str, placeholder_data: dict, reserved_
     Returns:
         Rendered string with placeholders replaced
     """
-    import re
-
     if not field_content:
         return ""
 
-    # Merge: placeholder_data first, then reserved vars override
     # Reserved vars take precedence - contact-specific data should not be overridden
     final_data = {**placeholder_data, **reserved_vars}
-
-    # Replace all placeholders using regex to handle both formats
-    def replace_placeholder(match):
-        key = match.group(1).strip()
-        value = final_data.get(key, match.group(0))  # Keep original if not found
-        return str(value) if value else ""
-
-    # Pattern matches {{ key }}, {{key}}, {{ key}}, {key }} etc.
-    placeholder_pattern = r"\{\{\s*(\w+)\s*\}\}"
-    rendered = re.sub(placeholder_pattern, replace_placeholder, field_content)
-
-    return rendered
+    return render_placeholders(field_content, final_data)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -691,9 +647,16 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
             }
 
 
+# ── Platform handler dispatch registry ─────────────────────────────────────
+# Add new platforms here instead of growing an if/elif chain.
+# Maps to actual function refs — populated after the functions are defined
+# (see bottom of file).
+_PLATFORM_HANDLERS: dict = {}
+
+
 def route_to_platform_handler(message):
     """
-    Route message to appropriate platform handler based on broadcast platform
+    Route message to appropriate platform handler based on broadcast platform.
 
     Args:
         message (BroadcastMessage): The message to process
@@ -703,18 +666,14 @@ def route_to_platform_handler(message):
     """
     platform = message.broadcast.platform.upper()
 
-    try:
-        if platform == "WHATSAPP":
-            return handle_whatsapp_message(message)
-        elif platform == "TELEGRAM":
-            return handle_telegram_message(message)
-        elif platform == "SMS":
-            return handle_sms_message(message)
-        else:
-            error_msg = f"Unsupported platform: {platform}"
-            logger.error(error_msg)
-            return {"success": False, "error": error_msg}
+    handler_name = _PLATFORM_HANDLERS.get(platform)
+    if not handler_name:
+        error_msg = f"Unsupported platform: {platform}"
+        logger.error(error_msg)
+        return {"success": False, "error": error_msg}
 
+    try:
+        return handler_name(message)
     except Exception as e:
         error_msg = f"Error in platform handler for {platform}: {str(e)}"
         logger.exception(error_msg)
@@ -850,7 +809,10 @@ def handle_whatsapp_message(message):
 
 def handle_telegram_message(message):
     """
-    Handle Telegram message sending
+    Handle Telegram message sending via TelegramMessageSender.
+
+    Resolves the active TelegramBotApp for the tenant, builds a
+    TelegramMessageSender, and dispatches based on broadcast content.
 
     Args:
         message (BroadcastMessage): The message to send
@@ -859,27 +821,54 @@ def handle_telegram_message(message):
         dict: Send result with success status and details
     """
     try:
-        logger.info(f"Sending Telegram message to {message.contact.phone}")
+        from telegram.models import TelegramBotApp
+        from telegram.services.message_sender import TelegramMessageSender
 
-        # TODO: Integrate with your actual Telegram service
-        # Example integration:
-        # from telegram_app.services.message_sender import TelegramMessageSender
-        # sender = TelegramMessageSender()
-        # result = sender.send_message(
-        #     contact=message.contact,
-        #     message_data=message.broadcast.placeholder_data
-        # )
+        contact = message.contact
+        tenant = message.broadcast.tenant
 
-        # For now, simulate success (remove this when integrating with actual service)
-        from django.utils import timezone
+        # Resolve active Telegram bot for this tenant
+        bot_app = TelegramBotApp.objects.filter(tenant=tenant, is_active=True).first()
+        if not bot_app:
+            return {"success": False, "error": f"No active Telegram bot configured for tenant {tenant.pk}"}
 
-        simulated_message_id = f"tg_{message.id}_{int(timezone.now().timestamp())}"
+        # Contact must have a telegram_chat_id to receive messages
+        chat_id = contact.telegram_chat_id
+        if not chat_id:
+            return {"success": False, "error": f"Contact {contact.pk} has no telegram_chat_id"}
 
-        return {
-            "success": True,
-            "message_id": simulated_message_id,
-            "response": "Telegram message sent successfully (simulated)",
-        }
+        sender = TelegramMessageSender(bot_app)
+
+        # Determine content from broadcast placeholder_data
+        data = message.broadcast.placeholder_data or {}
+        text = data.get("message") or data.get("text") or data.get("body", "")
+        media_url = data.get("media_url") or data.get("image_url") or data.get("image")
+        media_type = data.get("media_type", "photo")
+
+        if media_url:
+            result = sender.send_media(
+                chat_id=str(chat_id),
+                media_type=media_type,
+                media_url=media_url,
+                caption=text or None,
+                contact=contact,
+            )
+        elif text:
+            result = sender.send_text(
+                chat_id=str(chat_id),
+                text=text,
+                contact=contact,
+            )
+        else:
+            return {"success": False, "error": "Broadcast has no text or media content to send"}
+
+        logger.info(
+            "Telegram broadcast message %s to chat_id %s: success=%s",
+            message.pk,
+            chat_id,
+            result.get("success"),
+        )
+        return result
 
     except Exception as e:
         error_msg = f"Telegram sending failed: {str(e)}"
@@ -920,3 +909,13 @@ def handle_sms_message(message):
         error_msg = f"SMS sending failed: {str(e)}"
         logger.exception(error_msg)
         return {"success": False, "error": error_msg}
+
+
+# ── Populate platform handler registry (must come after function definitions)
+_PLATFORM_HANDLERS.update(
+    {
+        "WHATSAPP": handle_whatsapp_message,
+        "TELEGRAM": handle_telegram_message,
+        "SMS": handle_sms_message,
+    }
+)
