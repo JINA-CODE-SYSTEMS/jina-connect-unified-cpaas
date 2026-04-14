@@ -78,14 +78,11 @@ class TenantFilter(django_filters.FilterSet):
             return queryset.filter(wa_apps__is_active=True).distinct()
 
         elif value_lower == "sms":
-            # TODO: Filter tenants that have SMS enabled
-            # For now, return empty queryset until SMS integration is added
-            return queryset.filter(id__in=[])
+            return queryset.filter(sms_apps__is_active=True).distinct()
 
         elif value_lower == "all":
             # Return tenants that have either WhatsApp or SMS
-            # Currently only WhatsApp is implemented
-            return queryset.filter(Q(wa_apps__is_active=True)).distinct()
+            return queryset.filter(Q(wa_apps__is_active=True) | Q(sms_apps__is_active=True)).distinct()
 
         else:
             # Invalid product type, return empty queryset

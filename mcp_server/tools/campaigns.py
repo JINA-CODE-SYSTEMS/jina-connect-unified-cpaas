@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+import phonenumbers
+
 from mcp_server.auth import resolve_tenant
 from mcp_server.server import mcp
 
@@ -24,10 +26,10 @@ def create_broadcast(
     Args:
         api_key: Your Jina Connect API key.
         name: Campaign name for tracking.
-        template_name: The element_name of an APPROVED template (WhatsApp only).
+        template_name: The element_name of an APPROVED template (WhatsApp) or text body (Telegram/SMS).
         phone_numbers: List of recipient phone numbers (WhatsApp) or Telegram chat IDs.
         language_code: Template language code (default: "en"). Ignored for Telegram.
-        channel: Channel — WHATSAPP (default) or TELEGRAM.
+        channel: Channel — WHATSAPP (default), TELEGRAM, or SMS.
     """
     from broadcast.models import Broadcast
     from contacts.models import TenantContact
@@ -35,7 +37,7 @@ def create_broadcast(
 
     tenant, wa_app = resolve_tenant(api_key)
 
-    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM"}
+    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM", "SMS"}
     platform = channel.strip().upper()
     if platform not in _ALLOWED_CHANNELS:
         return {"error": f"Unsupported channel '{channel}'. Allowed: {', '.join(sorted(_ALLOWED_CHANNELS))}"}
@@ -77,6 +79,46 @@ def create_broadcast(
             "status": broadcast.status,
             "recipient_count": len(contacts),
             "channel": "TELEGRAM",
+        }
+
+    if platform == "SMS":
+        if not phone_numbers:
+            return {"error": "No valid phone numbers provided."}
+
+        contacts = []
+        for phone in phone_numbers:
+            try:
+                parsed = phonenumbers.parse(str(phone), None)
+                if not phonenumbers.is_valid_number(parsed):
+                    return {"error": f"Invalid SMS phone number: {phone!r}. Use E.164 format, e.g. +14155552671."}
+            except phonenumbers.NumberParseException:
+                return {"error": f"Invalid SMS phone number: {phone!r}. Use E.164 format, e.g. +14155552671."}
+
+            contact, _ = TenantContact.objects.get_or_create(
+                tenant=tenant,
+                phone=phone,
+                defaults={"first_name": phone, "source": "SMS"},
+            )
+            contacts.append(contact)
+
+        if not contacts:
+            return {"error": "No valid phone numbers provided."}
+
+        broadcast = Broadcast.objects.create(
+            tenant=tenant,
+            name=name,
+            platform="SMS",
+            status="DRAFT",
+            placeholder_data={"text": template_name},
+        )
+        broadcast.recipients.set(contacts)
+
+        return {
+            "broadcast_id": str(broadcast.id),
+            "name": name,
+            "status": broadcast.status,
+            "recipient_count": len(contacts),
+            "channel": "SMS",
         }
 
     # WhatsApp flow

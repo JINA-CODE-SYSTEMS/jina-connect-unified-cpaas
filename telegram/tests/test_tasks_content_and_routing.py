@@ -177,7 +177,11 @@ class TestHandleChatflowRoutingTelegram:
 
         _handle_chatflow_routing_telegram(contact, {"type": "text", "body": {"text": "Hello"}})
 
-        fake_executor.process_input.assert_called_once_with(contact_id=contact.id, user_input="Hello")
+        fake_executor.process_input.assert_called_once_with(
+            contact_id=contact.id,
+            user_input="Hello",
+            additional_context={"platform": "TELEGRAM"},
+        )
         contact.refresh_from_db()
         assert contact.assigned_to_type == AssigneeTypeChoices.UNASSIGNED
         assert contact.assigned_to_id is None
@@ -226,4 +230,8 @@ class TestHandleChatflowRoutingTelegram:
             },
         )
 
-        fake_executor.process_input.assert_called_once_with(contact_id=contact.id, user_input="approve")
+        fake_executor.process_input.assert_called_once_with(
+            contact_id=contact.id,
+            user_input="approve",
+            additional_context={"platform": "TELEGRAM"},
+        )

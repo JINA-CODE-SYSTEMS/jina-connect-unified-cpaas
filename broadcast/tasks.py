@@ -887,23 +887,36 @@ def handle_sms_message(message):
         dict: Send result with success status and details
     """
     try:
+        from sms.models import SMSApp
+        from sms.services.message_sender import SMSMessageSender
+
         logger.info(f"Sending SMS message to {message.contact.phone}")
 
-        # TODO: Integrate with your actual SMS service
-        # Example integration:
-        # from sms.services.message_sender import SMSMessageSender
-        # sender = SMSMessageSender()
-        # result = sender.send_sms(
-        #     mobile=message.contact.phone,
-        #     message=message.broadcast.placeholder_data.get('message', 'Default SMS message')
-        # )
+        sms_app = SMSApp.objects.filter(tenant=message.broadcast.tenant, is_active=True).first()
+        if not sms_app:
+            return {"success": False, "error": f"No active SMS app configured for tenant {message.broadcast.tenant_id}"}
 
-        # For now, simulate success (remove this when integrating with actual service)
-        from django.utils import timezone
+        sender = SMSMessageSender(sms_app)
 
-        simulated_message_id = f"sms_{message.id}_{int(timezone.now().timestamp())}"
+        data = message.broadcast.placeholder_data or {}
+        text = message.rendered_content or data.get("message") or data.get("text") or data.get("body", "")
+        if not text:
+            return {"success": False, "error": "Broadcast has no SMS text content to send"}
 
-        return {"success": True, "message_id": simulated_message_id, "response": "SMS sent successfully (simulated)"}
+        result = sender.send_text(
+            chat_id=str(message.contact.phone),
+            text=text,
+            contact=message.contact,
+            broadcast_message=message,
+            create_inbox_entry=False,
+        )
+
+        return {
+            "success": result.get("success", False),
+            "message_id": result.get("message_id", ""),
+            "response": result,
+            "error": result.get("error"),
+        }
 
     except Exception as e:
         error_msg = f"SMS sending failed: {str(e)}"

@@ -58,13 +58,13 @@ Everything below is open-source, shipped in this repo, and works out of the box.
 
 ### Channels
 
-**Unified channel engine (`wa` today, more coming)** — The core abstraction that lets every other app (broadcast, flows, inbox, analytics) work across any communication channel. The same "send" primitive handles WhatsApp today and will handle Telegram, SMS, RCS, and Voice as they ship.
+**Unified channel engine (`wa` today, more coming)** — The core abstraction that lets every other app (broadcast, flows, inbox, analytics) work across any communication channel. The same "send" primitive handles WhatsApp, Telegram, and SMS today, and will handle RCS and Voice as they ship.
 
 | Channel | Status | Providers supported |
 |---|---|---|
 | **WhatsApp Business** | ✅ Production-ready | Meta Cloud API, Gupshup |
 | **Telegram Bot API** | ✅ Native Bot API | Bot commands, inline keyboards, file handling |
-| **SMS** | 🚧 Coming soon | Twilio, MSG91, Fast2SMS |
+| **SMS** | ✅ Multi-BSP adapter (Twilio, MSG91, Fast2SMS) | Twilio, MSG91, Fast2SMS |
 | **RCS Business Messaging** | 🚧 Coming soon | Meta RCS, Google RCS |
 | **Voice (calls, IVR)** | 🚧 Coming soon | SIP trunking, Twilio Voice |
 
@@ -74,9 +74,9 @@ Each channel plugs into the same unified abstraction, so features you use today 
 
 ### Outbound engagement
 
-**Broadcast engine (`broadcast`)** — Campaign management for outbound marketing. Draft → schedule → send lifecycle, batch processing with per-channel rate limiting, URL click tracking, and pre-send cost estimation. Works today on WhatsApp; expands to SMS and RCS automatically when those adapters ship.
+**Broadcast engine (`broadcast`)** — Campaign management for outbound marketing. Draft → schedule → send lifecycle, batch processing with per-channel rate limiting, URL click tracking, and pre-send cost estimation. Works today on WhatsApp and SMS; expands to RCS automatically when those adapters ship.
 
-**Chat flow builder (`chat_flow`)** — Visual flow designer for automated customer journeys. Node-edge graph model, conditional branching rules engine, multi-turn session tracking. Channel-agnostic by design — a flow you build for WhatsApp can route over SMS when that adapter arrives.
+**Chat flow builder (`chat_flow`)** — Visual flow designer for automated customer journeys. Node-edge graph model, conditional branching rules engine, multi-turn session tracking. Channel-agnostic by design — a flow you build can route across WhatsApp, Telegram, and SMS.
 
 ### Inbound and support
 
@@ -108,7 +108,7 @@ Each channel plugs into the same unified abstraction, so features you use today 
 | Campaigns | trigger broadcast, check campaign status |
 | Analytics | query delivery/read stats |
 
-Today the MCP server operates WhatsApp. As Telegram, SMS, RCS, and Voice adapters ship, the same tools start routing across channels — your AI agent can send a WhatsApp message, fall back to SMS, and escalate to a voice call using the same tool calls.
+Today the MCP server supports WhatsApp, Telegram, and SMS routing in core messaging and campaign tools. As RCS and Voice adapters ship, the same tools expand across those channels too.
 
 Works with Claude Desktop, Claude.ai, ChatGPT, Cursor, VS Code Copilot, Windsurf, and any MCP-compatible client. Two transports today: `stdio` and streamable HTTP. SSE transport coming soon. Authentication via tenant API keys — one MCP server can safely serve multiple tenants.
 

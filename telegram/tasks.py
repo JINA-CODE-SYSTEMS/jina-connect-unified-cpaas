@@ -301,7 +301,11 @@ def _handle_chatflow_routing_telegram(contact, message_content: dict):
             return
 
         executor = get_executor(flow)
-        result = executor.process_input(contact_id=contact.id, user_input=user_input)
+        result = executor.process_input(
+            contact_id=contact.id,
+            user_input=user_input,
+            additional_context={"platform": "TELEGRAM"},
+        )
 
         logger.info(
             "[chatflow_routing_telegram] contact=%s flow=%s node=%s complete=%s",

@@ -141,6 +141,7 @@ urlpatterns = [
     path("chat-flow/", include(("chat_flow.urls", "chat_flow"), namespace="chat_flow")),
     path("notifications/", include(("notifications.urls", "notifications"), namespace="notifications")),
     path("telegram/", include(("telegram.urls", "telegram"), namespace="telegram")),
+    path("sms/", include(("sms.urls", "sms"), namespace="sms")),
     # =========================================================================
     # MOBILE API ENDPOINTS
     # Same functionality as web APIs, separated for mobile client tracking.

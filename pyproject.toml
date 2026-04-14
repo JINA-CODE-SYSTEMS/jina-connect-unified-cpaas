@@ -12,6 +12,11 @@ target-version = "py311"
 select = ["E", "F", "I", "W"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"telegram_e2e_test.py" = ["E402"]
+"telegram_onboard.py" = ["E402"]
+"telegram_send_media.py" = ["E402"]
+
 [tool.bandit]
 exclude_dirs = ["tests", "*/tests/*", "*/migrations/*"]
 skips = ["B101", "B311"]

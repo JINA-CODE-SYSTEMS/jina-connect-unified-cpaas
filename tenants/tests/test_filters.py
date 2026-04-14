@@ -188,8 +188,17 @@ class TenantFilterTestCase(TestCase):
         self.assertIn(self.tenant_high, results)
 
     def test_product_sms_filter(self):
-        """Test filtering tenants by SMS product (not yet implemented)"""
+        """Test filtering tenants by SMS product."""
+        from sms.models import SMSApp
         from tenants.filters import TenantFilter
+
+        SMSApp.objects.create(
+            tenant=self.tenant_low,
+            provider="TWILIO",
+            sender_id="+14155559999",
+            provider_credentials={"account_sid": "AC123", "auth_token": "tok"},
+            is_active=True,
+        )
 
         queryset = Tenant.objects.all()
 
@@ -197,8 +206,8 @@ class TenantFilterTestCase(TestCase):
         filterset = TenantFilter({"product": "sms"}, queryset=queryset)
         results = list(filterset.qs)
 
-        # Should return empty since SMS is not implemented
-        self.assertEqual(len(results), 0)
+        self.assertEqual(len(results), 1)
+        self.assertIn(self.tenant_low, results)
 
     def test_combined_filters(self):
         """Test combining multiple filters"""
