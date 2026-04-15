@@ -2988,7 +2988,8 @@ class PreProductionSweepTests(RBACIntegrationBase):
                     continue
                 fp = os.path.join(dirpath, fn)
                 rel = os.path.relpath(fp, root)
-                if "__pycache__" in rel or "venv/" in rel or "test" in rel:
+                rel_fwd = rel.replace("\\", "/")
+                if "__pycache__" in rel_fwd or "venv/" in rel_fwd or "test" in rel_fwd:
                     continue
                 try:
                     with open(fp) as f:
@@ -2997,9 +2998,9 @@ class PreProductionSweepTests(RBACIntegrationBase):
                     continue
                 if "AllowAny" in content:
                     self.assertIn(
-                        rel,
+                            rel_fwd,
                         allowed_files,
-                        f"Unexpected AllowAny in {rel}",
+                            f"Unexpected AllowAny in {rel_fwd}",
                     )
 
     # ── 3. JWT Token Claims ────────────────────────────────────────────

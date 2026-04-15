@@ -85,6 +85,7 @@ class BroadcastPlatformChoices(models.TextChoices):
     WHATSAPP = "WHATSAPP", "WhatsApp"
     TELEGRAM = "TELEGRAM", "Telegram"
     SMS = "SMS", "SMS"
+    RCS = "RCS", "RCS"
     # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 
@@ -292,6 +293,8 @@ class Broadcast(BaseTenantModelForFilterUser):
             return self._get_sms_message_price()
         elif self.platform == BroadcastPlatformChoices.TELEGRAM:
             return self._get_telegram_message_price()
+        elif self.platform == BroadcastPlatformChoices.RCS:
+            return self._get_rcs_message_price()
         else:
             return Decimal("0")
 
@@ -341,6 +344,19 @@ class Broadcast(BaseTenantModelForFilterUser):
         margin or per-message surcharge is introduced in the future.
         """
         return Decimal("0")
+
+    def _get_rcs_message_price(self) -> Decimal:
+        """
+        Get RCS message price from the active RCSApp pricing fields.
+
+        Falls back to Decimal("0") when no active RCS app is configured.
+        """
+        from rcs.models import RCSApp
+
+        rcs_app = RCSApp.objects.filter(tenant=self.tenant, is_active=True).first()
+        if not rcs_app:
+            return Decimal("0")
+        return Decimal(str(rcs_app.price_per_message or 0))
 
     def calculate_initial_cost(self):
         """

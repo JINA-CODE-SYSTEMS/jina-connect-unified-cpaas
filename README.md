@@ -12,7 +12,7 @@
 
 Jina Connect is a complete, self-hostable CPaaS platform — the communication infrastructure your business, agency, or AI product runs on. One stack, every customer channel: **WhatsApp**, **Telegram**, **SMS**, **RCS**, and **Voice**. Broadcasts, automated flows, templates, contacts, team inbox, billing, and AI-agent access through MCP — all in one self-hostable project.
 
-**WhatsApp ships production-ready today.** Telegram, SMS, RCS, and Voice are on the roadmap, each built on the same unified channel abstraction. Pick a channel, write once, and the same primitives (send, broadcast, flow, inbox, analytics) work everywhere.
+**WhatsApp, Telegram, SMS, and RCS ship production-ready today.** Voice is on the roadmap, built on the same unified channel abstraction. Pick a channel, write once, and the same primitives (send, broadcast, flow, inbox, analytics) work everywhere.
 
 It also ships the first and only **multi-provider MCP server for business messaging**, letting AI agents (Claude, ChatGPT, Cursor, custom LLM apps) operate your communication channels natively through 13 tool-callable functions.
 
@@ -58,14 +58,14 @@ Everything below is open-source, shipped in this repo, and works out of the box.
 
 ### Channels
 
-**Unified channel engine (`wa` today, more coming)** — The core abstraction that lets every other app (broadcast, flows, inbox, analytics) work across any communication channel. The same "send" primitive handles WhatsApp, Telegram, and SMS today, and will handle RCS and Voice as they ship.
+**Unified channel engine** — The core abstraction that lets every other app (broadcast, flows, inbox, analytics) work across any communication channel. The same "send" primitive handles WhatsApp, Telegram, SMS, and RCS today. Voice as they ship.
 
 | Channel | Status | Providers supported |
 |---|---|---|
 | **WhatsApp Business** | ✅ Production-ready | Meta Cloud API, Gupshup |
 | **Telegram Bot API** | ✅ Native Bot API | Bot commands, inline keyboards, file handling |
 | **SMS** | ✅ Multi-BSP adapter (Twilio, MSG91, Fast2SMS) | Twilio, MSG91, Fast2SMS |
-| **RCS Business Messaging** | 🚧 Coming soon | Meta RCS, Google RCS |
+| **RCS Business Messaging** | ✅ Google RBM + Meta RCS (iOS-safe rich cards, SMS fallback) | Google RBM, Meta RCS |
 | **Voice (calls, IVR)** | 🚧 Coming soon | SIP trunking, Twilio Voice |
 
 Each channel plugs into the same unified abstraction, so features you use today (campaigns, flows, inbox, analytics) work on new channels the moment the adapter lands.
@@ -74,7 +74,7 @@ Each channel plugs into the same unified abstraction, so features you use today 
 
 ### Outbound engagement
 
-**Broadcast engine (`broadcast`)** — Campaign management for outbound marketing. Draft → schedule → send lifecycle, batch processing with per-channel rate limiting, URL click tracking, and pre-send cost estimation. Works today on WhatsApp and SMS; expands to RCS automatically when those adapters ship.
+**Broadcast engine (`broadcast`)** — Campaign management for outbound marketing. Draft → schedule → send lifecycle, batch processing with per-channel rate limiting, URL click tracking, and pre-send cost estimation. Works today on WhatsApp, Telegram, SMS, and RCS.
 
 **Chat flow builder (`chat_flow`)** — Visual flow designer for automated customer journeys. Node-edge graph model, conditional branching rules engine, multi-turn session tracking. Channel-agnostic by design — a flow you build can route across WhatsApp, Telegram, and SMS.
 
@@ -170,7 +170,7 @@ The roadmap below is organized by CPaaS capability. Each capability has a curren
 
 | Capability | Now | Next | Later |
 |---|---|---|---|
-| **MCP server** | 13 tools, stateless HTTP, stdio + streamable HTTP, WhatsApp operations. SSE *(coming soon)* | Multi-channel routing in MCP tools (WhatsApp + SMS + Voice from same tool calls), richer analytics | Agent-to-agent handoff, contextual memory across channels, voice-to-text bridges |
+| **MCP server** | 16 tools, stateless HTTP, stdio + streamable HTTP, WhatsApp + SMS + Telegram + RCS operations (send, capability check, status). SSE *(coming soon)* | Voice tools, richer analytics | Agent-to-agent handoff, contextual memory across channels, voice-to-text bridges |
 | **AI-native content** | — *(coming soon)* | AI-assisted template writing, compliance checking per channel | Localization agents, tone adaptation, multi-language flows |
 
 ### 💰 Billing and Commerce

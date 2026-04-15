@@ -80,9 +80,20 @@ class TenantFilter(django_filters.FilterSet):
         elif value_lower == "sms":
             return queryset.filter(sms_apps__is_active=True).distinct()
 
+        elif value_lower == "telegram":
+                return queryset.filter(telegram_bots__is_active=True).distinct()
+
+        elif value_lower == "rcs":
+            return queryset.filter(rcs_apps__is_active=True).distinct()
+
         elif value_lower == "all":
-            # Return tenants that have either WhatsApp or SMS
-            return queryset.filter(Q(wa_apps__is_active=True) | Q(sms_apps__is_active=True)).distinct()
+            # Return tenants that have any active channel app
+            return queryset.filter(
+                Q(wa_apps__is_active=True)
+                | Q(sms_apps__is_active=True)
+                    | Q(telegram_bots__is_active=True)
+                | Q(rcs_apps__is_active=True)
+            ).distinct()
 
         else:
             # Invalid product type, return empty queryset
