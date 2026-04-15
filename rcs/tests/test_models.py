@@ -1,7 +1,8 @@
 """Tests for RCS models: RCSApp, RCSWebhookEvent, RCSOutboundMessage."""
 
-import pytest
 from datetime import timedelta
+
+import pytest
 from django.db import IntegrityError
 from django.utils import timezone
 
