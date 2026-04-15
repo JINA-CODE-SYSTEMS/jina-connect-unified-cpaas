@@ -2998,9 +2998,9 @@ class PreProductionSweepTests(RBACIntegrationBase):
                     continue
                 if "AllowAny" in content:
                     self.assertIn(
-                            rel_fwd,
+                        rel_fwd,
                         allowed_files,
-                            f"Unexpected AllowAny in {rel_fwd}",
+                        f"Unexpected AllowAny in {rel_fwd}",
                     )
 
     # ── 3. JWT Token Claims ────────────────────────────────────────────

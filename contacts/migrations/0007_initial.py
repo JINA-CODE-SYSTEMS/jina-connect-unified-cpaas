@@ -4,20 +4,36 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('contacts', '0006_alter_tenantcontact_source'),
+        ("contacts", "0006_alter_tenantcontact_source"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tenantcontact',
-            name='preferred_channel',
-            field=models.CharField(blank=True, choices=[('SMS', 'SMS'), ('VOICE', 'Voice'), ('WHATSAPP', 'WhatsApp'), ('RCS', 'RCS')], help_text='Preferred communication channel', max_length=10, null=True),
+            model_name="tenantcontact",
+            name="preferred_channel",
+            field=models.CharField(
+                blank=True,
+                choices=[("SMS", "SMS"), ("VOICE", "Voice"), ("WHATSAPP", "WhatsApp"), ("RCS", "RCS")],
+                help_text="Preferred communication channel",
+                max_length=10,
+                null=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='tenantcontact',
-            name='source',
-            field=models.CharField(choices=[('MANUAL', 'Manual'), ('WHATSAPP', 'WhatsApp'), ('TELEGRAM', 'Telegram'), ('VOICE', 'Voice'), ('SMS', 'SMS'), ('RCS', 'RCS')], default='MANUAL', max_length=20),
+            model_name="tenantcontact",
+            name="source",
+            field=models.CharField(
+                choices=[
+                    ("MANUAL", "Manual"),
+                    ("WHATSAPP", "WhatsApp"),
+                    ("TELEGRAM", "Telegram"),
+                    ("VOICE", "Voice"),
+                    ("SMS", "SMS"),
+                    ("RCS", "RCS"),
+                ],
+                default="MANUAL",
+                max_length=20,
+            ),
         ),
     ]

@@ -71,7 +71,9 @@ class TestSuggestionBuilder:
         assert action["dialAction"]["phoneNumber"] == "+14155550100"
 
     def test_view_location_structure(self):
-        suggestion = SuggestionBuilder.suggested_action_view_location("View Map", lat=37.7749, lng=-122.4194, label="SF")
+        suggestion = SuggestionBuilder.suggested_action_view_location(
+            "View Map", lat=37.7749, lng=-122.4194, label="SF"
+        )
         action = suggestion["action"]
         latlong = action["viewLocationAction"]["latLong"]
         assert latlong["latitude"] == 37.7749

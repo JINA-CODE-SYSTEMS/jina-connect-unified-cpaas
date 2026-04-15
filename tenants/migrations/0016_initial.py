@@ -4,20 +4,45 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0015_alter_tenantmedia_platform'),
+        ("tenants", "0015_alter_tenantmedia_platform"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tenantmedia',
-            name='platform',
-            field=models.CharField(choices=[('WHATSAPP', 'WhatsApp'), ('TELEGRAM', 'Telegram'), ('SMS', 'SMS'), ('RCS', 'RCS'), ('EMAIL', 'Email'), ('VOICE', 'Voice')], default='WHATSAPP', max_length=50),
+            model_name="tenantmedia",
+            name="platform",
+            field=models.CharField(
+                choices=[
+                    ("WHATSAPP", "WhatsApp"),
+                    ("TELEGRAM", "Telegram"),
+                    ("SMS", "SMS"),
+                    ("RCS", "RCS"),
+                    ("EMAIL", "Email"),
+                    ("VOICE", "Voice"),
+                ],
+                default="WHATSAPP",
+                max_length=50,
+            ),
         ),
         migrations.AlterField(
-            model_name='tenantwaapp',
-            name='bsp',
-            field=models.CharField(choices=[('GUPSHUP', 'Gupshup'), ('META', 'Meta'), ('TWILIO', 'Twilio'), ('MESSAGEBIRD', 'MessageBird'), ('WATI', 'WATI'), ('AISENSY', 'Aisensy'), ('INTERAKT', 'Interakt'), ('YELLOW_AI', 'Yellow.ai'), ('GOOGLE_RBM', 'Google RBM'), ('META_RCS', 'Meta RCS')], default='GUPSHUP', max_length=20),
+            model_name="tenantwaapp",
+            name="bsp",
+            field=models.CharField(
+                choices=[
+                    ("GUPSHUP", "Gupshup"),
+                    ("META", "Meta"),
+                    ("TWILIO", "Twilio"),
+                    ("MESSAGEBIRD", "MessageBird"),
+                    ("WATI", "WATI"),
+                    ("AISENSY", "Aisensy"),
+                    ("INTERAKT", "Interakt"),
+                    ("YELLOW_AI", "Yellow.ai"),
+                    ("GOOGLE_RBM", "Google RBM"),
+                    ("META_RCS", "Meta RCS"),
+                ],
+                default="GUPSHUP",
+                max_length=20,
+            ),
         ),
     ]

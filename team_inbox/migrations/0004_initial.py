@@ -4,15 +4,23 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('team_inbox', '0003_alter_messages_platform'),
+        ("team_inbox", "0003_alter_messages_platform"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='messages',
-            name='platform',
-            field=models.CharField(choices=[('WHATSAPP', 'WhatsApp'), ('TELEGRAM', 'Telegram'), ('SMS', 'SMS'), ('RCS', 'RCS'), ('VOICE', 'Voice')], max_length=10),
+            model_name="messages",
+            name="platform",
+            field=models.CharField(
+                choices=[
+                    ("WHATSAPP", "WhatsApp"),
+                    ("TELEGRAM", "Telegram"),
+                    ("SMS", "SMS"),
+                    ("RCS", "RCS"),
+                    ("VOICE", "Voice"),
+                ],
+                max_length=10,
+            ),
         ),
     ]

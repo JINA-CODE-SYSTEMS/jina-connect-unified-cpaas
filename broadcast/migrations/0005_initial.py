@@ -4,20 +4,27 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('broadcast', '0004_url_tracking_models'),
+        ("broadcast", "0004_url_tracking_models"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='broadcast',
-            name='platform',
-            field=models.CharField(choices=[('WHATSAPP', 'WhatsApp'), ('TELEGRAM', 'Telegram'), ('SMS', 'SMS'), ('RCS', 'RCS')], default='WHATSAPP', max_length=20),
+            model_name="broadcast",
+            name="platform",
+            field=models.CharField(
+                choices=[("WHATSAPP", "WhatsApp"), ("TELEGRAM", "Telegram"), ("SMS", "SMS"), ("RCS", "RCS")],
+                default="WHATSAPP",
+                max_length=20,
+            ),
         ),
         migrations.AlterField(
-            model_name='historicalbroadcast',
-            name='platform',
-            field=models.CharField(choices=[('WHATSAPP', 'WhatsApp'), ('TELEGRAM', 'Telegram'), ('SMS', 'SMS'), ('RCS', 'RCS')], default='WHATSAPP', max_length=20),
+            model_name="historicalbroadcast",
+            name="platform",
+            field=models.CharField(
+                choices=[("WHATSAPP", "WhatsApp"), ("TELEGRAM", "Telegram"), ("SMS", "SMS"), ("RCS", "RCS")],
+                default="WHATSAPP",
+                max_length=20,
+            ),
         ),
     ]

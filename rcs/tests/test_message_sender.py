@@ -232,7 +232,9 @@ class TestRCSSMSFallback:
         monkeypatch.setattr("rcs.services.message_sender.check_rate_limit", lambda key: True)
         monkeypatch.setattr(
             "rcs.services.message_sender.get_rcs_provider",
-            lambda app: SimpleNamespace(send_message=lambda **kw: RCSSendResult(success=True, provider="GOOGLE_RBM", message_id="ok")),
+            lambda app: SimpleNamespace(
+                send_message=lambda **kw: RCSSendResult(success=True, provider="GOOGLE_RBM", message_id="ok")
+            ),
         )
 
         called = {}
