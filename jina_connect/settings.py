@@ -112,6 +112,7 @@ INSTALLED_APPS = [
     "notifications",
     "telegram",
     "sms",
+    "rcs",
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
@@ -489,6 +490,12 @@ CRONJOBS = [
         "sms.cron.reset_daily_sms_counters",
         ">> " + os.path.join(BASE_DIR, "jina_cron_sms_daily_reset.log 2>&1"),
     ),
+    # Reset per-app RCS daily counters at midnight
+    (
+        "0 0 * * *",
+        "rcs.cron.reset_daily_rcs_counters",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_rcs_daily_reset.log 2>&1"),
+    ),
     # Example: Uncomment below to sync gupshup auth templates every 15 minutes
     # ("*/15 * * * *", "gupshup.cron.sync_gupshup_auth_templates", ">> " + os.path.join(BASE_DIR, "gupshup_sync.log 2>&1")),
 ]
@@ -524,6 +531,7 @@ PLATFORM_RATE_LIMITS = {
     "whatsapp": config("WHATSAPP_RATE_LIMIT", 100, cast=int),
     "telegram": config("TELEGRAM_RATE_LIMIT", 30, cast=int),
     "sms": config("SMS_RATE_LIMIT", 100, cast=int),
+    "rcs": config("RCS_RATE_LIMIT", 300, cast=int),
     "email": config("EMAIL_RATE_LIMIT", 300, cast=int),
 }
 

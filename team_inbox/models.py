@@ -17,6 +17,7 @@ class MessagePlatformChoices(models.TextChoices):
     WHATSAPP = "WHATSAPP", "WhatsApp"
     TELEGRAM = "TELEGRAM", "Telegram"
     SMS = "SMS", "SMS"
+    RCS = "RCS", "RCS"
     VOICE = "VOICE", "Voice"
     # Canonical source: jina_connect.platform_choices.PlatformChoices
 

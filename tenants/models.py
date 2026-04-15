@@ -104,6 +104,8 @@ class BSPChoices(models.TextChoices):
     AISENSY = "AISENSY", "Aisensy"
     INTERAKT = "INTERAKT", "Interakt"
     YELLOW_AI = "YELLOW_AI", "Yellow.ai"
+    GOOGLE_RBM = "GOOGLE_RBM", "Google RBM"
+    META_RCS = "META_RCS", "Meta RCS"
 
 
 class TenantWAApp(BaseTenantModelForFilterUser):

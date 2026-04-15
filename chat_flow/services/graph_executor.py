@@ -1675,6 +1675,62 @@ def send_session_message(
 
             return result
 
+        # ── RCS branch ──────────────────────────────────────────────────────
+        if platform == "RCS":
+            from rcs.models import RCSApp
+            from rcs.services.message_sender import RCSMessageSender
+
+            rcs_app = RCSApp.objects.filter(tenant=contact.tenant, is_active=True).first()
+            if not rcs_app:
+                result["error"] = "No active RCS app found for tenant"
+                result["status"] = "failed"
+                return result
+
+            sender = RCSMessageSender(rcs_app)
+
+            message_content = node_data.get("message_content", "")
+            body_text = node_data.get("body", "") or message_content
+            buttons = node_data.get("buttons", [])
+            has_quick_reply = any(
+                (b.get("type", "QUICK_REPLY") or "").upper() in ("QUICK_REPLY", "QUICK-REPLY") for b in buttons
+            )
+
+            phone = str(contact.phone)
+
+            if has_quick_reply:
+                # Convert chatflow button format → RCS suggestion format
+                suggestions = []
+                for b in buttons:
+                    b_type = (b.get("type", "QUICK_REPLY") or "").upper()
+                    if b_type not in ("QUICK_REPLY", "QUICK-REPLY"):
+                        continue
+                    text_label = b.get("title") or b.get("text") or "Option"
+                    postback = b.get("id") or text_label
+                    suggestions.append({"type": "reply", "text": text_label[:25], "postbackData": postback})
+
+                send_result = sender.send_keyboard(
+                    chat_id=phone,
+                    text=body_text or "Please choose:",
+                    keyboard=suggestions,
+                    contact=contact,
+                )
+            else:
+                send_result = sender.send_text(
+                    chat_id=phone,
+                    text=body_text or message_content,
+                    contact=contact,
+                )
+
+            if send_result.get("success"):
+                result["success"] = True
+                result["status"] = "queued"
+                result["outgoing_message_id"] = send_result.get("message_id")
+            else:
+                result["status"] = "failed"
+                result["error"] = send_result.get("error") or "Failed to send RCS session message"
+
+            return result
+
         # Get the WA app for this tenant (first active app)
         from tenants.models import TenantWAApp
         from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage

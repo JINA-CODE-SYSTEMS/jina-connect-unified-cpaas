@@ -94,7 +94,7 @@ def send_message(
         text: The message text to send.
         channel: Channel — WHATSAPP (default), TELEGRAM, or SMS.
     """
-    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM", "SMS"}
+    _ALLOWED_CHANNELS = {"WHATSAPP", "TELEGRAM", "SMS", "RCS"}
     normalized = channel.strip().upper()
     if normalized not in _ALLOWED_CHANNELS:
         return {"error": f"Unsupported channel '{channel}'. Allowed: {', '.join(sorted(_ALLOWED_CHANNELS))}"}
@@ -103,6 +103,8 @@ def send_message(
         return _send_telegram_message(api_key, phone, text)
     if normalized == "SMS":
         return _send_sms_message(api_key, phone, text)
+    if normalized == "RCS":
+        return _send_rcs_message(api_key, phone, text)
 
     from contacts.models import TenantContact
     from wa.models import MessageDirection, MessageStatus, MessageType, WAMessage
@@ -268,3 +270,153 @@ def _send_sms_message(api_key: str, phone: str, text: str) -> dict:
             "channel": "SMS",
         }
     return {"error": result.get("error", "Failed to send SMS message.")}
+
+
+# ── RCS helpers & tools ───────────────────────────────────────────────────────
+
+
+def _send_rcs_message(api_key: str, phone: str, text: str) -> dict:
+    """Send a plain RCS text message (used by send_message channel=RCS)."""
+    from rcs.models import RCSApp
+    from rcs.services.message_sender import RCSMessageSender
+
+    tenant, _ = resolve_tenant(api_key)
+
+    rcs_app = RCSApp.objects.filter(tenant=tenant, is_active=True).first()
+    if not rcs_app:
+        return {"error": "No active RCS app configured for this tenant."}
+
+    sender = RCSMessageSender(rcs_app)
+    result = sender.send_text(chat_id=str(phone), text=text)
+
+    if result.get("success"):
+        return {
+            "message_id": result.get("message_id", ""),
+            "status": "SENT",
+            "phone": phone,
+            "channel": "RCS",
+        }
+    return {"error": result.get("error", "Failed to send RCS message.")}
+
+
+@mcp.tool()
+def send_rcs_message(
+    api_key: str,
+    phone: str,
+    text: str,
+    suggestions: Optional[list] = None,
+) -> dict:
+    """Send an RCS message with optional quick-reply suggestions.
+
+    Automatically falls back to SMS when the recipient device is not RCS-capable.
+
+    Args:
+        api_key: Your Jina Connect API key.
+        phone: Recipient phone in E.164 format (e.g. +919876543210).
+        text: Plain text body of the message.
+        suggestions: Optional list of quick-reply dicts, e.g.
+            [{"type": "reply", "text": "Yes", "postbackData": "yes"}].
+    """
+    from rcs.models import RCSApp
+    from rcs.services.message_sender import RCSMessageSender
+
+    tenant, _ = resolve_tenant(api_key)
+
+    rcs_app = RCSApp.objects.filter(tenant=tenant, is_active=True).first()
+    if not rcs_app:
+        return {"error": "No active RCS app configured for this tenant."}
+
+    sender = RCSMessageSender(rcs_app)
+
+    if suggestions:
+        result = sender.send_keyboard(
+            chat_id=str(phone),
+            text=text,
+            keyboard=suggestions,
+        )
+    else:
+        result = sender.send_text(chat_id=str(phone), text=text)
+
+    if result.get("success"):
+        return {
+            "message_id": result.get("message_id", ""),
+            "status": "SENT",
+            "phone": phone,
+            "channel": "RCS",
+            "fallback_used": result.get("fallback_used", False),
+        }
+    return {"error": result.get("error", "Failed to send RCS message.")}
+
+
+@mcp.tool()
+def check_rcs_capability(
+    api_key: str,
+    phone: str,
+) -> dict:
+    """Check whether a phone number is RCS-capable on Google RBM.
+
+    Args:
+        api_key: Your Jina Connect API key.
+        phone: Phone number to check in E.164 format (e.g. +919876543210).
+    """
+    from rcs.models import RCSApp
+    from rcs.providers import get_rcs_provider
+    from rcs.services.capability_checker import RCSCapabilityChecker
+
+    tenant, _ = resolve_tenant(api_key)
+
+    rcs_app = RCSApp.objects.filter(tenant=tenant, is_active=True).first()
+    if not rcs_app:
+        return {"error": "No active RCS app configured for this tenant."}
+
+    provider = get_rcs_provider(rcs_app)
+    checker = RCSCapabilityChecker(provider)
+    capability = checker.get_capability(str(phone))
+
+    return {
+        "phone": phone,
+        "is_capable": capability is not None,
+        "provider": rcs_app.provider,
+        "features": capability.features if capability else [],
+    }
+
+
+@mcp.tool()
+def get_rcs_message_status(
+    api_key: str,
+    message_id: str,
+) -> dict:
+    """Get the delivery status of an RCS outbound message.
+
+    Args:
+        api_key: Your Jina Connect API key.
+        message_id: UUID returned by send_rcs_message or send_message (RCS).
+    """
+    from rcs.models import RCSOutboundMessage
+
+    tenant, _ = resolve_tenant(api_key)
+
+    try:
+        msg = RCSOutboundMessage.objects.select_related("contact").get(
+            id=message_id,
+            rcs_app__tenant=tenant,
+        )
+    except RCSOutboundMessage.DoesNotExist:
+        return {"error": f"RCS message {message_id} not found."}
+
+    result = {
+        "message_id": str(msg.id),
+        "status": msg.status,
+        "message_type": msg.message_type,
+        "phone": str(msg.to_phone),
+        "provider": msg.rcs_app.provider if msg.rcs_app else None,
+        "sent_at": msg.sent_at.isoformat() if msg.sent_at else None,
+        "delivered_at": msg.delivered_at.isoformat() if msg.delivered_at else None,
+        "read_at": msg.read_at.isoformat() if msg.read_at else None,
+        "fallback_used": msg.fallback_sms_id is not None,
+    }
+
+    if hasattr(msg, "error_message") and msg.error_message:
+        result["error_message"] = msg.error_message
+
+    return result

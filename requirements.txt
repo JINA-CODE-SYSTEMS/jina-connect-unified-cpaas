@@ -36,6 +36,7 @@ python-magic==0.4.27
 django-storages==1.14.4
 boto3==1.35.0
 google-cloud-storage==2.18.0
+google-auth>=2.0.0
 django-silk
 django-encrypted-model-fields==0.6.5
 reportlab>=4.0

@@ -18,6 +18,7 @@ class PreferredChannelChoices(models.TextChoices):
     SMS = "SMS", "SMS"
     VOICE = "VOICE", "Voice"
     WHATSAPP = "WHATSAPP", "WhatsApp"
+    RCS = "RCS", "RCS"
 
 
 User = get_user_model()
@@ -30,6 +31,7 @@ class ContactSource(models.TextChoices):
     TELEGRAM = "TELEGRAM", "Telegram"
     VOICE = "VOICE", "Voice"
     SMS = "SMS", "SMS"
+    RCS = "RCS", "RCS"
     # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 

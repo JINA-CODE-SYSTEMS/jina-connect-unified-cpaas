@@ -234,6 +234,7 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
             BroadcastPlatformChoices.WHATSAPP: MessagePlatformChoices.WHATSAPP,
             BroadcastPlatformChoices.TELEGRAM: MessagePlatformChoices.TELEGRAM,
             BroadcastPlatformChoices.SMS: MessagePlatformChoices.SMS,
+            BroadcastPlatformChoices.RCS: MessagePlatformChoices.RCS,
         }
         platform = platform_map.get(broadcast.platform, MessagePlatformChoices.WHATSAPP)
 
@@ -924,11 +925,83 @@ def handle_sms_message(message):
         return {"success": False, "error": error_msg}
 
 
+def handle_rcs_message(message):
+    """
+    Handle RCS message sending via RCSMessageSender.
+
+    Resolves the active RCSApp for the tenant, builds a RCSMessageSender,
+    and dispatches based on broadcast content (text, media, rich card).
+    Falls back to SMS automatically when the recipient device is not RCS-capable
+    (handled inside RCSMessageSender._send_with_fallback).
+
+    Args:
+        message (BroadcastMessage): The message to send
+
+    Returns:
+        dict: Send result with success status and details
+    """
+    try:
+        from rcs.models import RCSApp
+        from rcs.services.message_sender import RCSMessageSender
+
+        tenant = message.broadcast.tenant
+        contact = message.contact
+
+        rcs_app = RCSApp.objects.filter(tenant=tenant, is_active=True).first()
+        if not rcs_app:
+            return {"success": False, "error": f"No active RCS app configured for tenant {tenant.pk}"}
+
+        if not contact.phone:
+            return {"success": False, "error": f"Contact {contact.pk} has no phone number"}
+
+        sender = RCSMessageSender(rcs_app)
+
+        data = message.broadcast.placeholder_data or {}
+        text = message.rendered_content or data.get("message") or data.get("text") or data.get("body", "")
+        media_url = data.get("media_url") or data.get("image_url")
+        media_type = data.get("media_type", "image")
+
+        phone = str(contact.phone)
+
+        if media_url:
+            result = sender.send_media(
+                chat_id=phone,
+                media_type=media_type,
+                media_url=media_url,
+                caption=text or None,
+                contact=contact,
+                broadcast_message=message,
+            )
+        elif text:
+            result = sender.send_text(
+                chat_id=phone,
+                text=text,
+                contact=contact,
+                broadcast_message=message,
+            )
+        else:
+            return {"success": False, "error": "Broadcast has no text or media content to send via RCS"}
+
+        logger.info(
+            "RCS broadcast message %s to %s: success=%s",
+            message.pk,
+            phone,
+            result.get("success"),
+        )
+        return result
+
+    except Exception as e:
+        error_msg = f"RCS sending failed: {str(e)}"
+        logger.exception(error_msg)
+        return {"success": False, "error": error_msg}
+
+
 # ── Populate platform handler registry (must come after function definitions)
 _PLATFORM_HANDLERS.update(
     {
         "WHATSAPP": handle_whatsapp_message,
         "TELEGRAM": handle_telegram_message,
         "SMS": handle_sms_message,
+        "RCS": handle_rcs_message,
     }
 )

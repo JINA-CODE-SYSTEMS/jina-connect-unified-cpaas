@@ -12,5 +12,6 @@ class PlatformChoices(models.TextChoices):
     WHATSAPP = "WHATSAPP", "WhatsApp"
     TELEGRAM = "TELEGRAM", "Telegram"
     SMS = "SMS", "SMS"
+    RCS = "RCS", "RCS"
     EMAIL = "EMAIL", "Email"
     VOICE = "VOICE", "Voice"
