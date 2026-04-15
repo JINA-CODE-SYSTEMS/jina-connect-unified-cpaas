@@ -360,6 +360,7 @@ def check_rcs_capability(
         phone: Phone number to check in E.164 format (e.g. +919876543210).
     """
     from rcs.models import RCSApp
+    from rcs.providers import get_rcs_provider
     from rcs.services.capability_checker import RCSCapabilityChecker
 
     tenant, _ = resolve_tenant(api_key)
@@ -368,7 +369,8 @@ def check_rcs_capability(
     if not rcs_app:
         return {"error": "No active RCS app configured for this tenant."}
 
-    checker = RCSCapabilityChecker(rcs_app)
+    provider = get_rcs_provider(rcs_app)
+    checker = RCSCapabilityChecker(provider)
     capability = checker.get_capability(str(phone))
 
     return {
@@ -411,7 +413,7 @@ def get_rcs_message_status(
         "sent_at": msg.sent_at.isoformat() if msg.sent_at else None,
         "delivered_at": msg.delivered_at.isoformat() if msg.delivered_at else None,
         "read_at": msg.read_at.isoformat() if msg.read_at else None,
-        "fallback_used": msg.fallback_sms_message is not None,
+        "fallback_used": msg.fallback_sms_id is not None,
     }
 
     if hasattr(msg, "error_message") and msg.error_message:

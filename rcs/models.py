@@ -131,7 +131,7 @@ class RCSOutboundMessage(models.Model):
     read_at = models.DateTimeField(null=True, blank=True)
     failed_at = models.DateTimeField(null=True, blank=True)
 
-    fallback_sms_id = models.ForeignKey(
+    fallback_sms = models.ForeignKey(
         "sms.SMSOutboundMessage",
         on_delete=models.SET_NULL,
         null=True,
