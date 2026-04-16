@@ -13,7 +13,10 @@ class SMSAppViewSet(viewsets.ModelViewSet):
         return SMSApp.objects.filter(tenant__tenant_users__user=self.request.user).order_by("-created_at")
 
     def perform_create(self, serializer):
-        tenant_user = self.request.user.tenant_users.first()
+        tenant_user = self.request.user.user_tenants.first()
         if not tenant_user:
             raise PermissionDenied("User has no associated tenant.")
-        serializer.save(tenant=tenant_user.tenant)
+        app = serializer.save(tenant=tenant_user.tenant)
+        # Auto-generate webhook URLs if not already set
+        if not app.webhook_url or not app.dlr_webhook_url:
+            app.save()

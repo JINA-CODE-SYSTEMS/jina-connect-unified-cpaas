@@ -333,6 +333,16 @@ class HostWalletViewSet(viewsets.ViewSet):
         from wa.models import TemplateStatus, WATemplate
 
         tenant = request.user.tenant
+        if tenant is None:
+            return Response(
+                {
+                    "alerts": [],
+                    "summary": {"critical": 0, "warning": 0, "info": 0, "total": 0},
+                    "detail": "No active tenant is associated with this user.",
+                },
+                status=status.HTTP_200_OK,
+            )
+
         now = timezone.now()
         alerts = []
 

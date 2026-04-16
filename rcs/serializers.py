@@ -13,9 +13,7 @@ class RCSAppSerializer(serializers.ModelSerializer):
     class Meta:
         model = RCSApp
         fields = "__all__"
-        extra_kwargs = {
-            "webhook_client_token": {"write_only": True},
-        }
+        read_only_fields = ["tenant", "webhook_client_token", "webhook_url", "created_at", "updated_at"]
 
     def to_internal_value(self, data):
         ret = super().to_internal_value(data)

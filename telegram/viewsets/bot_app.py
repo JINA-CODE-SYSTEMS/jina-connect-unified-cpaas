@@ -6,6 +6,7 @@ import logging
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -33,8 +34,10 @@ class TelegramBotAppViewSet(viewsets.ModelViewSet):
         """Create the bot app, auto-populate bot_username and bot_user_id."""
         from telegram.services.bot_client import TelegramBotClient
 
-        tenant = self.request.user.tenant_users.first().tenant
-        bot_app = serializer.save(tenant=tenant)
+        tenant_user = self.request.user.user_tenants.first()
+        if not tenant_user:
+            raise PermissionDenied("User has no associated tenant.")
+        bot_app = serializer.save(tenant=tenant_user.tenant)
 
         # Populate bot info from getMe
         try:

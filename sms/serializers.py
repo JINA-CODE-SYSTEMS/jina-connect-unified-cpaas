@@ -12,9 +12,7 @@ class SMSAppSerializer(serializers.ModelSerializer):
     class Meta:
         model = SMSApp
         fields = "__all__"
-        extra_kwargs = {
-            "webhook_secret": {"write_only": True},
-        }
+        read_only_fields = ["tenant", "webhook_secret", "webhook_url", "dlr_webhook_url", "created_at", "updated_at"]
 
     def to_internal_value(self, data):
         ret = super().to_internal_value(data)
