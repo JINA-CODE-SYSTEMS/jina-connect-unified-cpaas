@@ -266,7 +266,7 @@ The hosted product remains. The open source is real. Both use the same core.
 
 ## Links
 
-- [Documentation](https://docs.jinaconnect.com) *(coming soon)*
+- [Documentation](https://jina-code-systems.github.io/jina-connect-unified-cpaas/)
 - [Hosted product](https://jinaconnect.com) *(coming soon)*
 - [Discord community](https://discord.gg/jbN5cwKR)
 - [Discussions](../../discussions) — questions, ideas, show-and-tell
