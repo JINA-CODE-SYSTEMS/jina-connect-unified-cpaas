@@ -1,0 +1,158 @@
+---
+title: Environment Variables
+description: Complete reference for all configuration variables.
+sidebar:
+  order: 3
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+All configuration is done via environment variables. Copy `.env.example` to `.env` and customize.
+
+## Core
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEBUG` | `False` | Django debug mode. **Never** set `True` in production |
+| `SECRET_KEY` | `change-me-in-production` | Django secret key for signing. Must be unique and random |
+| `FIELD_ENCRYPTION_KEY` | — | Fernet key for encrypting sensitive model fields (API tokens, credentials). **Required** |
+| `BASE_URL` | `http://localhost:8000` | Backend base URL used for webhook callbacks |
+| `FRONTEND_URL` | `http://localhost:3000` | Frontend application URL |
+| `SITE_URL` | `http://localhost:8000` | Public URL for webhook registration |
+
+<Aside type="caution">
+  `FIELD_ENCRYPTION_KEY` must be a valid Fernet key. Generate one with:
+  ```bash
+  python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  ```
+  Changing this key after data has been encrypted will make existing encrypted fields unreadable.
+</Aside>
+
+## Database
+
+| Variable | Default | Description |
+|---|---|---|
+| `DB_NAME` | `jc6` | PostgreSQL database name |
+| `DB_USER` | `postgres` | Database user |
+| `DB_PASSWORD` | `postgres` | Database password |
+| `DB_HOST` | `localhost` | Database host |
+
+## Redis & Celery
+
+| Variable | Default | Description |
+|---|---|---|
+| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Celery message broker URL |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis URL for Django Channels and cache |
+
+## Authentication
+
+| Variable | Default | Description |
+|---|---|---|
+| `ACCESS_TOKEN_LIFETIME` | `90` | JWT access token lifetime in days |
+
+<Aside type="note">
+  Refresh tokens last 180 days (2× the access token lifetime). Both use HS256 signing.
+</Aside>
+
+## Email (SMTP)
+
+| Variable | Default | Description |
+|---|---|---|
+| `EMAIL_BACKEND` | `django.core.mail.backends.smtp.EmailBackend` | Django email backend class |
+| `EMAIL_HOST` | `smtp.gmail.com` | SMTP server host |
+| `EMAIL_PORT` | `587` | SMTP port |
+| `EMAIL_USE_TLS` | `True` | Enable TLS |
+| `EMAIL_HOST_USER` | — | SMTP username |
+| `EMAIL_HOST_PASSWORD` | — | SMTP app password |
+| `DEFAULT_FROM_EMAIL` | `Jina Connect <noreply@jinaconnect.com>` | Default sender address |
+
+## Storage
+
+| Variable | Default | Description |
+|---|---|---|
+| `STORAGE_BACKEND` | `local` | Storage backend: `local`, `s3`, or `gcs` |
+
+### S3 Storage (when `STORAGE_BACKEND=s3`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | — | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | — | AWS secret key |
+| `AWS_STORAGE_BUCKET_NAME` | — | S3 bucket name |
+| `AWS_S3_REGION_NAME` | `ap-south-1` | AWS region |
+
+### GCS Storage (when `STORAGE_BACKEND=gcs`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `GS_BUCKET_NAME` | — | GCS bucket name |
+| `GS_PROJECT_ID` | — | GCP project ID |
+
+## WhatsApp
+
+| Variable | Default | Description |
+|---|---|---|
+| `WHATSAPP_ENABLED` | `False` | Enable WhatsApp channel |
+| `WHATSAPP_API_TOKEN` | — | WhatsApp API token |
+| `META_PERM_TOKEN` | — | Meta permanent access token |
+| `META_APP_SECRET` | — | Meta app secret for webhook signature verification |
+| `META_WEBHOOK_VERIFY_TOKEN` | — | Token for Meta webhook URL verification |
+| `GUPSHUP_BASE_URL` | — | Gupshup API base URL |
+| `GUPSHUP_EMAIL` | — | Gupshup account email |
+| `GUPSHUP_PASSWORD` | — | Gupshup account password |
+| `DEFAULT_API_URL` | — | Default API URL for WhatsApp operations |
+
+## Payments (Razorpay)
+
+| Variable | Default | Description |
+|---|---|---|
+| `RAZORPAY_KEY_ID` | — | Razorpay API key ID |
+| `RAZORPAY_KEY_SECRET` | — | Razorpay API secret |
+| `RAZORPAY_WEBHOOK_SECRET` | — | Razorpay webhook signature secret |
+| `RAZORPAY_URL` | `https://api.razorpay.com/v1/` | Razorpay API base URL |
+
+## Broadcast
+
+| Variable | Default | Description |
+|---|---|---|
+| `BROADCAST_BATCH_SIZE` | `50` | Number of contacts per broadcast batch |
+| `BROADCAST_BATCH_DELAY` | `5` | Seconds between batch sends |
+| `BROADCAST_MAX_RETRIES` | `3` | Max retries for failed message delivery |
+| `BROADCAST_CLEANUP_DAYS` | `30` | Days to retain broadcast analytics data |
+| `BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES` | `0.05` | Window (minutes) during which a broadcast can be cancelled |
+
+## WebSocket
+
+| Variable | Default | Description |
+|---|---|---|
+| `WEBSOCKET_ACCEPT_ALL` | `True` | Accept WebSocket connections from all origins |
+| `WEBSOCKET_TOKEN_EXPIRY` | `3600` | WebSocket auth token expiry in seconds |
+
+## Rate Limits
+
+Configured in `settings.py`. Override via environment if needed.
+
+| Channel | Default | Description |
+|---|---|---|
+| `WHATSAPP_RATE_LIMIT` | `100/min` | WhatsApp messages per minute |
+| `TELEGRAM_RATE_LIMIT` | `30/min` | Telegram messages per minute |
+| `SMS_RATE_LIMIT` | `100/min` | SMS messages per minute |
+| `RCS_RATE_LIMIT` | `300/min` | RCS messages per minute |
+| `EMAIL_RATE_LIMIT` | `300/min` | Email messages per minute |
+
+## Mobile Deep Links
+
+| Variable | Default | Description |
+|---|---|---|
+| `APPLE_TEAM_ID` | `XXXXXXXXXX` | Apple Team ID |
+| `IOS_BUNDLE_ID` | `com.jinacode.jinaconnect` | iOS bundle identifier |
+| `ANDROID_PACKAGE_NAME` | `com.jinacode.jinaconnect` | Android package name |
+| `MOBILE_APP_SCHEME` | `jinaconnect` | Deep link URL scheme |
+
+## Miscellaneous
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPEN_EXCHANGE_RATES_APP_ID` | — | API key for currency exchange rates |
+| `LOG_DIR` | — | Directory for log files |
+| `TRANSACTION_ID_PREFIX` | — | Prefix for transaction IDs |

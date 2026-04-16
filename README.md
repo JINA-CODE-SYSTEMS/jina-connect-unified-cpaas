@@ -5,6 +5,8 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](docker-compose.yml)
 [![MCP](https://img.shields.io/badge/MCP-ready-purple.svg)](#mcp-server)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2.svg?logo=discord&logoColor=white)](https://discord.gg/jbN5cwKR)
+[![Twitter](https://img.shields.io/badge/Twitter-Follow-1DA1F2.svg?logo=x&logoColor=white)](https://x.com/tryjinaconnect)
 
 ---
 
@@ -266,10 +268,10 @@ The hosted product remains. The open source is real. Both use the same core.
 
 - [Documentation](https://docs.jinaconnect.com) *(coming soon)*
 - [Hosted product](https://jinaconnect.com) *(coming soon)*
-- [Discord community](https://discord.gg/jinaconnect) *(coming soon)*
+- [Discord community](https://discord.gg/jbN5cwKR)
 - [Discussions](../../discussions) — questions, ideas, show-and-tell
 - [Issues](../../issues) — bugs and feature requests
-- [Twitter/X](https://twitter.com/jinaconnect) *(coming soon)*
+- [Twitter/X](https://x.com/tryjinaconnect)
 
 ---
 

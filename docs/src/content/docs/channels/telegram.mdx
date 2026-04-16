@@ -1,0 +1,96 @@
+---
+title: Telegram
+description: Telegram Bot API integration — per-tenant bots with webhook support.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+Each tenant can register their own Telegram bot. Messages are sent via the Telegram Bot API, and incoming messages are received through per-bot webhooks.
+
+## Setup
+
+<Steps>
+
+1. **Create a Telegram bot** via [@BotFather](https://t.me/BotFather)
+
+   - Send `/newbot` to BotFather
+   - Follow prompts to get your `bot_token`
+
+2. **Register the bot in Jina Connect**
+
+   ```bash
+   curl -X POST http://localhost:8000/telegram/v1/bots/ \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "My Support Bot",
+       "bot_token": "123456:ABC-DEF1234...",
+       "daily_limit": 1000
+     }'
+   ```
+
+   The response includes a `bot_app_id` (UUID).
+
+3. **Webhook is auto-registered**
+
+   On creation, Jina Connect sets the Telegram webhook to:
+   ```
+   https://your-domain.com/telegram/v1/webhooks/{bot_app_id}/
+   ```
+
+</Steps>
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/telegram/v1/bots/` | List all tenant bots |
+| `POST` | `/telegram/v1/bots/` | Register a new bot |
+| `GET` | `/telegram/v1/bots/{id}/` | Get bot details |
+| `PUT` | `/telegram/v1/bots/{id}/` | Update bot config |
+| `DELETE` | `/telegram/v1/bots/{id}/` | Remove bot |
+| `GET` | `/telegram/v1/webhook-events/` | List webhook events |
+| `POST` | `/telegram/v1/webhooks/{bot_app_id}/` | Webhook endpoint (Telegram calls this) |
+
+## Sending Messages
+
+Messages are sent through the message sender service (`telegram/services/message_sender.py`):
+
+```bash
+# Via MCP tool (simplest)
+# Use the send_message tool with channel="TELEGRAM"
+
+# Via broadcast
+curl -X POST http://localhost:8000/broadcast/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Telegram Announcement",
+    "platform": "TELEGRAM",
+    "message_text": "Hello from Jina Connect!",
+    "recipients": ["contact-uuid-1", "contact-uuid-2"]
+  }'
+```
+
+## Rate Limits
+
+| Setting | Default | Description |
+|---|---|---|
+| `TELEGRAM_RATE_LIMIT` | `30/min` | Global rate limit |
+| `TELEGRAM_MAX_RETRIES` | `3` | Max retry attempts |
+| `TELEGRAM_REQUEST_TIMEOUT` | `30` | Request timeout in seconds |
+| `daily_limit` (per bot) | Configurable | Max messages per day per bot |
+
+## Contact Linking
+
+When a Telegram user messages your bot, their `telegram_chat_id` and `telegram_username` are automatically stored on the `TenantContact` record. This enables:
+
+- Sending messages to known Telegram contacts
+- Cross-channel contact identity (same contact across WhatsApp + Telegram)
+- Team inbox conversations across channels
+
+<Aside type="note">
+  Bot tokens are encrypted at rest using `django-encrypted-model-fields`. They are never exposed in API responses.
+</Aside>

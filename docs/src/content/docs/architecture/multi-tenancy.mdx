@@ -1,0 +1,119 @@
+---
+title: Multi-Tenancy
+description: How tenant isolation, RBAC, and API keys work.
+sidebar:
+  order: 3
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Tenant Model
+
+Every resource in Jina Connect is scoped to a **Tenant** — an isolated organization. Tenants have:
+
+| Field | Description |
+|---|---|
+| `name` | Organization name |
+| `description` | Optional description |
+| `wallet` | Credit balance for messaging |
+| `country` | ISO country code |
+| `state` | ISO state code |
+| `vertical` | Industry classification (26 choices: healthcare, education, fintech, etc.) |
+
+## Tenant Isolation
+
+All querysets are automatically filtered by tenant. The pattern used across the codebase:
+
+```python
+class TenantScopedViewSet(ModelViewSet):
+    def get_queryset(self):
+        tenant = self.request.user.tenant_user.tenant
+        return self.model.objects.filter(tenant=tenant)
+```
+
+Resources are **never** accessible across tenants. This applies to contacts, templates, messages, broadcasts, media, tags, and all other models.
+
+## RBAC (Role-Based Access Control)
+
+### Default Roles
+
+Every new tenant gets 5 system roles (cannot be deleted):
+
+| Role | Priority | Permissions |
+|---|---|---|
+| **Owner** | 0 | Full access to everything |
+| **Admin** | 10 | Everything except tenant deletion and owner management |
+| **Manager** | 20 | Broadcast, contacts, templates, team inbox management |
+| **Agent** | 30 | Team inbox, contact viewing, message sending |
+| **Viewer** | 40 | Read-only access to all resources |
+
+### Custom Roles
+
+Tenants can create custom roles with granular permissions:
+
+```python
+# Permission format: "app.action"
+RolePermission.objects.create(
+    role=custom_role,
+    permission_key="broadcast.create",
+    allowed=True
+)
+```
+
+Permission keys follow the pattern `{app}.{action}`:
+- `broadcast.create`, `broadcast.view`, `broadcast.delete`
+- `contacts.create`, `contacts.view`, `contacts.edit`, `contacts.delete`
+- `templates.create`, `templates.view`, `templates.edit`
+- `team_inbox.view`, `team_inbox.assign`, `team_inbox.close`
+- `settings.view`, `settings.edit`
+
+### Role Priority
+
+Lower priority number = higher authority. A user with priority 20 can manage users with priority 30+ but not those with priority 10 or lower.
+
+## Tenant Users
+
+Users are linked to tenants via `TenantUser`:
+
+```
+User ←→ TenantUser ←→ Tenant
+              ↓
+         TenantRole
+```
+
+A single `User` can belong to multiple tenants (multi-org support), each with a different role.
+
+## API Keys
+
+`TenantAccessKey` provides API key authentication for:
+- MCP server tool access
+- External system integrations
+- Webhook subscriptions
+
+```python
+# API key resolves to (Tenant, TenantWAApp)
+tenant, wa_app = resolve_tenant(api_key)
+```
+
+Keys are generated per-tenant and can be rotated without affecting JWT auth.
+
+## Tenant-Scoped Resources
+
+Each tenant gets isolated instances of:
+
+| Resource | Model | Description |
+|---|---|---|
+| WhatsApp App | `TenantWAApp` | BSP config, credentials, pricing, daily limits |
+| Telegram Bots | `TelegramBotApp` | Bot tokens, webhook secrets |
+| SMS Apps | `SMSApp` | Provider config, sender ID, DLT fields |
+| RCS Apps | `RCSApp` | Provider config, agent ID, SMS fallback |
+| Contacts | `TenantContact` | Phone, name, tags, lead status, assignment |
+| Templates | `WATemplate` | Message templates with approval lifecycle |
+| Broadcasts | `Broadcast` | Campaigns with recipient lists |
+| Tags | `TenantTags` | Custom categorization labels |
+| Media | `TenantMedia` | Uploaded files with platform-specific handles |
+| Branding | `BrandingSettings` | Favicon, logos (singleton per tenant) |
+
+<Aside type="note">
+  Wallet credits are deducted per message sent. Each `TenantWAApp` defines pricing per message type. Transactions are logged in the `transaction` app.
+</Aside>

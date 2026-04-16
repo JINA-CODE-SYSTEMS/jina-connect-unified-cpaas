@@ -1,0 +1,159 @@
+---
+title: WhatsApp
+description: WhatsApp Business API integration — Meta Direct and Gupshup BSPs.
+---
+
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+Jina Connect supports WhatsApp Business API through two BSP (Business Solution Provider) adapters:
+
+| BSP | Adapter | API |
+|---|---|---|
+| **Meta Direct** | `MetaDirectAdapter` | Meta Graph API v18+ |
+| **Gupshup** | `GupshupAdapter` | Gupshup Enterprise API |
+
+## Setup
+
+<Steps>
+
+1. **Configure BSP credentials**
+
+   Set environment variables based on your BSP:
+
+   <Tabs>
+     <TabItem label="Meta Direct">
+       ```ini
+       WHATSAPP_ENABLED=True
+       META_PERM_TOKEN=your-permanent-access-token
+       META_APP_SECRET=your-app-secret
+       META_WEBHOOK_VERIFY_TOKEN=your-verify-token
+       ```
+     </TabItem>
+     <TabItem label="Gupshup">
+       ```ini
+       WHATSAPP_ENABLED=True
+       GUPSHUP_BASE_URL=https://api.gupshup.io
+       GUPSHUP_EMAIL=your-account-email
+       GUPSHUP_PASSWORD=your-account-password
+       ```
+     </TabItem>
+   </Tabs>
+
+2. **Create a WhatsApp App** via API or admin
+
+   ```bash
+   curl -X POST http://localhost:8000/wa/v2/apps/ \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "My WhatsApp App",
+       "bsp": "META",
+       "phone_number": "+1234567890",
+       "waba_id": "your-waba-id"
+     }'
+   ```
+
+3. **Register webhook URL** with your BSP
+
+   | BSP | Webhook URL |
+   |---|---|
+   | Meta | `https://your-domain.com/wa/v2/webhooks/meta/` |
+   | Gupshup | `https://your-domain.com/wa/v2/webhooks/gupshup/` |
+
+</Steps>
+
+## Templates
+
+WhatsApp requires pre-approved message templates for business-initiated conversations.
+
+### Template Lifecycle
+
+```
+DRAFT → PENDING → APPROVED → (PAUSED/DISABLED)
+                 → REJECTED
+                 → FAILED
+```
+
+### Template Types
+
+| Type | Description |
+|---|---|
+| `TEXT` | Plain text message |
+| `IMAGE` | Image with optional caption |
+| `VIDEO` | Video with optional caption |
+| `DOCUMENT` | Document attachment |
+| `CAROUSEL` | Multi-card carousel |
+| `CATALOG` | Product catalog |
+| `PRODUCT` | Single product |
+
+### Template Categories
+
+| Category | Description |
+|---|---|
+| `AUTHENTICATION` | OTPs and verification codes |
+| `MARKETING` | Promotional messages |
+| `UTILITY` | Transactional updates (order confirmations, shipping) |
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/wa/v2/templates/` | List all templates |
+| `POST` | `/wa/v2/templates/` | Create a new template |
+| `GET` | `/wa/v2/templates/{id}/` | Get template details |
+| `PUT` | `/wa/v2/templates/{id}/` | Update template |
+| `DELETE` | `/wa/v2/templates/{id}/` | Delete template |
+
+## Messages
+
+### Sending Messages
+
+```bash
+# Send a template message
+curl -X POST http://localhost:8000/wa/v2/messages/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+1234567890",
+    "template_name": "order_update",
+    "template_params": {"1": "ORD-123", "2": "shipped"}
+  }'
+```
+
+### Message Statuses
+
+```
+PENDING → SENT → DELIVERED → READ
+                            → FAILED
+```
+
+### Webhook Events
+
+Inbound messages and status updates arrive via webhooks:
+
+| Event Type | Description |
+|---|---|
+| `message` | Incoming message from user |
+| `status` | Delivery status update (sent, delivered, read, failed) |
+| `template_status` | Template approval status change |
+
+## Subscriptions
+
+Subscribe to webhook events programmatically:
+
+```bash
+curl -X POST http://localhost:8000/wa/v2/subscriptions/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Order Status Webhook",
+    "webhook_url": "https://your-app.com/webhooks/wa",
+    "events": ["message", "status"]
+  }'
+```
+
+<Aside type="tip">
+  Templates are automatically synced with your BSP every 2 minutes via a Celery cron job. You can also manually trigger a sync from the admin panel.
+</Aside>

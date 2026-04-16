@@ -1,0 +1,118 @@
+---
+title: Chat Flows API
+description: Visual conversation flow builder with nodes, edges, and analytics.
+---
+
+## Overview
+
+Chat Flows let you build automated conversation trees using a visual flow builder (ReactFlow-compatible). Flows define how your bots respond to user interactions — template messages trigger node transitions based on button clicks.
+
+## Endpoints
+
+### Flows
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/chat-flow/flows/` | List flows |
+| `POST` | `/chat-flow/flows/` | Create flow |
+| `GET` | `/chat-flow/flows/{id}/` | Get flow details |
+| `PUT` | `/chat-flow/flows/{id}/` | Update flow |
+| `DELETE` | `/chat-flow/flows/{id}/` | Delete flow |
+
+### Nodes
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/chat-flow/nodes/` | List nodes |
+| `POST` | `/chat-flow/nodes/` | Create node |
+| `PUT` | `/chat-flow/nodes/{id}/` | Update node |
+| `DELETE` | `/chat-flow/nodes/{id}/` | Delete node |
+
+### Edges
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/chat-flow/edges/` | List edges |
+| `POST` | `/chat-flow/edges/` | Create edge |
+| `DELETE` | `/chat-flow/edges/{id}/` | Delete edge |
+
+### Analytics
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/chat-flow/analytics/` | Flow execution analytics |
+
+## Create a Flow
+
+```bash
+curl -X POST http://localhost:8000/chat-flow/flows/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Welcome Flow",
+    "is_active": true,
+    "start_template": "template-uuid",
+    "flow_data": {
+      "nodes": [...],
+      "edges": [...]
+    }
+  }'
+```
+
+## Node Types
+
+| Type | Description |
+|---|---|
+| `template` | Send a WhatsApp template message |
+| `condition` | Branch based on user response |
+| `action` | Execute an action (assign, tag, etc.) |
+
+## Edge Connections
+
+Edges define transitions between nodes. Typically triggered by button clicks on template messages:
+
+```json
+{
+  "source_node": "node-1",
+  "target_node": "node-2",
+  "trigger": "button_click",
+  "trigger_value": "Track Order"
+}
+```
+
+## Flow Data Format
+
+The `flow_data` JSON field stores the complete ReactFlow graph:
+
+```json
+{
+  "nodes": [
+    {
+      "id": "node-1",
+      "type": "template",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "template_id": "uuid",
+        "template_name": "welcome_message"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "node-1",
+      "target": "node-2",
+      "label": "Button: Track Order"
+    }
+  ]
+}
+```
+
+## How Flows Execute
+
+1. Contact triggers the flow's `start_template`
+2. Template message is sent to the contact
+3. Contact clicks a button (quick reply)
+4. System matches the button text to an edge
+5. Next node executes (send template, evaluate condition, run action)
+6. Repeat until flow ends or times out

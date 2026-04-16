@@ -1,0 +1,182 @@
+---
+title: Quickstart
+description: Get Jina Connect running locally in under 5 minutes.
+sidebar:
+  order: 2
+---
+
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Prerequisites
+
+- **Docker** and **Docker Compose** v2+
+- **Git**
+
+<Aside type="tip">
+  If you prefer a bare-metal setup without Docker, see the [Production
+  Deployment](/deployment/production/) guide.
+</Aside>
+
+## Docker Compose (Recommended)
+
+<Steps>
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas.git
+   cd jina-connect-unified-cpaas
+   ```
+
+2. **Create your `.env` file**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   At minimum, set these values:
+
+   ```ini
+   SECRET_KEY=your-random-secret-key-here
+   FIELD_ENCRYPTION_KEY=your-fernet-key-here
+   DEBUG=True
+   ```
+
+   Generate a Fernet key for `FIELD_ENCRYPTION_KEY`:
+
+   ```bash
+   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+3. **Start all services**
+
+   ```bash
+   docker compose up -d
+   ```
+
+   This starts:
+   | Service | Port | Description |
+   |---|---|---|
+   | `web` | 8000 | Daphne ASGI server |
+   | `db` | 5432 | PostgreSQL 15 |
+   | `redis` | 6379 | Redis 7 (broker + channels) |
+   | `celery` | — | Background task worker |
+   | `celery-beat` | — | Periodic task scheduler |
+
+4. **Run migrations** (auto-runs on container start, or manually)
+
+   ```bash
+   docker compose exec web python manage.py migrate
+   ```
+
+5. **Create a superuser**
+
+   ```bash
+   docker compose exec web python manage.py createsuperuser
+   ```
+
+6. **Access the platform**
+
+   | URL | Description |
+   |---|---|
+   | `http://localhost:8000/admin/` | Django Admin |
+   | `http://localhost:8000/swagger/` | Swagger API Docs |
+   | `http://localhost:8000/redoc/` | ReDoc API Docs |
+   | `http://localhost:8000/version/` | Version info |
+
+</Steps>
+
+## Local Development (Without Docker)
+
+<Steps>
+
+1. **Clone and set up Python**
+
+   ```bash
+   git clone https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas.git
+   cd jina-connect-unified-cpaas
+   python3.12 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. **Install system dependencies**
+
+   <Tabs>
+     <TabItem label="macOS">
+       ```bash
+       brew install postgresql@15 redis
+       brew services start postgresql@15
+       brew services start redis
+       ```
+     </TabItem>
+     <TabItem label="Ubuntu/Debian">
+       ```bash
+       sudo apt install postgresql-15 redis-server
+       sudo systemctl start postgresql redis
+       ```
+     </TabItem>
+   </Tabs>
+
+3. **Create database**
+
+   ```bash
+   createdb jc6
+   ```
+
+4. **Configure environment**
+
+   ```bash
+   cp .env.example .env
+   # Edit .env — set SECRET_KEY, FIELD_ENCRYPTION_KEY, DB_* values
+   ```
+
+5. **Run migrations and start**
+
+   ```bash
+   python manage.py migrate
+   python manage.py createsuperuser
+   python manage.py runserver
+   ```
+
+6. **Start Celery worker** (separate terminal)
+
+   ```bash
+   celery -A jina_connect worker -l info
+   ```
+
+7. **Start Celery Beat** (separate terminal)
+
+   ```bash
+   celery -A jina_connect beat -l info
+   ```
+
+</Steps>
+
+## First Steps After Setup
+
+### 1. Create a Tenant
+
+Go to `http://localhost:8000/admin/` and create a `Tenant` with a name and industry.
+
+### 2. Get an API Key
+
+Create a `TenantAccessKey` in the admin panel. This key is used for API auth and MCP tool access.
+
+### 3. Get a JWT Token
+
+```bash
+curl -X POST http://localhost:8000/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@example.com", "password": "your-password"}'
+```
+
+### 4. Explore the API
+
+Open `http://localhost:8000/swagger/` to see all available endpoints, or head to the [API Reference](/api/authentication/).
+
+## What's Next?
+
+- [Architecture Overview](/architecture/overview/) — Understand the system design
+- [Channel Adapters](/architecture/channel-adapters/) — How multi-provider messaging works
+- [MCP Server Setup](/mcp/setup/) — Connect AI agents to your platform

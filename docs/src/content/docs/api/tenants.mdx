@@ -1,0 +1,122 @@
+---
+title: Tenants API
+description: Multi-tenant management, RBAC, media, tags, and branding.
+---
+
+## Tenant CRUD
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/` | List tenants for current user |
+| `POST` | `/tenants/` | Create a new tenant |
+| `GET` | `/tenants/{id}/` | Get tenant details |
+| `PUT` | `/tenants/{id}/` | Update tenant |
+| `DELETE` | `/tenants/{id}/` | Delete tenant |
+
+### Create Tenant
+
+```bash
+curl -X POST http://localhost:8000/tenants/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Acme Corp",
+    "description": "Main business tenant",
+    "vertical": "technology",
+    "country": "US",
+    "state": "CA"
+  }'
+```
+
+## Tenant Users
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/users/` | List users in tenant |
+| `POST` | `/tenants/users/` | Add user to tenant |
+| `PUT` | `/tenants/users/{id}/` | Update user's role |
+| `DELETE` | `/tenants/users/{id}/` | Remove user from tenant |
+
+## Roles & Permissions
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/roles/` | List roles |
+| `POST` | `/tenants/roles/` | Create custom role |
+| `PUT` | `/tenants/roles/{id}/` | Update role permissions |
+| `DELETE` | `/tenants/roles/{id}/` | Delete custom role |
+
+### Default Roles
+
+| Role | Priority | Can be Deleted |
+|---|---|---|
+| Owner | 0 | No |
+| Admin | 10 | No |
+| Manager | 20 | No |
+| Agent | 30 | No |
+| Viewer | 40 | No |
+
+## Member Management
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/members/` | List members with roles |
+| `POST` | `/tenants/members/` | Invite member |
+| `PUT` | `/tenants/members/{id}/` | Change member role |
+| `DELETE` | `/tenants/members/{id}/` | Remove member |
+
+## Tags
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/tenant-tags/` | List tenant tags |
+| `POST` | `/tenants/tenant-tags/` | Create tag |
+| `PUT` | `/tenants/tenant-tags/{id}/` | Update tag |
+| `DELETE` | `/tenants/tenant-tags/{id}/` | Delete tag |
+
+## Media
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/tenant-media/` | List uploaded media |
+| `POST` | `/tenants/tenant-media/` | Upload media file |
+| `GET` | `/tenants/tenant-media/{id}/` | Get media details |
+| `DELETE` | `/tenants/tenant-media/{id}/` | Delete media |
+
+Media files are stored based on the `STORAGE_BACKEND` setting (local, S3, or GCS). Each media file can have platform-specific handle IDs (e.g., WhatsApp media IDs).
+
+## Branding
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/branding/` | Get branding settings |
+| `PUT` | `/tenants/branding/{id}/` | Update branding |
+
+Branding is a singleton per tenant — favicon, primary logo, and secondary logo.
+
+## Host Wallet
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/host-wallet/` | Get wallet balance |
+
+## Gupshup Apps
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/tenant-gupshup/` | List Gupshup app configs |
+| `POST` | `/tenants/tenant-gupshup/` | Add Gupshup app |
+
+## Onboarding Options
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/onboarding-options/` | Get available industry verticals, countries |
+
+## WABA Info
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/tenants/waba-info/` | Get WhatsApp Business Account info |
+
+Returns account status, messaging tier, phone quality rating, throughput limit, and verified business name.

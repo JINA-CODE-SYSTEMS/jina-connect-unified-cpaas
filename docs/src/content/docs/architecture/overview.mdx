@@ -1,0 +1,150 @@
+---
+title: Architecture Overview
+description: System design, application structure, and data flow in Jina Connect.
+sidebar:
+  order: 1
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## High-Level Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     Clients                               │
+│  Mobile App  │  Web Dashboard  │  AI Agents (MCP)        │
+└──────┬───────┴────────┬────────┴────────┬────────────────┘
+       │                │                 │
+       ▼                ▼                 ▼
+┌──────────────────────────────────────────────────────────┐
+│                   Nginx (Reverse Proxy)                   │
+│            HTTP → Gunicorn   WS → Daphne                 │
+└──────┬───────────────────────────────┬───────────────────┘
+       │                               │
+       ▼                               ▼
+┌─────────────────┐          ┌──────────────────┐
+│  Django REST    │          │  Django Channels  │
+│  Framework      │          │  (WebSocket)      │
+│                 │          │                   │
+│  JWT Auth       │          │  TeamInboxConsumer │
+│  ViewSets       │          │  Real-time msgs   │
+│  Serializers    │          │                   │
+└──────┬──────────┘          └────────┬──────────┘
+       │                              │
+       ▼                              ▼
+┌──────────────────────────────────────────────────────────┐
+│                   Channel Registry                        │
+│  ┌──────────┐ ┌──────────┐ ┌──────┐ ┌──────┐           │
+│  │ WhatsApp │ │ Telegram │ │ SMS  │ │ RCS  │           │
+│  │ (Meta,   │ │          │ │(Twil,│ │(GRBM,│           │
+│  │ Gupshup) │ │          │ │MSG91,│ │MetaR)│           │
+│  │          │ │          │ │F2SMS)│ │      │           │
+│  └──────────┘ └──────────┘ └──────┘ └──────┘           │
+└──────────────────────────────────────────────────────────┘
+       │              │            │          │
+       ▼              ▼            ▼          ▼
+┌──────────────────────────────────────────────────────────┐
+│                   External APIs                           │
+│  Meta Graph API │ Telegram Bot │ Twilio │ Google RBM     │
+└──────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│          PostgreSQL  │  Redis  │  Celery Workers         │
+└──────────────────────────────────────────────────────────┘
+```
+
+## Application Map
+
+Jina Connect is organized into Django apps, each owning a bounded context:
+
+| App | Responsibility | Key Models |
+|---|---|---|
+| `users` | User accounts, auth, password reset | `User` |
+| `tenants` | Multi-tenancy, RBAC, API keys, media | `Tenant`, `TenantUser`, `TenantRole`, `TenantAccessKey` |
+| `wa` | WhatsApp messaging, BSP adapters, templates | `WATemplate`, `WAMessage`, `TenantWAApp` |
+| `telegram` | Telegram bot management, messaging | `TelegramBotApp`, `TelegramOutboundMessage` |
+| `sms` | SMS multi-provider messaging | `SMSApp`, `SMSOutboundMessage` |
+| `rcs` | RCS messaging with SMS fallback | `RCSApp`, `RCSOutboundMessage` |
+| `broadcast` | Campaign management, URL tracking | `Broadcast`, `BroadcastMessage` |
+| `contacts` | Unified contact management | `TenantContact` |
+| `team_inbox` | Real-time shared inbox (WebSocket) | `Messages`, `MessageEventIds` |
+| `chat_flow` | Visual conversation flow builder | `ChatFlow`, `ChatFlowNode`, `ChatFlowEdge` |
+| `notifications` | In-app notification system | `Notification` |
+| `razorpay` | Payment gateway integration | `RazorpayOrder` |
+| `transaction` | Wallet credit management | `TenantTransaction` |
+| `mcp_server` | MCP server for AI agent integration | — (stateless tools) |
+
+## Request Flow
+
+### REST API Request
+
+1. **Client** sends HTTP request with JWT `Authorization: Bearer <token>`
+2. **Nginx** routes to Gunicorn (or Daphne for ASGI)
+3. **SimpleJWT** authenticates and resolves `User`
+4. **ViewSet** validates tenant context from URL/headers
+5. **Serializer** validates input, creates/updates models
+6. **Channel adapter** dispatches to appropriate BSP if messaging
+7. **Celery** handles async tasks (broadcast batches, webhook delivery)
+8. **Response** returned with standard pagination
+
+### WebSocket Connection
+
+1. **Client** connects to `ws://host/ws/team-inbox/{tenant_id}/`
+2. **AuthMiddlewareStack** validates JWT from query params
+3. **TeamInboxConsumer** joins tenant-specific channel group
+4. **Messages** broadcast to all connected agents in real-time
+5. Typing indicators, read receipts, assignment updates — all via WebSocket
+
+### Webhook Inbound
+
+1. **External provider** (Meta, Telegram, Twilio, Google) sends webhook POST
+2. **Webhook view** verifies signature (provider-specific)
+3. **Raw event** stored in `*WebhookEvent` table
+4. **Message** parsed and stored in app-specific message model
+5. **Team inbox** notified via Channels (WebSocket broadcast)
+6. **Chat flow** engine evaluates if any active flows should trigger
+
+## ASGI Configuration
+
+Jina Connect uses Django Channels with a `ProtocolTypeRouter`:
+
+```python
+# jina_connect/routing.py
+application = ProtocolTypeRouter({
+    "http": get_asgi_application(),
+    "websocket": AuthMiddlewareStack(
+        URLRouter(
+            team_inbox.routing.websocket_urlpatterns
+        )
+    ),
+})
+```
+
+Both HTTP and WebSocket traffic is served through Daphne in Docker. In production, you can split HTTP → Gunicorn and WebSocket → Daphne behind Nginx.
+
+## Celery Tasks
+
+Background task processing handles:
+
+| Task | Schedule | Description |
+|---|---|---|
+| Template status sync | Every 2 minutes | Syncs template approval status from BSPs |
+| Broadcast status check | Every 1 minute | Updates campaign delivery metrics |
+| Notification cleanup | Daily at 3:00 AM | Removes old notification records |
+| SMS/RCS counter reset | Daily at midnight | Resets daily message counters |
+| Broadcast batch processing | On-demand | Sends messages in configurable batches |
+| Webhook event delivery | On-demand | Delivers webhook events to subscriber endpoints |
+
+## Database Schema Design
+
+All models inherit from `BaseModel` (in `abstract/models.py`) which provides:
+- `id` — UUID primary key
+- `created_at` — Auto-set creation timestamp
+- `updated_at` — Auto-updated modification timestamp
+
+Sensitive fields (API tokens, provider credentials, bot tokens) use `django-encrypted-model-fields` with the `FIELD_ENCRYPTION_KEY` Fernet key.
+
+<Aside type="tip">
+  The database uses `simple_history` for audit trails on key models, tracking who changed what and when.
+</Aside>

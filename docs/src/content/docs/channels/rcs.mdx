@@ -1,0 +1,159 @@
+---
+title: RCS
+description: RCS Business Messaging with Google RBM and Meta RCS, plus automatic SMS fallback.
+---
+
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+RCS (Rich Communication Services) enables rich messaging on Android devices with features like quick replies, suggested actions, and rich cards. Jina Connect supports two RCS providers with automatic SMS fallback:
+
+| Provider | Auth | Suggestions | Status |
+|---|---|---|---|
+| **Google RBM** | Service account JSON | Quick replies, dial, URL actions | Production |
+| **Meta RCS** | Access token | Quick replies | Production |
+
+## Setup
+
+<Steps>
+
+1. **Create an RCS App**
+
+   <Tabs>
+     <TabItem label="Google RBM">
+       ```bash
+       curl -X POST http://localhost:8000/rcs/v1/apps/ \
+         -H "Authorization: Bearer <token>" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "My RCS Agent",
+           "provider": "GOOGLE_RBM",
+           "agent_id": "your-rbm-agent-id",
+           "provider_credentials": {
+             "service_account": { ... }
+           },
+           "sms_fallback_enabled": true,
+           "sms_fallback_app": "sms-app-uuid"
+         }'
+       ```
+     </TabItem>
+     <TabItem label="Meta RCS">
+       ```bash
+       curl -X POST http://localhost:8000/rcs/v1/apps/ \
+         -H "Authorization: Bearer <token>" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "name": "My RCS Agent",
+           "provider": "META_RCS",
+           "agent_id": "your-meta-agent-id",
+           "provider_credentials": {
+             "access_token": "your-access-token"
+           },
+           "sms_fallback_enabled": true,
+           "sms_fallback_app": "sms-app-uuid"
+         }'
+       ```
+     </TabItem>
+   </Tabs>
+
+2. **Register webhook URL**
+
+   ```
+   https://your-domain.com/rcs/v1/webhooks/{rcs_app_id}/
+   ```
+
+</Steps>
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/rcs/v1/apps/` | List RCS apps |
+| `POST` | `/rcs/v1/apps/` | Create RCS app |
+| `GET` | `/rcs/v1/apps/{id}/` | Get RCS app details |
+| `PUT` | `/rcs/v1/apps/{id}/` | Update RCS app |
+| `DELETE` | `/rcs/v1/apps/{id}/` | Delete RCS app |
+| `GET` | `/rcs/v1/messages/` | List outbound messages |
+| `POST` | `/rcs/v1/messages/` | Send RCS message |
+| `GET` | `/rcs/v1/messages/{id}/` | Get message details |
+
+## Sending Messages
+
+### Basic Text Message
+
+```bash
+curl -X POST http://localhost:8000/rcs/v1/messages/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+1234567890",
+    "text": "Your order has been shipped!"
+  }'
+```
+
+### With Quick Reply Suggestions
+
+```bash
+curl -X POST http://localhost:8000/rcs/v1/messages/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+1234567890",
+    "text": "Your order has been shipped! Track it?",
+    "suggestions": [
+      {"type": "reply", "text": "Track Order"},
+      {"type": "reply", "text": "Contact Support"}
+    ]
+  }'
+```
+
+### Via MCP Tool
+
+```
+send_rcs_message(
+  api_key="your-api-key",
+  phone="+1234567890",
+  text="Hello from RCS!",
+  suggestions=[
+    {"type": "reply", "text": "Yes"},
+    {"type": "reply", "text": "No"}
+  ]
+)
+```
+
+## SMS Fallback
+
+When `sms_fallback_enabled=True` on an RCS app:
+
+1. Message is first attempted via RCS
+2. If RCS delivery fails (device doesn't support RCS, user offline, etc.)
+3. Message automatically retries via the linked `SMSApp`
+4. Both attempts are logged for analytics
+
+```
+RCS Send → Success → Done
+         → Failure → SMS Fallback → Success/Failure
+```
+
+<Aside type="tip">
+  Link your RCS app to an SMS app during creation using the `sms_fallback_app` field. This ensures your messages reach users even when RCS isn't available.
+</Aside>
+
+## Rate Limits
+
+| Setting | Default |
+|---|---|
+| `RCS_RATE_LIMIT` | `300/min` |
+| Daily counter reset | Midnight (via Celery cron) |
+
+## Provider Comparison
+
+| Feature | Google RBM | Meta RCS |
+|---|---|---|
+| **Suggestions** | Quick replies, dial, URL, map location | Quick replies |
+| **Rich Cards** | Yes | Limited |
+| **File Sharing** | Images, videos, documents | Images |
+| **Read Receipts** | Yes | Yes |
+| **Typing Indicators** | Yes | No |
+| **Coverage** | Android (carrier-dependent) | Android |

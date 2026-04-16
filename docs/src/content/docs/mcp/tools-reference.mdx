@@ -1,0 +1,204 @@
+---
+title: MCP Tools Reference
+description: Complete reference for all 15 MCP tools available to AI agents.
+sidebar:
+  order: 2
+---
+
+## Messaging Tools
+
+### `send_template`
+
+Send a WhatsApp template message to a contact.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `phone` | string | Yes | Phone number (E.164) |
+| `template_name` | string | Yes | Approved template name |
+| `params` | object | No | Template parameter values (`{"1": "value"}`) |
+| `language_code` | string | No | Language code (default: `en`) |
+
+**Example:**
+```
+send_template(
+  api_key="sk-xxx",
+  phone="+1234567890",
+  template_name="order_shipped",
+  params={"1": "John", "2": "ORD-123"}
+)
+```
+
+---
+
+### `send_message`
+
+Send a plain text message via any channel.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `phone` | string | Yes | Phone number (E.164) |
+| `text` | string | Yes | Message text |
+| `channel` | string | No | `WHATSAPP`, `TELEGRAM`, `SMS`, `RCS` (default: `WHATSAPP`) |
+
+---
+
+### `send_rcs_message`
+
+Send an RCS message with optional quick-reply suggestions. Automatically falls back to SMS if RCS delivery fails.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `phone` | string | Yes | Phone number (E.164) |
+| `text` | string | Yes | Message text |
+| `suggestions` | array | No | Quick-reply suggestions (`[{"type": "reply", "text": "Yes"}]`) |
+
+---
+
+### `get_message_status`
+
+Get the delivery status of a WhatsApp message.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `message_id` | string | Yes | Message UUID |
+
+**Returns:** Status (`PENDING`, `SENT`, `DELIVERED`, `READ`, `FAILED`), timestamps.
+
+---
+
+### `list_templates`
+
+List WhatsApp message templates.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `status` | string | No | Filter by status (`APPROVED`, `PENDING`, etc.) |
+
+---
+
+## Contact Tools
+
+### `search_contacts`
+
+Search contacts by phone number, name, or tag.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `query` | string | No | Search term (phone, name) |
+| `tag` | string | No | Filter by tag name |
+| `limit` | integer | No | Max results (default: 10) |
+
+---
+
+### `create_contact`
+
+Create a new contact.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `phone` | string | Yes | Phone number (E.164) |
+| `first_name` | string | Yes | First name |
+| `last_name` | string | No | Last name |
+| `tag` | string | No | Tag name |
+
+---
+
+### `update_contact`
+
+Update an existing contact by phone number.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `phone` | string | Yes | Phone number (E.164) |
+| `first_name` | string | No | Updated first name |
+| `last_name` | string | No | Updated last name |
+| `tag` | string | No | Updated tag |
+
+---
+
+## Campaign Tools
+
+### `create_broadcast`
+
+Create and send a broadcast campaign.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `name` | string | Yes | Campaign name |
+| `template_name` | string | Yes | Template to use |
+| `phone_numbers` | array | Yes | List of recipient phones |
+| `language_code` | string | No | Language code |
+| `channel` | string | No | `WHATSAPP`, `TELEGRAM`, `SMS` |
+
+---
+
+### `get_broadcast_status`
+
+Get delivery statistics for a broadcast.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `broadcast_id` | string | Yes | Broadcast UUID |
+
+**Returns:** Status, sent/delivered/failed counts, recipient details.
+
+---
+
+### `list_broadcasts`
+
+List broadcast campaigns.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `status` | string | No | Filter by status |
+| `limit` | integer | No | Max results |
+
+---
+
+## Provider Tools
+
+### `list_providers`
+
+List configured WhatsApp Business Solution Providers.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+
+**Returns:** List of BSPs with names and active status.
+
+---
+
+### `get_provider_health`
+
+Check BSP delivery health over the last 24 hours.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+
+**Returns:** Delivery rate, success/failure counts, average latency per provider.
+
+---
+
+### `switch_provider`
+
+Switch the active BSP for WhatsApp messaging.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `api_key` | string | Yes | Tenant API key |
+| `bsp` | string | Yes | BSP identifier (`META`, `GUPSHUP`) |
+
+**Returns:** Confirmation of provider switch.

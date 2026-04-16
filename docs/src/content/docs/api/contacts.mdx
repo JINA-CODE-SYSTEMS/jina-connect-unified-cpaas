@@ -1,0 +1,74 @@
+---
+title: Contacts API
+description: Unified contact management with tagging, lead scoring, and cross-channel identity.
+---
+
+## Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/contacts/` | List contacts |
+| `POST` | `/contacts/` | Create contact |
+| `GET` | `/contacts/{id}/` | Get contact details |
+| `PUT` | `/contacts/{id}/` | Update contact |
+| `DELETE` | `/contacts/{id}/` | Delete contact |
+
+## Create Contact
+
+```bash
+curl -X POST http://localhost:8000/contacts/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+1234567890",
+    "first_name": "John",
+    "last_name": "Doe",
+    "tag": "vip-customer"
+  }'
+```
+
+## Contact Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `phone` | string | Phone number (E.164 format) |
+| `first_name` | string | First name |
+| `last_name` | string | Last name |
+| `tag` | FK | Link to `TenantTags` |
+| `source` | enum | How the contact was created |
+| `telegram_chat_id` | string | Auto-populated from Telegram webhooks |
+| `telegram_username` | string | Auto-populated from Telegram webhooks |
+| `lead_status` | string | Lead pipeline status |
+| `lead_score` | integer | Numerical lead score |
+| `do_not_contact` | boolean | DNC flag |
+| `assigned_to_type` | enum | `USER`, `BOT`, `CHATFLOW`, `UNASSIGNED` |
+| `assigned_to_user` | FK | Assigned team member |
+| `assignment_note` | string | Notes about the assignment |
+| `ticket_status` | enum | `OPEN`, `CLOSED` |
+
+## Contact Sources
+
+| Source | Description |
+|---|---|
+| `MANUAL` | Created via API or admin |
+| `WHATSAPP` | Auto-created from inbound WhatsApp message |
+| `TELEGRAM` | Auto-created from inbound Telegram message |
+| `SMS` | Auto-created from inbound SMS |
+| `RCS` | Auto-created from inbound RCS message |
+| `VOICE` | Auto-created from voice call |
+
+## Query Parameters
+
+| Parameter | Description |
+|---|---|
+| `search` | Search by phone, first_name, or last_name |
+| `tag` | Filter by tag |
+| `source` | Filter by source |
+| `lead_status` | Filter by lead status |
+| `assigned_to_type` | Filter by assignment type |
+| `ticket_status` | Filter by ticket status |
+| `ordering` | Sort by field |
+
+## Cross-Channel Identity
+
+Contacts are unified across channels. When a contact messages via WhatsApp and later via Telegram, both identities are linked to the same `TenantContact` record via phone number matching. The `telegram_chat_id` is populated automatically when a Telegram user messages your bot.
