@@ -1,0 +1,135 @@
+---
+title: SMS
+description: SMS integration with Twilio, MSG91, and Fast2SMS providers.
+---
+
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+Jina Connect supports SMS through three providers, each with their own strengths:
+
+| Provider | Best For | DLT Support | Inbound |
+|---|---|---|---|
+| **Twilio** | Global messaging | No | Yes |
+| **MSG91** | India (DLT compliant) | Yes | No |
+| **Fast2SMS** | India (DLT compliant) | Yes | No |
+
+## Setup
+
+<Steps>
+
+1. **Create an SMS App** for your tenant
+
+   ```bash
+   curl -X POST http://localhost:8000/sms/v1/apps/ \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "My SMS App",
+       "provider": "TWILIO",
+       "sender_id": "+1234567890",
+       "provider_credentials": {
+         "account_sid": "ACxxxxxxxx",
+         "auth_token": "your-auth-token"
+       }
+     }'
+   ```
+
+2. **Configure webhooks** (for inbound messages and delivery reports)
+
+   | Webhook | URL |
+   |---|---|
+   | Inbound | `https://your-domain.com/sms/v1/webhooks/{sms_app_id}/inbound/` |
+   | DLR (Delivery Report) | `https://your-domain.com/sms/v1/webhooks/{sms_app_id}/dlr/` |
+
+</Steps>
+
+### Provider Configuration
+
+<Tabs>
+  <TabItem label="Twilio">
+    ```json
+    {
+      "provider": "TWILIO",
+      "sender_id": "+1234567890",
+      "provider_credentials": {
+        "account_sid": "ACxxxxxxxx",
+        "auth_token": "your-auth-token"
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="MSG91">
+    ```json
+    {
+      "provider": "MSG91",
+      "sender_id": "JNACNT",
+      "dlt_entity_id": "1234567890",
+      "provider_credentials": {
+        "auth_key": "your-msg91-auth-key"
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="Fast2SMS">
+    ```json
+    {
+      "provider": "FAST2SMS",
+      "sender_id": "JNACNT",
+      "dlt_entity_id": "1234567890",
+      "provider_credentials": {
+        "api_key": "your-fast2sms-api-key"
+      }
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/sms/v1/apps/` | List SMS apps |
+| `POST` | `/sms/v1/apps/` | Create SMS app |
+| `GET` | `/sms/v1/apps/{id}/` | Get SMS app details |
+| `PUT` | `/sms/v1/apps/{id}/` | Update SMS app |
+| `DELETE` | `/sms/v1/apps/{id}/` | Delete SMS app |
+| `GET` | `/sms/v1/messages/` | List outbound messages |
+| `POST` | `/sms/v1/messages/` | Send SMS message |
+| `GET` | `/sms/v1/messages/{id}/` | Get message details |
+
+## Sending Messages
+
+```bash
+curl -X POST http://localhost:8000/sms/v1/messages/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+1234567890",
+    "text": "Your verification code is 123456"
+  }'
+```
+
+## DLT Compliance (India)
+
+For sending SMS in India, you need DLT (Distributed Ledger Technology) registration:
+
+| Field | Description |
+|---|---|
+| `dlt_entity_id` | Your DLT entity registration ID |
+| `dlt_template_id` | DLT-approved template ID (per message) |
+| `sender_id` | 6-character sender ID registered with DLT |
+
+<Aside type="caution">
+  SMS sent in India without valid DLT registration will be blocked by telecom operators. Ensure your entity ID, sender ID, and template IDs are registered and approved.
+</Aside>
+
+## Rate Limits & Daily Counters
+
+| Setting | Default |
+|---|---|
+| `SMS_RATE_LIMIT` | `100/min` |
+| Daily counter reset | Midnight (via Celery cron) |
+
+Provider credentials are encrypted at rest and never exposed in API responses.

@@ -1,0 +1,171 @@
+---
+title: Channel Adapters
+description: How the pluggable multi-provider adapter pattern works.
+sidebar:
+  order: 2
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+Jina Connect uses a **channel adapter pattern** to abstract away provider-specific APIs. Each messaging channel (WhatsApp, Telegram, SMS, RCS) has one or more provider adapters that implement a common interface. This lets you swap providers without changing application code.
+
+## Channel Registry
+
+The `ChannelRegistry` (`jina_connect/channel_registry.py`) is a runtime registry where channel adapters register themselves during Django startup:
+
+```python
+# Each app's AppConfig.ready() calls:
+register_channel(platform, factory_function)
+
+# At runtime, resolve the adapter:
+adapter = get_channel_adapter(platform, tenant)
+```
+
+### Platform Choices
+
+All channels map to canonical platform identifiers defined in `jina_connect/platform_choices.py`:
+
+| Platform | Value | Description |
+|---|---|---|
+| `WHATSAPP` | `"WHATSAPP"` | WhatsApp Business API |
+| `TELEGRAM` | `"TELEGRAM"` | Telegram Bot API |
+| `SMS` | `"SMS"` | SMS via provider APIs |
+| `RCS` | `"RCS"` | RCS Business Messaging |
+| `EMAIL` | `"EMAIL"` | Email (planned) |
+| `VOICE` | `"VOICE"` | Voice calls (planned) |
+
+## Base Adapter Interface
+
+All channel adapters extend `BaseChannelAdapter` (`wa/adapters/channel_base.py`):
+
+```python
+class BaseChannelAdapter(ABC):
+    @abstractmethod
+    def send_text(self, chat_id: str, text: str, **kwargs) -> dict:
+        """Send a plain text message."""
+
+    @abstractmethod
+    def send_media(self, chat_id: str, media_type: str,
+                   media_url: str, caption: str = None, **kwargs) -> dict:
+        """Send a media message (image, video, document, audio)."""
+
+    @abstractmethod
+    def send_keyboard(self, chat_id: str, text: str,
+                      keyboard: list, **kwargs) -> dict:
+        """Send a message with interactive buttons/keyboard."""
+
+    @abstractmethod
+    def get_channel_name(self) -> str:
+        """Return the canonical channel name."""
+```
+
+All adapter methods return an `AdapterResult` dataclass with `success`, `message_id`, `raw_response`, and `error`.
+
+## WhatsApp Adapters
+
+WhatsApp has a two-level adapter hierarchy:
+
+```
+BaseChannelAdapter
+  └── BaseBSPAdapter        # Adds template management
+        ├── MetaDirectAdapter  # Meta Graph API
+        └── GupshupAdapter     # Gupshup API
+```
+
+### BSP Selection
+
+Each tenant's `TenantWAApp` has a `bsp` field (`BSPChoices`) that determines which adapter to use. The factory function `get_bsp_adapter(wa_app)` returns the correct adapter.
+
+### Meta Direct Adapter
+
+| Feature | Details |
+|---|---|
+| **API** | Meta Graph API v18+ |
+| **Auth** | Permanent access token (`META_PERM_TOKEN`) |
+| **Webhook verification** | `META_APP_SECRET` for signature validation |
+| **Template sync** | Direct CRUD via Graph API |
+| **Media** | Upload to Meta, get handle ID |
+
+### Gupshup Adapter
+
+| Feature | Details |
+|---|---|
+| **API** | Gupshup Enterprise API |
+| **Auth** | Email/password → session token |
+| **Template sync** | Via Gupshup template API |
+| **Webhook** | Gupshup-format webhook events |
+
+<Aside type="note">
+  Twilio and MessageBird WhatsApp adapters are defined in `BSPChoices` but not yet implemented. The adapter pattern makes adding them straightforward.
+</Aside>
+
+## Telegram Adapter
+
+Telegram uses the Telegram Bot API directly — no multi-provider abstraction needed.
+
+| Component | Location |
+|---|---|
+| Bot configuration | `telegram/models.py` → `TelegramBotApp` |
+| Message sending | `telegram/services/message_sender.py` |
+| Webhook handling | `telegram/views.py` → `TelegramWebhookView` |
+
+Each tenant registers their own Telegram bot with an encrypted `bot_token`. Webhooks are set up per-bot with a unique secret.
+
+## SMS Providers
+
+SMS uses the same adapter pattern as WhatsApp BSPs:
+
+```
+BaseSMSProvider (sms/providers/base.py)
+  ├── TwilioProvider      # Twilio API
+  ├── MSG91Provider       # MSG91 API
+  └── Fast2SMSProvider    # Fast2SMS API
+```
+
+Each tenant's `SMSApp` specifies a `provider` and stores encrypted `provider_credentials` (JSON).
+
+| Provider | DLT Support | Sender ID | Webhook Types |
+|---|---|---|---|
+| **Twilio** | No | `from_number` | Inbound + DLR |
+| **MSG91** | Yes | `sender_id` | DLR |
+| **Fast2SMS** | Yes | `sender_id` | DLR |
+
+<Aside type="tip">
+  Indian SMS providers (MSG91, Fast2SMS) support DLT (Distributed Ledger Technology) fields required for regulatory compliance. Set `dlt_entity_id` and `dlt_template_id` on your `SMSApp`.
+</Aside>
+
+## RCS Providers
+
+RCS follows the same pattern with SMS fallback built in:
+
+```
+BaseRCSProvider (rcs/providers/base.py)
+  ├── GoogleRBMProvider     # Google RCS Business Messaging
+  └── MetaRCSProvider       # Meta RCS API
+```
+
+Each tenant's `RCSApp` can optionally link to an `SMSApp` via `sms_fallback_app` FK. When `sms_fallback_enabled=True`, failed RCS deliveries automatically retry via SMS.
+
+| Provider | Auth | Suggestions | Fallback |
+|---|---|---|---|
+| **Google RBM** | Service account JSON | Quick replies, actions | SMS via linked `SMSApp` |
+| **Meta RCS** | Access token | Quick replies | SMS via linked `SMSApp` |
+
+## Adding a New Provider
+
+To add a new provider for an existing channel:
+
+1. Create a new provider class extending the base (e.g., `BaseSMSProvider`)
+2. Implement all abstract methods (`send_text`, `send_media`, etc.)
+3. Add the provider to the choices enum (e.g., `SMSProviderChoices`)
+4. Register in the app's `AppConfig.ready()` if using the channel registry
+
+To add an entirely new channel (e.g., Email, Voice):
+
+1. Create a new Django app
+2. Implement `BaseChannelAdapter`
+3. Register via `register_channel(platform, factory)` in `AppConfig.ready()`
+4. Add URL patterns, models, serializers, and viewsets
+5. Add to the `PlatformChoices` enum

@@ -1,0 +1,121 @@
+---
+title: Docker Compose
+description: Run the full Jina Connect stack with Docker Compose.
+sidebar:
+  order: 1
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Services
+
+The `docker-compose.yml` defines 5 services:
+
+| Service | Image | Port | Description |
+|---|---|---|---|
+| **db** | `postgres:15-alpine` | 5432 | PostgreSQL database |
+| **redis** | `redis:7-alpine` | 6379 | Message broker + channel layer |
+| **web** | Build from `Dockerfile` | 8000 | Daphne ASGI server |
+| **celery** | Build from `Dockerfile` | — | Background task worker |
+| **celery-beat** | Build from `Dockerfile` | — | Periodic task scheduler |
+
+## Quick Start
+
+```bash
+# Clone and configure
+git clone https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas.git
+cd jina-connect-unified-cpaas
+cp .env.example .env
+# Edit .env with your SECRET_KEY and FIELD_ENCRYPTION_KEY
+
+# Start everything
+docker compose up -d
+
+# Create admin user
+docker compose exec web python manage.py createsuperuser
+```
+
+## Dockerfile
+
+The production image is based on `python:3.13-slim`:
+
+```dockerfile
+FROM python:3.13-slim
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential libpq-dev libjpeg62-turbo-dev zlib1g-dev
+
+# Python dependencies
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# Application code
+COPY . /app
+WORKDIR /app
+
+# Collect static files
+RUN python manage.py collectstatic --noinput
+
+# ASGI server (HTTP + WebSocket)
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "jina_connect.routing:application"]
+```
+
+## Environment Overrides
+
+Docker Compose automatically overrides these for inter-service networking:
+
+```yaml
+environment:
+  - DB_HOST=db
+  - CELERY_BROKER_URL=redis://redis:6379/0
+  - REDIS_URL=redis://redis:6379/0
+```
+
+## Data Persistence
+
+PostgreSQL data is persisted via a Docker volume:
+
+```yaml
+volumes:
+  postgres_data:
+```
+
+## Common Operations
+
+```bash
+# View logs
+docker compose logs -f web
+
+# Run migrations
+docker compose exec web python manage.py migrate
+
+# Django shell
+docker compose exec web python manage.py shell
+
+# Restart a specific service
+docker compose restart celery
+
+# Rebuild after code changes
+docker compose up -d --build web celery celery-beat
+
+# Stop everything
+docker compose down
+
+# Stop and remove volumes (DESTRUCTIVE)
+docker compose down -v
+```
+
+<Aside type="caution">
+  `docker compose down -v` will **delete your database**. Use `docker compose down` (without `-v`) to stop services while preserving data.
+</Aside>
+
+## Health Checks
+
+```bash
+# Check if web is responding
+curl http://localhost:8000/version/
+
+# Check all service status
+docker compose ps
+```

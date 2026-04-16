@@ -1,0 +1,91 @@
+---
+title: Jina Connect
+description: Open-source unified CPaaS — WhatsApp, Telegram, SMS, RCS in one platform. Multi-provider. AI-native. Self-hostable.
+template: splash
+hero:
+  tagline: Open-source unified CPaaS — WhatsApp, Telegram, SMS, RCS in one platform. Multi-provider. AI-native. Self-hostable.
+  actions:
+    - text: Get Started
+      link: /getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+## What is Jina Connect?
+
+Jina Connect is an open-source **Communications Platform as a Service (CPaaS)** that unifies WhatsApp, Telegram, SMS, and RCS into a single, self-hostable Django backend. It's built for teams that need to own their messaging infrastructure without vendor lock-in.
+
+<CardGrid>
+  <Card title="Multi-Channel" icon="puzzle">
+    WhatsApp (Meta Direct + Gupshup), Telegram, SMS (Twilio, MSG91,
+    Fast2SMS), and RCS (Google RBM, Meta RCS) — all through one unified API.
+  </Card>
+  <Card title="Multi-Tenant" icon="setting">
+    Full tenant isolation with RBAC (Owner, Admin, Manager, Agent, Viewer +
+    custom roles), per-tenant wallets, and granular permissions.
+  </Card>
+  <Card title="AI-Native MCP" icon="rocket">
+    Built-in Model Context Protocol server — let AI agents send messages,
+    manage contacts, and run campaigns through natural language.
+  </Card>
+  <Card title="Self-Hostable" icon="laptop">
+    Docker Compose one-liner or deploy to any VM. PostgreSQL, Redis, Celery —
+    all open-source infrastructure. No cloud lock-in.
+  </Card>
+</CardGrid>
+
+## Core Features
+
+<CardGrid>
+  <LinkCard
+    title="Broadcast Campaigns"
+    description="Multi-channel campaigns with batching, rate limiting, URL tracking, and real-time delivery analytics."
+    href="/api/broadcast/"
+  />
+  <LinkCard
+    title="Team Inbox"
+    description="Real-time WebSocket-powered shared inbox with assignment, ticket management, and PDF export."
+    href="/api/team-inbox/"
+  />
+  <LinkCard
+    title="Chat Flow Builder"
+    description="Visual conversation flow designer with ReactFlow — define templates, conditions, and action nodes."
+    href="/api/chat-flows/"
+  />
+  <LinkCard
+    title="Template Management"
+    description="Create, sync, and manage WhatsApp message templates with full lifecycle tracking."
+    href="/api/templates/"
+  />
+</CardGrid>
+
+## Quick Links
+
+<CardGrid>
+  <LinkCard
+    title="Quickstart Guide"
+    description="Get Jina Connect running locally in under 5 minutes."
+    href="/getting-started/quickstart/"
+  />
+  <LinkCard
+    title="Architecture Overview"
+    description="Understand the system design, channel adapter pattern, and multi-tenancy model."
+    href="/architecture/overview/"
+  />
+  <LinkCard
+    title="API Reference"
+    description="Complete REST API documentation for all endpoints."
+    href="/api/authentication/"
+  />
+  <LinkCard
+    title="MCP Server"
+    description="Connect AI agents to your messaging infrastructure."
+    href="/mcp/setup/"
+  />
+</CardGrid>

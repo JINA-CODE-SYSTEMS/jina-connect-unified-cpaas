@@ -1,0 +1,79 @@
+---
+title: Introduction
+description: What Jina Connect is, who it's for, and how it fits into your stack.
+sidebar:
+  order: 1
+---
+
+## Overview
+
+Jina Connect is an open-source **unified CPaaS** (Communications Platform as a Service) built with Django 5 and Django REST Framework. It provides a single backend to manage messaging across WhatsApp, Telegram, SMS, and RCS — with multi-tenant isolation, RBAC, and a built-in MCP server for AI agent integration.
+
+## Who is this for?
+
+- **SaaS builders** who need to add messaging to their product without building from scratch
+- **Agencies** managing messaging for multiple clients (multi-tenancy built in)
+- **Enterprise teams** who need to self-host their communications infrastructure
+- **AI engineers** building agents that need to send real messages via MCP
+
+## Key Capabilities
+
+| Capability | Description |
+|---|---|
+| **Multi-Channel Messaging** | WhatsApp (Meta Direct, Gupshup), Telegram, SMS (Twilio, MSG91, Fast2SMS), RCS (Google RBM, Meta RCS) |
+| **Multi-Tenant** | Tenant isolation, per-tenant wallets, per-tenant apps, per-tenant contacts |
+| **RBAC** | 5 default roles (Owner → Viewer) + custom roles with granular permissions |
+| **Broadcast Campaigns** | Multi-channel campaigns with batching, rate limiting, URL tracking |
+| **Team Inbox** | Real-time WebSocket shared inbox across all channels |
+| **Chat Flows** | Visual conversation flow builder with ReactFlow |
+| **Template Management** | Full WhatsApp template lifecycle (draft → approved → paused) |
+| **MCP Server** | AI-native tool server — 15 tools for messaging, contacts, campaigns, providers |
+
+## Community
+
+- [GitHub](https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas) — source code, issues, PRs
+- [Discord](https://discord.gg/jbN5cwKR) — chat with the team and community
+- [Twitter/X](https://x.com/tryjinaconnect) — updates and announcements
+| **Payments** | Razorpay integration for tenant wallet top-ups |
+| **Webhook Subscriptions** | Per-event webhook delivery with signature verification |
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Framework** | Django 5.1, Django REST Framework 3.15 |
+| **Database** | PostgreSQL 14+ |
+| **Task Queue** | Celery + Redis |
+| **WebSocket** | Django Channels + Daphne |
+| **Auth** | JWT (SimpleJWT) — 90-day access, 180-day refresh |
+| **ASGI** | Daphne (HTTP + WebSocket via ProtocolTypeRouter) |
+| **Storage** | Local / S3 / GCS (pluggable) |
+| **API Docs** | Swagger UI + ReDoc (drf-yasg) |
+| **Encryption** | django-encrypted-model-fields for secrets |
+
+## Project Structure
+
+```
+jina-connect-unified-cpaas/
+├── jina_connect/        # Django project settings, ASGI, routing, auth
+├── abstract/            # Abstract base models, serializers, viewsets
+├── users/               # User model, registration, password reset
+├── tenants/             # Multi-tenancy, RBAC, API keys, media, tags
+├── wa/                  # WhatsApp: BSP adapters, templates, messages, webhooks
+├── telegram/            # Telegram: bot management, webhooks, outbound
+├── sms/                 # SMS: multi-provider, DLT support, webhooks
+├── rcs/                 # RCS: Google RBM + Meta RCS, SMS fallback
+├── broadcast/           # Broadcast campaigns, URL tracking, analytics
+├── contacts/            # Unified contact management with lead scoring
+├── team_inbox/          # Real-time shared inbox, WebSocket consumers
+├── chat_flow/           # Visual chat flow builder
+├── notifications/       # In-app notification system
+├── razorpay/            # Payment gateway integration
+├── transaction/         # Wallet credit transactions
+├── message_templates/   # Base template model
+├── mcp_server/          # MCP server for AI agents
+├── docs/                # This documentation site (Starlight)
+├── Dockerfile           # Production container image
+├── docker-compose.yml   # Full stack: web, db, redis, celery, beat
+└── pyproject.toml       # Python project metadata
+```

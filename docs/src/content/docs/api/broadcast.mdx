@@ -1,0 +1,115 @@
+---
+title: Broadcast API
+description: Multi-channel campaign management with batching, URL tracking, and analytics.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/broadcast/` | List broadcasts |
+| `POST` | `/broadcast/` | Create broadcast |
+| `GET` | `/broadcast/{id}/` | Get broadcast details |
+| `PUT` | `/broadcast/{id}/` | Update broadcast |
+| `DELETE` | `/broadcast/{id}/` | Delete broadcast |
+| `GET` | `/broadcast/messages/` | List broadcast messages |
+| `GET` | `/broadcast/dashboard/` | Campaign analytics dashboard |
+| `GET` | `/broadcast/url-tracking/` | URL click tracking |
+
+## Create Broadcast
+
+```bash
+curl -X POST http://localhost:8000/broadcast/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Summer Sale Campaign",
+    "platform": "WHATSAPP",
+    "template_name": "summer_sale",
+    "recipients": ["contact-uuid-1", "contact-uuid-2"],
+    "scheduled_at": "2024-07-01T10:00:00Z"
+  }'
+```
+
+## Broadcast Lifecycle
+
+```
+DRAFT → SCHEDULED → QUEUED → SENDING → SENT
+                                      → PARTIALLY_SENT
+                                      → FAILED
+                                      → CANCELLED
+```
+
+### UI Status Mapping
+
+| Internal Status | UI Display |
+|---|---|
+| `DRAFT` | Draft |
+| `SCHEDULED` | Scheduled |
+| `QUEUED`, `SENDING` | Ongoing |
+| `SENT`, `PARTIALLY_SENT` | Completed |
+| `FAILED` | Failed |
+| `CANCELLED` | Cancelled |
+
+## Supported Platforms
+
+| Platform | Template Required | Batching |
+|---|---|---|
+| `WHATSAPP` | Yes | Yes |
+| `TELEGRAM` | No (free text) | Yes |
+| `SMS` | No (free text) | Yes |
+| `RCS` | No (free text) | Yes |
+
+## Batching Configuration
+
+Broadcasts are sent in batches to respect rate limits:
+
+| Setting | Default | Description |
+|---|---|---|
+| `BROADCAST_BATCH_SIZE` | 50 | Contacts per batch |
+| `BROADCAST_BATCH_DELAY` | 5 seconds | Delay between batches |
+| `BROADCAST_MAX_RETRIES` | 3 | Retries per failed message |
+
+## URL Tracking
+
+URLs in broadcast messages can be automatically wrapped for click tracking:
+
+```bash
+# Get tracking analytics
+curl http://localhost:8000/broadcast/url-tracking/ \
+  -H "Authorization: Bearer <token>"
+```
+
+Tracked URLs redirect through `https://your-domain.com/r/{code}/` and record click events.
+
+## Dashboard
+
+```bash
+# Get campaign analytics
+curl http://localhost:8000/broadcast/dashboard/ \
+  -H "Authorization: Bearer <token>"
+```
+
+Returns delivery stats: sent, delivered, read, failed counts per broadcast.
+
+## Broadcast Messages
+
+Each recipient in a broadcast gets an individual `BroadcastMessage` record tracking their delivery status:
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/broadcast/messages/` | List individual message deliveries |
+| `GET` | `/broadcast/messages/{id}/` | Get message delivery details |
+
+## Credit Management
+
+Each broadcast deducts credits from the tenant's wallet based on:
+- Number of recipients
+- Per-message pricing from `TenantWAApp` config
+- Successful delivery count (credits refunded for failures)
+
+<Aside type="note">
+  Broadcasts can be cancelled within the cancellation window (`BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES`, default 0.05 minutes = 3 seconds). After that, messages already queued will be sent.
+</Aside>

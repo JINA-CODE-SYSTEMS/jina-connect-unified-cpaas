@@ -1,0 +1,284 @@
+---
+title: Production Deployment
+description: Deploy Jina Connect to a production server with Nginx, Gunicorn, Daphne, and systemd.
+sidebar:
+  order: 2
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+## Architecture
+
+```
+Internet
+   │
+   ▼
+Nginx (443/80)
+   ├─ HTTP  → Gunicorn (unix socket) → Django
+   └─ WS   → Daphne (port 8001)     → Django Channels
+                                           │
+PostgreSQL ◄────────────────────────────────┤
+Redis      ◄────────────────────────────────┤
+Celery Worker ◄─────────────────────────────┘
+Celery Beat ◄──────────────────────────────┘
+```
+
+## Server Requirements
+
+| Component | Minimum | Recommended |
+|---|---|---|
+| **CPU** | 2 vCPU | 4 vCPU |
+| **RAM** | 4 GB | 8 GB |
+| **Disk** | 20 GB | 50 GB SSD |
+| **OS** | Ubuntu 22.04 LTS | Ubuntu 24.04 LTS |
+| **Python** | 3.12 | 3.13 |
+| **PostgreSQL** | 14 | 15+ |
+| **Redis** | 7 | 7+ |
+
+## Setup
+
+<Steps>
+
+1. **Install system dependencies**
+
+   ```bash
+   sudo apt update && sudo apt install -y \
+     python3.12 python3.12-venv python3.12-dev \
+     postgresql-15 postgresql-client-15 \
+     redis-server nginx certbot python3-certbot-nginx \
+     build-essential libpq-dev libjpeg-dev zlib1g-dev
+   ```
+
+2. **Create application user**
+
+   ```bash
+   sudo useradd -m -s /bin/bash jcuser
+   sudo su - jcuser
+   ```
+
+3. **Clone and configure**
+
+   ```bash
+   git clone https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas.git ~/app
+   cd ~/app
+   python3.12 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   cp .env.example .env
+   # Edit .env with production values
+   ```
+
+4. **Set up PostgreSQL**
+
+   ```bash
+   sudo -u postgres createuser jcuser
+   sudo -u postgres createdb jc6 -O jcuser
+   sudo -u postgres psql -c "ALTER USER jcuser PASSWORD 'secure-password';"
+   ```
+
+5. **Run migrations and collect static**
+
+   ```bash
+   python manage.py migrate
+   python manage.py collectstatic --noinput
+   python manage.py createsuperuser
+   ```
+
+6. **Configure systemd services**
+
+   Create the following service files in `/etc/systemd/system/`:
+
+</Steps>
+
+### Gunicorn Service
+
+```ini
+# /etc/systemd/system/jina-connect.service
+[Unit]
+Description=Jina Connect Gunicorn
+After=network.target postgresql.service redis.service
+
+[Service]
+User=jcuser
+Group=jcuser
+WorkingDirectory=/home/jcuser/app
+ExecStart=/home/jcuser/app/venv/bin/gunicorn \
+    --workers 4 \
+    --bind unix:/run/jina-connect/gunicorn.sock \
+    --timeout 120 \
+    jina_connect.wsgi:application
+RuntimeDirectory=jina-connect
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Daphne Service (WebSocket)
+
+```ini
+# /etc/systemd/system/jina-connect-daphne.service
+[Unit]
+Description=Jina Connect Daphne (WebSocket)
+After=network.target postgresql.service redis.service
+
+[Service]
+User=jcuser
+Group=jcuser
+WorkingDirectory=/home/jcuser/app
+ExecStart=/home/jcuser/app/venv/bin/daphne \
+    -b 127.0.0.1 -p 8001 \
+    jina_connect.asgi:application
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Celery Worker
+
+```ini
+# /etc/systemd/system/jina-connect-celery.service
+[Unit]
+Description=Jina Connect Celery Worker
+After=network.target redis.service
+
+[Service]
+User=jcuser
+Group=jcuser
+WorkingDirectory=/home/jcuser/app
+ExecStart=/home/jcuser/app/venv/bin/celery \
+    -A jina_connect worker \
+    -l info --concurrency=4
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Celery Beat
+
+```ini
+# /etc/systemd/system/jina-connect-beat.service
+[Unit]
+Description=Jina Connect Celery Beat
+After=network.target redis.service
+
+[Service]
+User=jcuser
+Group=jcuser
+WorkingDirectory=/home/jcuser/app
+ExecStart=/home/jcuser/app/venv/bin/celery \
+    -A jina_connect beat -l info
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Enable and Start
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now jina-connect jina-connect-daphne jina-connect-celery jina-connect-beat
+```
+
+## Nginx Configuration
+
+```nginx
+# /etc/nginx/sites-available/jina-connect
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+    client_max_body_size 100M;
+
+    # Static files
+    location /static/ {
+        alias /home/jcuser/app/staticfiles/;
+    }
+
+    # Media files
+    location /media/ {
+        alias /home/jcuser/app/media/;
+    }
+
+    # WebSocket
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+
+    # API and Admin
+    location / {
+        proxy_pass http://unix:/run/jina-connect/gunicorn.sock;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/jina-connect /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## SSL Certificate
+
+```bash
+sudo certbot --nginx -d your-domain.com
+```
+
+## Production `.env` Checklist
+
+```ini
+DEBUG=False
+SECRET_KEY=<random-64-char-string>
+FIELD_ENCRYPTION_KEY=<fernet-key>
+BASE_URL=https://your-domain.com
+SITE_URL=https://your-domain.com
+
+DB_NAME=jc6
+DB_USER=jcuser
+DB_PASSWORD=<secure-password>
+DB_HOST=localhost
+
+CELERY_BROKER_URL=redis://localhost:6379/0
+REDIS_URL=redis://localhost:6379/0
+
+WEBSOCKET_ACCEPT_ALL=False
+```
+
+<Aside type="caution">
+  Always set `DEBUG=False`, use a strong `SECRET_KEY`, and set `WEBSOCKET_ACCEPT_ALL=False` in production.
+</Aside>
+
+## Monitoring
+
+```bash
+# Check service status
+sudo systemctl status jina-connect jina-connect-daphne jina-connect-celery jina-connect-beat
+
+# View logs
+sudo journalctl -u jina-connect -f
+sudo journalctl -u jina-connect-daphne -f
+sudo journalctl -u jina-connect-celery -f
+
+# Quick health check
+curl -s https://your-domain.com/version/
+```

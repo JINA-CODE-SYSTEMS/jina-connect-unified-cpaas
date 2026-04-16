@@ -1,0 +1,60 @@
+---
+title: Transactions API
+description: Wallet credit management and transaction history.
+---
+
+## Overview
+
+Jina Connect uses a credit-based wallet system. Tenants purchase credits via Razorpay, and credits are deducted per message sent.
+
+## Transaction Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/transaction/tenant-transactions/` | List transactions |
+| `GET` | `/transaction/tenant-transactions/{id}/` | Get transaction details |
+
+## Razorpay Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/razorpay/razor-pay/` | Create a Razorpay order |
+| `POST` | `/razorpay/razor-webhook/` | Razorpay webhook (payment confirmation) |
+
+## Payment Flow
+
+```
+1. Client creates order → POST /razorpay/razor-pay/
+2. Client completes Razorpay checkout
+3. Razorpay sends webhook → POST /razorpay/razor-webhook/
+4. Credits added to tenant wallet
+5. Transaction record created
+```
+
+## Transaction Record
+
+| Field | Description |
+|---|---|
+| `tenant` | Tenant FK |
+| `amount` | Credit amount |
+| `type` | Credit / Debit |
+| `description` | Transaction description |
+| `reference_id` | External reference (Razorpay order ID) |
+| `created_at` | Timestamp |
+
+## Wallet Balance
+
+Check the tenant's current wallet balance:
+
+```bash
+curl http://localhost:8000/tenants/host-wallet/ \
+  -H "Authorization: Bearer <token>"
+```
+
+## Credit Deduction
+
+Credits are deducted automatically when messages are sent. Pricing is configured per `TenantWAApp` with different rates for:
+- Template messages
+- Session messages
+- Media messages
+- Per-channel rates

@@ -1,0 +1,82 @@
+---
+title: Templates API
+description: WhatsApp message template management with full lifecycle tracking.
+---
+
+## Overview
+
+WhatsApp Business API requires pre-approved templates for business-initiated conversations. Jina Connect manages the full template lifecycle across BSPs.
+
+## Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/wa/v2/templates/` | List all templates |
+| `POST` | `/wa/v2/templates/` | Create a new template |
+| `GET` | `/wa/v2/templates/{id}/` | Get template details |
+| `PUT` | `/wa/v2/templates/{id}/` | Update template |
+| `DELETE` | `/wa/v2/templates/{id}/` | Delete template |
+
+## Create Template
+
+```bash
+curl -X POST http://localhost:8000/wa/v2/templates/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "order_shipped",
+    "category": "UTILITY",
+    "template_type": "TEXT",
+    "language": "en",
+    "body": "Hi {{1}}, your order {{2}} has been shipped! Track at {{3}}",
+    "header": "Order Update",
+    "footer": "Reply STOP to unsubscribe"
+  }'
+```
+
+## Template Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Template name (lowercase, underscores) |
+| `category` | enum | `AUTHENTICATION`, `MARKETING`, `UTILITY` |
+| `template_type` | enum | `TEXT`, `IMAGE`, `VIDEO`, `DOCUMENT`, `CAROUSEL`, `CATALOG`, `PRODUCT` |
+| `language` | string | Language code (e.g., `en`, `hi`, `es`) |
+| `body` | string | Template body with `{{n}}` placeholders |
+| `header` | string | Optional header text |
+| `footer` | string | Optional footer text |
+| `buttons` | array | Interactive buttons (Quick Reply, CTA) |
+| `status` | enum | Read-only. Lifecycle status |
+
+## Template Lifecycle
+
+| Status | Description |
+|---|---|
+| `DRAFT` | Created locally, not submitted |
+| `PENDING` | Submitted to BSP for review |
+| `APPROVED` | Approved and ready to use |
+| `REJECTED` | Rejected by BSP |
+| `PAUSED` | Temporarily paused by BSP |
+| `DISABLED` | Permanently disabled |
+| `FAILED` | Submission failed |
+
+## Button Types
+
+| Type | Description |
+|---|---|
+| `QUICK_REPLY` | Pre-defined reply buttons (max 3) |
+| `PHONE_NUMBER` | Click-to-call button |
+| `URL` | Click-to-open URL |
+
+## Query Parameters
+
+| Parameter | Description |
+|---|---|
+| `status` | Filter by status: `APPROVED`, `PENDING`, etc. |
+| `category` | Filter by category |
+| `search` | Search by template name |
+| `ordering` | Sort by field (e.g., `-created_at`) |
+
+## Template Sync
+
+Templates are automatically synced with your BSP every 2 minutes via a Celery cron job. Status changes on the BSP side (approval, rejection, pausing) are reflected automatically.

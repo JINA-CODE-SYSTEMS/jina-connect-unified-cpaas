@@ -1,0 +1,108 @@
+---
+title: Team Inbox API
+description: Real-time shared inbox with WebSocket support, cross-channel messaging.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+The Team Inbox provides a unified, real-time shared inbox across all messaging channels. Agents can view, reply to, and manage conversations from WhatsApp, Telegram, SMS, and RCS in one place.
+
+## REST Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/team-inbox/api/messages/` | List inbox messages |
+| `GET` | `/team-inbox/api/messages/{id}/` | Get message details |
+| `GET` | `/team-inbox/api/stats/` | Inbox statistics |
+| `GET` | `/team-inbox/api/export-pdf/` | Export conversation as PDF |
+| `GET` | `/team-inbox/websocket/info/` | WebSocket connection info |
+
+## WebSocket Connection
+
+Connect to the real-time inbox:
+
+```
+ws://your-domain.com/ws/team-inbox/{tenant_id}/
+```
+
+### Authentication
+
+Pass JWT token as a query parameter:
+
+```
+ws://your-domain.com/ws/team-inbox/{tenant_id}/?token=eyJhbGci...
+```
+
+### WebSocket Events
+
+**Incoming events (server → client):**
+
+| Event | Description |
+|---|---|
+| `new_message` | New message received from any channel |
+| `message_status` | Delivery status update (sent, delivered, read) |
+| `typing_indicator` | Contact is typing |
+| `assignment_update` | Contact assigned/reassigned |
+| `ticket_update` | Ticket opened/closed |
+
+**Outgoing events (client → server):**
+
+| Event | Description |
+|---|---|
+| `send_message` | Send a reply to a contact |
+| `mark_read` | Mark messages as read |
+| `typing` | Send typing indicator |
+| `assign` | Assign contact to agent |
+
+## Message Model
+
+Each message in the inbox has:
+
+| Field | Type | Description |
+|---|---|---|
+| `platform` | enum | `WHATSAPP`, `TELEGRAM`, `SMS`, `RCS`, `VOICE` |
+| `direction` | enum | `INCOMING`, `OUTGOING` |
+| `author_type` | enum | `USER`, `CONTACT`, `BOT` |
+| `content` | JSON | Message content (text, media, etc.) |
+| `is_read` | boolean | Read by agent |
+| `wa_message` | FK | Linked WhatsApp message (for status tracking) |
+| `expires_at` | datetime | 24-hour expiry for WhatsApp conversations |
+
+## Statistics
+
+```bash
+curl http://localhost:8000/team-inbox/api/stats/ \
+  -H "Authorization: Bearer <token>"
+```
+
+Returns:
+- Total conversations
+- Unread count
+- Open tickets
+- Conversations by channel
+- Agent workload distribution
+
+## PDF Export
+
+Export a conversation thread as a formatted PDF:
+
+```bash
+curl http://localhost:8000/team-inbox/api/export-pdf/?contact_id={id} \
+  -H "Authorization: Bearer <token>" \
+  -o conversation.pdf
+```
+
+## Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `WEBSOCKET_ACCEPT_ALL` | `True` | Accept WebSocket connections from all origins |
+| `WEBSOCKET_TOKEN_EXPIRY` | `3600` | WebSocket token expiry (seconds) |
+| `TEAM_INBOX_MESSAGE_LIMIT` | — | Max messages per query |
+| `TEAM_INBOX_TYPING_TIMEOUT` | — | Typing indicator timeout |
+
+<Aside type="tip">
+  Test WebSocket connections at `http://localhost:8000/team-inbox/websocket/test/` — a built-in testing page for debugging.
+</Aside>

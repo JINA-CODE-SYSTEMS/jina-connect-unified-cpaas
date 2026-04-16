@@ -1,0 +1,26 @@
+
+export default new Map([
+["src/content/docs/index.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Findex.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/authentication.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Fauthentication.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/broadcast.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Fbroadcast.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/chat-flows.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Fchat-flows.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/contacts.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Fcontacts.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/transactions.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Ftransactions.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/team-inbox.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Fteam-inbox.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/tenants.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Ftenants.mdx&astroContentModuleFlag=true")],
+["src/content/docs/api/templates.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fapi%2Ftemplates.mdx&astroContentModuleFlag=true")],
+["src/content/docs/architecture/channel-adapters.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Farchitecture%2Fchannel-adapters.mdx&astroContentModuleFlag=true")],
+["src/content/docs/deployment/docker-compose.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fdeployment%2Fdocker-compose.mdx&astroContentModuleFlag=true")],
+["src/content/docs/deployment/production.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fdeployment%2Fproduction.mdx&astroContentModuleFlag=true")],
+["src/content/docs/architecture/multi-tenancy.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Farchitecture%2Fmulti-tenancy.mdx&astroContentModuleFlag=true")],
+["src/content/docs/channels/rcs.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fchannels%2Frcs.mdx&astroContentModuleFlag=true")],
+["src/content/docs/channels/telegram.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fchannels%2Ftelegram.mdx&astroContentModuleFlag=true")],
+["src/content/docs/architecture/overview.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Farchitecture%2Foverview.mdx&astroContentModuleFlag=true")],
+["src/content/docs/channels/sms.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fchannels%2Fsms.mdx&astroContentModuleFlag=true")],
+["src/content/docs/channels/whatsapp.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fchannels%2Fwhatsapp.mdx&astroContentModuleFlag=true")],
+["src/content/docs/getting-started/introduction.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fgetting-started%2Fintroduction.mdx&astroContentModuleFlag=true")],
+["src/content/docs/getting-started/env-reference.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fgetting-started%2Fenv-reference.mdx&astroContentModuleFlag=true")],
+["src/content/docs/mcp/tools-reference.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fmcp%2Ftools-reference.mdx&astroContentModuleFlag=true")],
+["src/content/docs/mcp/setup.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fmcp%2Fsetup.mdx&astroContentModuleFlag=true")],
+["src/content/docs/getting-started/quickstart.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fgetting-started%2Fquickstart.mdx&astroContentModuleFlag=true")]]);
+		

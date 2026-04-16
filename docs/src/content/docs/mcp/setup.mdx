@@ -1,0 +1,119 @@
+---
+title: MCP Server Setup
+description: Connect AI agents to Jina Connect via the Model Context Protocol.
+sidebar:
+  order: 1
+---
+
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+Jina Connect includes a built-in **MCP (Model Context Protocol)** server that lets AI agents interact with your messaging infrastructure through natural language. The MCP server exposes 15 tools for sending messages, managing contacts, running campaigns, and monitoring provider health.
+
+## Architecture
+
+```
+AI Agent (Claude, GPT, etc.)
+    │
+    ▼
+MCP Client (Claude Desktop, VS Code, etc.)
+    │
+    ▼ HTTP (stateless)
+Jina Connect MCP Server (FastMCP)
+    │
+    ▼ API Key → Tenant resolution
+Django ORM → PostgreSQL
+```
+
+The MCP server uses:
+- **FastMCP** framework with `stateless_http=True`
+- **JSON responses** for structured tool outputs
+- **API Key auth** — each tool requires an `api_key` parameter that resolves to a `(Tenant, TenantWAApp)` pair
+
+## Setup
+
+<Steps>
+
+1. **Create an API Key**
+
+   In Django Admin → Tenant Access Keys → Add:
+   - Select your tenant
+   - Name: "MCP Access Key"
+   - Save and copy the generated key
+
+2. **Configure your MCP client**
+
+   <Tabs>
+     <TabItem label="Claude Desktop">
+       Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+       ```json
+       {
+         "mcpServers": {
+           "jina-connect": {
+             "command": "python",
+             "args": ["-m", "mcp_server"],
+             "cwd": "/path/to/jina-connect-unified-cpaas",
+             "env": {
+               "DJANGO_SETTINGS_MODULE": "jina_connect.settings"
+             }
+           }
+         }
+       }
+       ```
+     </TabItem>
+     <TabItem label="VS Code (Copilot)">
+       Add to `.vscode/mcp.json`:
+
+       ```json
+       {
+         "servers": {
+           "jina-connect": {
+             "command": "python",
+             "args": ["-m", "mcp_server"],
+             "cwd": "${workspaceFolder}",
+             "env": {
+               "DJANGO_SETTINGS_MODULE": "jina_connect.settings"
+             }
+           }
+         }
+       }
+       ```
+     </TabItem>
+   </Tabs>
+
+3. **Test the connection**
+
+   Ask your AI agent:
+   > "List my WhatsApp templates using API key `your-key-here`"
+
+</Steps>
+
+## Authentication
+
+Every MCP tool requires an `api_key` parameter. The server resolves the key:
+
+```python
+# mcp_server/auth.py
+def resolve_tenant(api_key: str) -> tuple[Tenant, TenantWAApp]:
+    access_key = TenantAccessKey.objects.get(key=api_key)
+    tenant = access_key.tenant
+    wa_app = TenantWAApp.objects.get(tenant=tenant)
+    return tenant, wa_app
+```
+
+Invalid or missing API keys return an error response.
+
+## Running Standalone
+
+```bash
+# From the project root
+python -m mcp_server
+```
+
+This starts the MCP server with Django settings loaded.
+
+<Aside type="tip">
+  The MCP server runs inside the Django process — it has full access to the ORM, models, and all configured channel adapters. No separate deployment needed.
+</Aside>

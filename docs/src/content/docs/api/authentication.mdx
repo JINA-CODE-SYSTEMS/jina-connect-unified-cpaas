@@ -1,0 +1,110 @@
+---
+title: Authentication
+description: JWT authentication, API keys, and token management.
+sidebar:
+  order: 1
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+Jina Connect uses **JWT (JSON Web Tokens)** for REST API authentication and **API Keys** for MCP server access.
+
+## JWT Authentication
+
+### Obtain a Token
+
+```bash
+curl -X POST http://localhost:8000/token/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "your-password"
+  }'
+```
+
+**Response:**
+```json
+{
+  "access": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+### Token Lifetimes
+
+| Token | Lifetime | Algorithm |
+|---|---|---|
+| **Access** | 90 days (configurable via `ACCESS_TOKEN_LIFETIME`) | HS256 |
+| **Refresh** | 180 days | HS256 |
+
+### Refresh a Token
+
+```bash
+curl -X POST http://localhost:8000/refresh/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh": "eyJhbGciOiJIUzI1NiIs..."
+  }'
+```
+
+### Using the Token
+
+Include the access token in the `Authorization` header:
+
+```bash
+curl http://localhost:8000/tenants/ \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
+```
+
+## API Keys
+
+API keys (`TenantAccessKey`) are used for:
+- MCP server tool calls
+- External system integrations
+- Server-to-server communication
+
+Create API keys via the admin panel or API:
+
+```bash
+curl -X POST http://localhost:8000/tenants/tenant-access-keys/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Integration Key"}'
+```
+
+API keys resolve to a specific `(Tenant, TenantWAApp)` pair.
+
+## User Management
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/users/user/` | List users / Get current user |
+| `POST` | `/users/user/` | Register new user |
+| `PATCH` | `/users/user/{id}/` | Update user profile |
+
+## REST Framework Auth Classes
+
+The DRF configuration accepts both JWT and Basic auth:
+
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+}
+```
+
+<Aside type="caution">
+  Basic auth is enabled for development convenience. In production, prefer JWT only and ensure `DEBUG=False`.
+</Aside>
+
+## Throttling
+
+| Scope | Rate |
+|---|---|
+| Default | 2000 requests/day |
+
+Custom throttle rates can be set per-viewset.
