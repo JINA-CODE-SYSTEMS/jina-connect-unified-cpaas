@@ -1013,6 +1013,10 @@ class WATemplate(BaseTemplateMessages):
             # New entry with no named placeholders — set empty dict instead of null
             self.placeholder_mapping = self.placeholder_mapping or {}
 
+        # Auto-populate tenant from wa_app when not explicitly set
+        if not self.tenant_id and self.wa_app_id:
+            self.tenant = self.wa_app.tenant
+
         super().save(*args, **kwargs)
 
 
