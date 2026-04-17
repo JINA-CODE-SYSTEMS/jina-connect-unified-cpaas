@@ -23,7 +23,7 @@ class MessagesViewSet(BaseTenantModelViewSet):
 
     queryset = (
         Messages.objects.all()
-        .select_related("read_by")
+        .select_related("read_by", "outgoing_message")
         .prefetch_related("telegram_outbound", "sms_outbound_messages", "rcs_outbound_messages")
     )
     serializer_class = MessagesSerializer

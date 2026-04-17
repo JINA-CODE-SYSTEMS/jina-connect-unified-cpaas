@@ -31,7 +31,6 @@ def process_import_job(self, import_job_id: int):
     job.save(update_fields=["status"])
 
     errors = []
-    created = 0
     skipped = 0
     total = 0
 
@@ -51,6 +50,7 @@ def process_import_job(self, import_job_id: int):
                 str(p) for p in TenantContact.objects.filter(tenant=job.tenant).values_list("phone", flat=True)
             )
 
+        count_before = TenantContact.objects.filter(tenant=job.tenant).count()
         contacts_to_create = []
 
         for row_num, row in enumerate(rows, start=2):
@@ -81,14 +81,14 @@ def process_import_job(self, import_job_id: int):
 
             # Batch create every 500 rows
             if len(contacts_to_create) >= 500:
-                created_objs = TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
-                created += len(created_objs)
+                TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
                 contacts_to_create = []
 
         # Final batch
         if contacts_to_create:
-            created_objs = TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
-            created += len(created_objs)
+            TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
+
+        created = TenantContact.objects.filter(tenant=job.tenant).count() - count_before
 
         job.status = ImportJob.Status.COMPLETED
         job.total_rows = total
