@@ -22,6 +22,15 @@ class _ChannelTemplateMixin:
             tenant__tenant_users__user=user,
         )
 
+    def get_serializer(self, *args, **kwargs):
+        """Make wa_app optional for non-WA channel templates."""
+        serializer = super().get_serializer(*args, **kwargs)
+        if hasattr(serializer, "fields") and "wa_app" in serializer.fields:
+            serializer.fields["wa_app"].required = False
+            serializer.fields["wa_app"].allow_null = True
+            serializer.fields["wa_app"].default = None
+        return serializer
+
     def create(self, request, *args, **kwargs):
         """Override create to inject platform and tenant for non-WA templates."""
         serializer = self.get_serializer(data=request.data)

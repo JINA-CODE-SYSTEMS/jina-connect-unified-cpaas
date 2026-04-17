@@ -28,7 +28,7 @@ class BroadcastViewSet(BaseTenantModelViewSet):
         "retrieve": "broadcast.view",
         "reserve_keyword_list": "broadcast.view",
         "min_scheduled_time": "broadcast.view",
-        "cancel": "broadcast.edit",
+        "cancel": "broadcast.cancel",
         "default": "broadcast.view",
     }
 
