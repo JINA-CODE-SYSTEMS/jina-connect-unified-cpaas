@@ -42,7 +42,7 @@ def process_rcs_event_task(self, event_id: str):
         event.error_message = str(exc)[:2000]
         event.save(update_fields=["retry_count", "error_message"])
         # Exponential backoff: 60s → 120s → 240s, capped at 300s (#106)
-        countdown = min(60 * (2 ** self.request.retries), 300)
+        countdown = min(60 * (2**self.request.retries), 300)
         try:
             raise self.retry(exc=exc, countdown=countdown)
         except self.MaxRetriesExceededError:

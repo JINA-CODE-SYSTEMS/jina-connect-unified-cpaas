@@ -43,7 +43,8 @@ class SMSMessageSender(BaseChannelAdapter):
             if fallback and fallback.is_active:
                 logger.warning(
                     "[SMSMessageSender] Primary send failed for app %s, trying fallback %s",
-                    self.sms_app.pk, fallback.pk,
+                    self.sms_app.pk,
+                    fallback.pk,
                 )
                 fallback_provider = get_sms_provider(fallback)
                 result = fallback_provider.send_sms(
@@ -55,7 +56,11 @@ class SMSMessageSender(BaseChannelAdapter):
                 used_app = fallback
 
         outbound = self._persist_outbound(
-            chat_id=chat_id, text=text, result=result, provider_used=used_app.provider, **kwargs,
+            chat_id=chat_id,
+            text=text,
+            result=result,
+            provider_used=used_app.provider,
+            **kwargs,
         )
         return {
             "success": result.success,

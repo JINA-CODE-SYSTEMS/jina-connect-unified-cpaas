@@ -30,7 +30,9 @@ class SuggestionBuilder:
         }
 
     @classmethod
-    def suggested_action_dial(cls, text: str, phone_number: str, postback_data: str = "", *, device_profile: str | None = None) -> dict:
+    def suggested_action_dial(
+        cls, text: str, phone_number: str, postback_data: str = "", *, device_profile: str | None = None
+    ) -> dict:
         limit = cls._text_limit(device_profile)
         return {
             "action": {
@@ -41,7 +43,9 @@ class SuggestionBuilder:
         }
 
     @classmethod
-    def suggested_action_open_url(cls, text: str, url: str, postback_data: str = "", *, device_profile: str | None = None) -> dict:
+    def suggested_action_open_url(
+        cls, text: str, url: str, postback_data: str = "", *, device_profile: str | None = None
+    ) -> dict:
         limit = cls._text_limit(device_profile)
         return {
             "action": {
@@ -53,7 +57,14 @@ class SuggestionBuilder:
 
     @classmethod
     def suggested_action_view_location(
-        cls, text: str, lat: float, lng: float, label: str = "", postback_data: str = "", *, device_profile: str | None = None
+        cls,
+        text: str,
+        lat: float,
+        lng: float,
+        label: str = "",
+        postback_data: str = "",
+        *,
+        device_profile: str | None = None,
     ) -> dict:
         limit = cls._text_limit(device_profile)
         return {
@@ -94,7 +105,9 @@ class SuggestionBuilder:
         }
 
     @classmethod
-    def suggested_action_share_location(cls, text: str, postback_data: str = "", *, device_profile: str | None = None) -> dict:
+    def suggested_action_share_location(
+        cls, text: str, postback_data: str = "", *, device_profile: str | None = None
+    ) -> dict:
         limit = cls._text_limit(device_profile)
         return {
             "action": {

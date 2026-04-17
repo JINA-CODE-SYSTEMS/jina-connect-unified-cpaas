@@ -16,15 +16,36 @@ class Migration(migrations.Migration):
             name="Conversation",
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("platform", models.CharField(
-                    choices=[("WHATSAPP", "WhatsApp"), ("TELEGRAM", "Telegram"), ("SMS", "SMS"), ("RCS", "RCS"), ("VOICE", "Voice")],
-                    max_length=10,
-                )),
+                (
+                    "platform",
+                    models.CharField(
+                        choices=[
+                            ("WHATSAPP", "WhatsApp"),
+                            ("TELEGRAM", "Telegram"),
+                            ("SMS", "SMS"),
+                            ("RCS", "RCS"),
+                            ("VOICE", "Voice"),
+                        ],
+                        max_length=10,
+                    ),
+                ),
                 ("started_at", models.DateTimeField(auto_now_add=True)),
                 ("ended_at", models.DateTimeField(blank=True, null=True)),
                 ("is_active", models.BooleanField(db_index=True, default=True)),
-                ("contact", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="conversations", to="contacts.tenantcontact")),
-                ("tenant", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="conversations", to="tenants.tenant")),
+                (
+                    "contact",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="conversations",
+                        to="contacts.tenantcontact",
+                    ),
+                ),
+                (
+                    "tenant",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE, related_name="conversations", to="tenants.tenant"
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Conversation",

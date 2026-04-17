@@ -41,7 +41,7 @@ def process_sms_event_task(self, event_id: str):
         event.error_message = str(exc)[:2000]
         event.save(update_fields=["retry_count", "error_message"])
         # Exponential backoff: 60s → 120s → 240s, capped at 300s (#106)
-        countdown = min(60 * (2 ** self.request.retries), 300)
+        countdown = min(60 * (2**self.request.retries), 300)
         try:
             raise self.retry(exc=exc, countdown=countdown)
         except self.MaxRetriesExceededError:
@@ -133,7 +133,9 @@ def process_sms_dlr_batch(self, event_ids: list):
 
     now = timezone.now()
     events = SMSWebhookEvent.objects.filter(
-        pk__in=event_ids, event_type="DLR", is_processed=False,
+        pk__in=event_ids,
+        event_type="DLR",
+        is_processed=False,
     ).select_related("sms_app")
 
     if not events:
@@ -207,12 +209,15 @@ def process_sms_dlr_batch(self, event_ids: list):
     # Bulk update broadcast messages
     if bm_to_update:
         from broadcast.models import BroadcastMessage
+
         BroadcastMessage.objects.bulk_update(bm_to_update, fields=["status", "response"], batch_size=500)
 
     # Mark events processed
     SMSWebhookEvent.objects.filter(pk__in=processed_events).update(is_processed=True, processed_at=now)
 
-    logger.info("Batch DLR processed: %d messages updated, %d broadcast statuses synced", len(to_update), len(bm_to_update))
+    logger.info(
+        "Batch DLR processed: %d messages updated, %d broadcast statuses synced", len(to_update), len(bm_to_update)
+    )
     return {"processed": len(to_update), "broadcast_synced": len(bm_to_update)}
 
 

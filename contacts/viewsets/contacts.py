@@ -745,15 +745,17 @@ class ContactsViewSet(BaseTenantModelViewSet):
         except ImportJob.DoesNotExist:
             return Response({"error": "Import job not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({
-            "id": job.pk,
-            "status": job.status,
-            "file_name": job.file_name,
-            "total_rows": job.total_rows,
-            "created_count": job.created_count,
-            "skipped_count": job.skipped_count,
-            "error_count": job.error_count,
-            "errors": job.errors[:20],
-            "created_at": job.created_at.isoformat(),
-            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-        })
+        return Response(
+            {
+                "id": job.pk,
+                "status": job.status,
+                "file_name": job.file_name,
+                "total_rows": job.total_rows,
+                "created_count": job.created_count,
+                "skipped_count": job.skipped_count,
+                "error_count": job.error_count,
+                "errors": job.errors[:20],
+                "created_at": job.created_at.isoformat(),
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            }
+        )

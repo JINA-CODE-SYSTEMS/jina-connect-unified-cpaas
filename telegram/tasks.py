@@ -91,7 +91,7 @@ def process_tg_event_task(self, event_id: str):
         event.save(update_fields=["retry_count", "error_message"])
         logger.exception("[process_tg_event_task] Error processing event %s", event_id)
         # Exponential backoff: 60s → 120s → 240s, capped at 300s (#106)
-        countdown = min(60 * (2 ** self.request.retries), 300)
+        countdown = min(60 * (2**self.request.retries), 300)
         try:
             raise self.retry(exc=exc, countdown=countdown)
         except self.MaxRetriesExceededError:
