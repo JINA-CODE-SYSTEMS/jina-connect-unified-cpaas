@@ -453,20 +453,21 @@ def process_scheduled_broadcasts():
     from broadcast.models import Broadcast, BroadcastStatusChoices
 
     now = tz.now()
-    due = Broadcast.objects.filter(
-        status=BroadcastStatusChoices.SCHEDULED,
-        scheduled_time__lte=now,
-    ).select_for_update(skip_locked=True)
-
     launched = 0
-    for broadcast in due:
-        broadcast.status = BroadcastStatusChoices.SENDING
-        broadcast.save(update_fields=["status"])
-        result = setup_broadcast_task.delay(broadcast.pk)
-        broadcast.task_id = result.id
-        broadcast.save(update_fields=["task_id"])
-        launched += 1
-        logger.info("[process_scheduled_broadcasts] Launched broadcast %s (task %s)", broadcast.pk, result.id)
+    with transaction.atomic():
+        due = Broadcast.objects.filter(
+            status=BroadcastStatusChoices.SCHEDULED,
+            scheduled_time__lte=now,
+        ).select_for_update(skip_locked=True)
+
+        for broadcast in due:
+            broadcast.status = BroadcastStatusChoices.SENDING
+            broadcast.save(update_fields=["status"])
+            result = setup_broadcast_task.delay(broadcast.pk)
+            broadcast.task_id = result.id
+            broadcast.save(update_fields=["task_id"])
+            launched += 1
+            logger.info("[process_scheduled_broadcasts] Launched broadcast %s (task %s)", broadcast.pk, result.id)
 
     if launched:
         logger.info("[process_scheduled_broadcasts] Launched %d scheduled broadcasts", launched)

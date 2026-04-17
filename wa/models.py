@@ -205,7 +205,7 @@ class WATemplate(BaseTemplateMessages):
     Background jobs use adapters to sync with META/BSP APIs.
     """
 
-    filter_by_user_tenant_fk = "wa_app__tenant__tenant_users__user"
+    filter_by_user_tenant_fk = "tenant__tenant_users__user"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 

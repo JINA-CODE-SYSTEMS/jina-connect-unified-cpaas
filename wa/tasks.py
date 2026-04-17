@@ -299,6 +299,12 @@ def submit_template_to_gupshup(self, template_id: int):
             result["error"] = f"Template status is {template.status}, not PENDING"
             return result
 
+        if not template.wa_app:
+            logger.error("Template %s has no wa_app linked, cannot submit to Gupshup", template.element_name)
+            result["status"] = "error"
+            result["error"] = "Template has no linked WhatsApp app"
+            return result
+
         # Initialize the template API
         template_api = TemplateAPI(appId=template.wa_app.app_id, token=template.wa_app.app_secret)
 

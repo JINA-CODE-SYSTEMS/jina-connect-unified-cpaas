@@ -21,7 +21,11 @@ class MessagesViewSet(BaseTenantModelViewSet):
     Provides REST API endpoints for CRUD operations
     """
 
-    queryset = Messages.objects.all()
+    queryset = (
+        Messages.objects.all()
+        .select_related("read_by")
+        .prefetch_related("telegram_outbound", "sms_outbound_messages", "rcs_outbound_messages")
+    )
     serializer_class = MessagesSerializer
     permission_classes = [IsAuthenticated, TenantRolePermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]

@@ -709,9 +709,10 @@ class ContactsViewSet(BaseTenantModelViewSet):
         if file_obj.size > 10 * 1024 * 1024:
             return Response({"error": "File size exceeds 10 MB limit"}, status=status.HTTP_400_BAD_REQUEST)
 
-        tenant = self._get_tenant(request)
-        if not tenant:
+        tenant_user = self._get_tenant_user()
+        if not tenant_user:
             return Response({"error": "Could not determine tenant"}, status=status.HTTP_400_BAD_REQUEST)
+        tenant = tenant_user.tenant
 
         # Save file to default storage
         from django.core.files.storage import default_storage

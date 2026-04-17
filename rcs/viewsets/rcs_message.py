@@ -40,6 +40,6 @@ class RCSOutboundMessageViewSet(viewsets.ReadOnlyModelViewSet):
             msg.save(update_fields=["status"])
             logger.info("[RCS revoke] Message %s revoked successfully", msg.pk)
             return Response({"detail": "Message revoked.", "status": msg.status})
-        except Exception as exc:
+        except Exception:
             logger.exception("[RCS revoke] Failed to revoke message %s", msg.pk)
-            return Response({"detail": f"Revocation failed: {exc}"}, status=502)
+            return Response({"detail": "Revocation failed. Please try again later."}, status=502)

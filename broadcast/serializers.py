@@ -200,7 +200,7 @@ class BroadcastSerializer(BaseSerializer):
         if not value or not isinstance(value, dict):
             return value
         cards = value.get("cards")
-        if cards and isinstance(cards, dict):
+        if cards and isinstance(cards, list):
             count = len(cards)
             if count < 2:
                 raise ValidationError("Carousel requires at least 2 cards.")

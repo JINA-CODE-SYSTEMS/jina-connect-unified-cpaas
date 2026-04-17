@@ -27,6 +27,9 @@ class TemplateNotificationService:
         """
         try:
             # Get tenant users to notify
+            if not template.wa_app:
+                logger.warning("Cannot send category change notification: template %s has no wa_app", template.pk)
+                return False
             tenant = template.wa_app.tenant
             tenant_users = tenant.tenant_users.select_related("user").all()
 
@@ -177,6 +180,9 @@ The Jina Connect Team
             bool: True if email sent successfully, False otherwise
         """
         try:
+            if not template.wa_app:
+                logger.warning("Cannot send status change notification: template %s has no wa_app", template.pk)
+                return False
             tenant = template.wa_app.tenant
             tenant_users = tenant.tenant_users.select_related("user").all()
 

@@ -52,19 +52,20 @@ class RCSCapabilityChecker:
 
         # Persist RCS capability on TenantContact records (#110)
         if persist and results:
-            self._persist_capability(results)
+            tenant = self.provider.rcs_app.tenant
+            self._persist_capability(results, tenant)
 
         return results
 
     @staticmethod
-    def _persist_capability(results: dict):
+    def _persist_capability(results: dict, tenant):
         """Write rcs_capable + rcs_checked_at to matching TenantContact rows (#110)."""
         from django.utils import timezone
 
         from contacts.models import TenantContact
 
         now = timezone.now()
-        contacts = TenantContact.objects.filter(phone__in=list(results.keys()))
+        contacts = TenantContact.objects.filter(tenant=tenant, phone__in=list(results.keys()))
         to_update = []
         for contact in contacts:
             phone_str = str(contact.phone)

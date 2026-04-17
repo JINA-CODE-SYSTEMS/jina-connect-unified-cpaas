@@ -80,14 +80,14 @@ def process_import_job(self, import_job_id: int):
 
             # Batch create every 500 rows
             if len(contacts_to_create) >= 500:
-                TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
-                created += len(contacts_to_create)
+                created_objs = TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
+                created += len(created_objs)
                 contacts_to_create = []
 
         # Final batch
         if contacts_to_create:
-            TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
-            created += len(contacts_to_create)
+            created_objs = TenantContact.objects.bulk_create(contacts_to_create, ignore_conflicts=True)
+            created += len(created_objs)
 
         job.status = ImportJob.Status.COMPLETED
         job.total_rows = total
