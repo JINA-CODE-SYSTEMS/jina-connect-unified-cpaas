@@ -54,6 +54,26 @@ From a fresh clone to your first WhatsApp message sent: **under 5 minutes**. If 
 
 ---
 
+## Community and Resources
+
+- **Documentation**: coming soon
+- **Hosted product**: coming soon
+- **Discord community**: live (server id: `1494240125637496924`)
+- **Discord channel path**: `discord.com/channels/1494240125637496924`
+- **Discussions** (questions, ideas, show-and-tell): [GitHub Discussions](https://github.com/jina-code-systems/jina-connect-unified-cpaas/discussions)
+- **Issues** (bugs and feature requests): [GitHub Issues](https://github.com/jina-code-systems/jina-connect-unified-cpaas/issues)
+- **Twitter/X**: [@tryjinaconnect](https://x.com/tryjinaconnect)
+
+### What we have done so far (for the above)
+
+- Open-source repo is live with active issue tracking.
+- Public Discussions channel is defined for Q&A and ideas.
+- Discord community is created and server path is published.
+- Twitter/X handle is published for updates.
+- Documentation site and hosted product page will be linked here once public.
+
+---
+
 ## What's in the box
 
 Everything below is open-source, shipped in this repo, and works out of the box.

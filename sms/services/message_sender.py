@@ -36,7 +36,27 @@ class SMSMessageSender(BaseChannelAdapter):
             dlt_template_id=kwargs.get("dlt_template_id"),
         )
 
-        outbound = self._persist_outbound(chat_id=chat_id, text=text, result=result, **kwargs)
+        # Provider failover (#104): on send failure, try fallback_app if configured
+        used_app = self.sms_app
+        if not result.success and self.sms_app.fallback_app_id:
+            fallback = self.sms_app.fallback_app
+            if fallback and fallback.is_active:
+                logger.warning(
+                    "[SMSMessageSender] Primary send failed for app %s, trying fallback %s",
+                    self.sms_app.pk, fallback.pk,
+                )
+                fallback_provider = get_sms_provider(fallback)
+                result = fallback_provider.send_sms(
+                    to=chat_id,
+                    body=text,
+                    sender_id=kwargs.get("sender_id") or fallback.sender_id,
+                    dlt_template_id=kwargs.get("dlt_template_id"),
+                )
+                used_app = fallback
+
+        outbound = self._persist_outbound(
+            chat_id=chat_id, text=text, result=result, provider_used=used_app.provider, **kwargs,
+        )
         return {
             "success": result.success,
             "message_id": result.message_id or "",
@@ -65,7 +85,7 @@ class SMSMessageSender(BaseChannelAdapter):
             numbered.append(f"{idx}. {label}")
         return self.send_text(chat_id=chat_id, text="\n".join(numbered).strip(), **kwargs)
 
-    def _persist_outbound(self, *, chat_id: str, text: str, result, **kwargs):
+    def _persist_outbound(self, *, chat_id: str, text: str, result, provider_used: str = "", **kwargs):
         from sms.models import SMSOutboundMessage
 
         contact = kwargs.get("contact")
@@ -87,6 +107,7 @@ class SMSMessageSender(BaseChannelAdapter):
             sent_at=timezone.now() if result.success else None,
             failed_at=timezone.now() if not result.success else None,
             broadcast_message=kwargs.get("broadcast_message"),
+            provider_used=provider_used or self.sms_app.provider,
         )
 
         if contact and kwargs.get("create_inbox_entry", True):

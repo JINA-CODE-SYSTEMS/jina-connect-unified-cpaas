@@ -132,6 +132,10 @@ class TenantContact(BaseTenantModelForFilterUser):
         blank=True, null=True, help_text="Note or instructions from assigner to assignee"
     )
 
+    # RCS capability (#110)
+    rcs_capable = models.BooleanField(null=True, help_text="Whether this contact supports RCS messaging")
+    rcs_checked_at = models.DateTimeField(null=True, blank=True, help_text="When RCS capability was last checked")
+
     # Ticket/conversation status
     status = models.CharField(
         max_length=10,
@@ -147,6 +151,37 @@ class TenantContact(BaseTenantModelForFilterUser):
         {"key": "full_name", "description": "Full name of the contact"},
         {"key": "phone", "description": "Phone number of the contact"},
     ]
+
+
+class ImportJob(models.Model):
+    """Tracks bulk contact import jobs (CSV/XLSX) processed asynchronously (#118)."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING"
+        PROCESSING = "PROCESSING"
+        COMPLETED = "COMPLETED"
+        FAILED = "FAILED"
+
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="import_jobs")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    file_name = models.CharField(max_length=255)
+    file_path = models.CharField(max_length=512, help_text="Path in default storage")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    total_rows = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    errors = models.JSONField(default=list, blank=True)
+    skip_duplicates = models.BooleanField(default=True)
+    default_tag = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Import {self.pk} — {self.file_name} ({self.status})"
 
     @property
     def full_name(self):

@@ -223,6 +223,21 @@ def _broadcast_assignment_event(contact, event, previous_type, previous_id, prev
                 },
             },
         )
+
+        # Also fire dedicated assignment_update for WS clients (#117)
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                "type": "assignment_update",
+                "contact_id": contact.id,
+                "assigned_to_type": contact.assigned_to_type,
+                "assigned_to_id": contact.assigned_to_id,
+                "assigned_to_name": event.assigned_to_name or "",
+                "assigned_by_name": event.assigned_by_name or "",
+                "previous_assignee_id": previous_user.id if previous_user else previous_id,
+            },
+        )
+
         logger.info(f"Broadcasted new_event for contact {contact.id} to room {room_group_name}")
     except Exception as e:
         logger.error(f"Failed to broadcast assignment event: {e}")

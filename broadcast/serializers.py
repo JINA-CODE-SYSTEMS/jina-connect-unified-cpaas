@@ -195,6 +195,19 @@ class BroadcastSerializer(BaseSerializer):
                 del instance._deferred_scheduled_time
         return instance
 
+    def validate_media_overrides(self, value):
+        """Validate carousel card count in media_overrides (BE-14, #114)."""
+        if not value or not isinstance(value, dict):
+            return value
+        cards = value.get("cards")
+        if cards and isinstance(cards, dict):
+            count = len(cards)
+            if count < 2:
+                raise ValidationError("Carousel requires at least 2 cards.")
+            if count > 10:
+                raise ValidationError("Carousel supports a maximum of 10 cards.")
+        return value
+
     def update(self, instance, validated_data):
         # Pop select_all fields — not model fields (#412)
         validated_data.pop("select_all", False)

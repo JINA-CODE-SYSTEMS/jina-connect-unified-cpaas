@@ -596,6 +596,63 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps({"type": "error", "message": message, "timestamp": datetime.now().isoformat()})
         )
 
+    async def assignment_update(self, event):
+        """Handle contact assignment/unassignment events (#117).
+
+        Sent to all team members so the UI can update in real time.
+        Agents only receive events for contacts assigned *to* them.
+        """
+        try:
+            if self._should_filter_by_assignment():
+                # Agent receives only if they are the new or old assignee
+                assigned_to_id = event.get("assigned_to_id")
+                previous_assignee_id = event.get("previous_assignee_id")
+                if self.user.id not in (assigned_to_id, previous_assignee_id):
+                    return
+
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "assignment_update",
+                        "contact_id": event.get("contact_id"),
+                        "assigned_to_type": event.get("assigned_to_type"),
+                        "assigned_to_id": event.get("assigned_to_id"),
+                        "assigned_to_name": event.get("assigned_to_name", ""),
+                        "assigned_by_name": event.get("assigned_by_name", ""),
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    cls=DjangoJSONEncoder,
+                )
+            )
+        except Exception as e:
+            logger.error(f"Error handling assignment_update: {e}")
+
+    async def mention_notification(self, event):
+        """Handle @mention notifications in inbox messages (#117).
+
+        Only delivered to the mentioned user.
+        """
+        try:
+            mentioned_user_id = event.get("mentioned_user_id")
+            if mentioned_user_id and mentioned_user_id != self.user.id:
+                return
+
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "mention_notification",
+                        "contact_id": event.get("contact_id"),
+                        "message_id": event.get("message_id"),
+                        "mentioned_by": event.get("mentioned_by", ""),
+                        "snippet": event.get("snippet", ""),
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    cls=DjangoJSONEncoder,
+                )
+            )
+        except Exception as e:
+            logger.error(f"Error handling mention_notification: {e}")
+
     async def authenticate_user(self):
         """
         Authenticate user from JWT token in query params or headers

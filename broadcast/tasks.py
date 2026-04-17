@@ -440,6 +440,39 @@ def _render_template_field(field_content: str, placeholder_data: dict, reserved_
     return render_placeholders(field_content, final_data)
 
 
+@shared_task
+def process_scheduled_broadcasts():
+    """Celery beat task: find SCHEDULED broadcasts whose time has arrived and launch them (#101).
+
+    Runs every minute via beat_schedule. Picks up broadcasts with
+    status=SCHEDULED and scheduled_time <= now, transitions them to SENDING,
+    and dispatches ``setup_broadcast_task`` for each.
+    """
+    from django.utils import timezone as tz
+
+    from broadcast.models import Broadcast, BroadcastStatusChoices
+
+    now = tz.now()
+    due = Broadcast.objects.filter(
+        status=BroadcastStatusChoices.SCHEDULED,
+        scheduled_time__lte=now,
+    ).select_for_update(skip_locked=True)
+
+    launched = 0
+    for broadcast in due:
+        broadcast.status = BroadcastStatusChoices.SENDING
+        broadcast.save(update_fields=["status"])
+        result = setup_broadcast_task.delay(broadcast.pk)
+        broadcast.task_id = result.id
+        broadcast.save(update_fields=["task_id"])
+        launched += 1
+        logger.info("[process_scheduled_broadcasts] Launched broadcast %s (task %s)", broadcast.pk, result.id)
+
+    if launched:
+        logger.info("[process_scheduled_broadcasts] Launched %d scheduled broadcasts", launched)
+    return {"launched": launched}
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def setup_broadcast_task(self, broadcast_id: int):
     """

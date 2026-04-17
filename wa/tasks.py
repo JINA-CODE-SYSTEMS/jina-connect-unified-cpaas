@@ -499,18 +499,18 @@ def process_message_webhook(pk: str):
                     instance.save(update_fields=["error_message"])
                     return
 
-                # Get or create contact by phone number
-                contact, created = TenantContact.objects.get_or_create(
+                # Get or create contact by phone number (#108 fallback)
+                from contacts.services import resolve_or_create_contact
+
+                contact = resolve_or_create_contact(
                     tenant=tenant,
+                    source=MessagePlatformChoices.WHATSAPP,
                     phone=contact_phone,
                     defaults={
                         "first_name": contact_name or "",
                         "last_name": "",
-                        "source": MessagePlatformChoices.WHATSAPP,
                     },
                 )
-                if created:
-                    logger.debug("Created new contact: %s", contact.phone)
 
                 # Build message content according to team_inbox validator schema
                 content = _build_team_inbox_content(extracted_data, instance)

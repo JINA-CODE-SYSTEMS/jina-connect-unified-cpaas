@@ -21,12 +21,13 @@ class BroadcastViewSet(BaseTenantModelViewSet):
 
     queryset = Broadcast.objects.all()
     serializer_class = BroadcastSerializer
-    http_method_names = ["get"]
+    http_method_names = ["get", "post"]
     required_permissions = {
         "list": "broadcast.view",
         "retrieve": "broadcast.view",
         "reserve_keyword_list": "broadcast.view",
         "min_scheduled_time": "broadcast.view",
+        "cancel": "broadcast.edit",
         "default": "broadcast.view",
     }
 
@@ -124,3 +125,42 @@ class BroadcastViewSet(BaseTenantModelViewSet):
     def min_scheduled_time(self, request):
         min_time = settings.BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES
         return Response({"min_scheduled_time_in_minutes": min_time}, status=200)
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        """Cancel a SCHEDULED or SENDING broadcast (#102).
+
+        - Revokes the Celery task if one is tracked.
+        - Transitions status → CANCELLED.
+        - Marks all PENDING/QUEUED BroadcastMessages as FAILED.
+        """
+        from broadcast.models import BroadcastStatusChoices, MessageStatusChoices
+        from broadcast.tasks import cancel_broadcast_task
+
+        broadcast = self.get_object()
+
+        cancellable = {BroadcastStatusChoices.SCHEDULED, BroadcastStatusChoices.QUEUED, BroadcastStatusChoices.SENDING}
+        if broadcast.status not in cancellable:
+            return Response(
+                {"detail": f"Cannot cancel broadcast in status {broadcast.status}."},
+                status=400,
+            )
+
+        # Revoke Celery task
+        if broadcast.task_id:
+            cancel_broadcast_task.delay(broadcast.task_id)
+
+        reason = request.data.get("reason", "Cancelled by user")
+        broadcast.status = BroadcastStatusChoices.CANCELLED
+        broadcast.reason_for_cancellation = reason
+        broadcast.save(update_fields=["status", "reason_for_cancellation"])
+
+        # Mark unsent messages as FAILED
+        updated = broadcast.broadcasts.filter(
+            status__in=[MessageStatusChoices.PENDING, MessageStatusChoices.QUEUED],
+        ).update(status=MessageStatusChoices.FAILED)
+
+        return Response(
+            {"detail": "Broadcast cancelled.", "messages_cancelled": updated},
+            status=200,
+        )

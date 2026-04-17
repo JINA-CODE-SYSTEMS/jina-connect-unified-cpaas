@@ -161,3 +161,47 @@ class RCSOutboundMessage(models.Model):
 
     def __str__(self):
         return f"{self.to_phone} ({self.status})"
+
+
+class RCSTemplate(models.Model):
+    """Stored RCS message template for reuse across broadcasts (#119)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="rcs_templates")
+    rcs_app = models.ForeignKey(RCSApp, on_delete=models.CASCADE, related_name="templates")
+    name = models.CharField(max_length=255)
+    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES, default="TEXT")
+    body_text = models.TextField(blank=True, help_text="Template body text (supports {{placeholders}})")
+    suggestions = models.JSONField(default=list, blank=True, help_text="Default suggestion chips")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("tenant", "name")
+        verbose_name = "RCS Template"
+        verbose_name_plural = "RCS Templates"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.message_type})"
+
+
+class RCSTemplateCard(models.Model):
+    """Individual card within a carousel/rich-card RCS template (#119)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    template = models.ForeignKey(RCSTemplate, on_delete=models.CASCADE, related_name="cards")
+    order = models.PositiveSmallIntegerField(default=0)
+    title = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True, max_length=2000)
+    media_url = models.URLField(max_length=512, blank=True)
+    media_height = models.CharField(max_length=10, default="MEDIUM")
+    suggestions = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ["order"]
+        verbose_name = "RCS Template Card"
+
+    def __str__(self):
+        return f"Card {self.order}: {self.title[:50]}"

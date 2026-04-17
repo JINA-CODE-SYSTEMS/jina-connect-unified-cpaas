@@ -51,6 +51,28 @@ class MessageEventIds(models.Model):
         return str(self.numbering)
 
 
+class Conversation(models.Model):
+    """A conversation thread grouping messages with a single contact (#115)."""
+
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="conversations")
+    contact = models.ForeignKey(TenantContact, on_delete=models.CASCADE, related_name="conversations")
+    platform = models.CharField(max_length=10, choices=MessagePlatformChoices.choices)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["tenant", "contact", "-started_at"]),
+            models.Index(fields=["tenant", "is_active"]),
+        ]
+        verbose_name = "Conversation"
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"Conversation #{self.pk} — {self.contact} ({self.platform})"
+
+
 # Create your models here.
 class Messages(BaseTenantModelForFilterUser):
     filter_by_user_tenant_fk = "tenant__tenant_users__user"
@@ -101,6 +123,19 @@ class Messages(BaseTenantModelForFilterUser):
         null=True,
         db_index=True,
         help_text="External message ID (gs_id) for status tracking via BroadcastMessage lookup",
+    )
+    edited_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when message was last edited (e.g. Telegram edited_message)",
+    )
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="messages",
+        help_text="Conversation thread this message belongs to (#115)",
     )
     name = None
 

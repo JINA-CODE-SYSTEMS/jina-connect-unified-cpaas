@@ -20,6 +20,8 @@ class MessagesSerializer(serializers.ModelSerializer):
     outgoing_failed_at = serializers.ReadOnlyField()  # Property field from model
     read_by_name = serializers.SerializerMethodField()
     read_by_id = serializers.IntegerField(source="read_by.id", read_only=True, allow_null=True)
+    platform_display = serializers.SerializerMethodField()
+    channel_app_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Messages
@@ -30,6 +32,8 @@ class MessagesSerializer(serializers.ModelSerializer):
             "timestamp",
             "direction",
             "platform",
+            "platform_display",
+            "channel_app_id",
             "author",
             "tenant",
             "created_at",
@@ -55,12 +59,37 @@ class MessagesSerializer(serializers.ModelSerializer):
             "read_at",
             "read_by_id",
             "read_by_name",
+            "platform_display",
+            "channel_app_id",
             "outgoing_status",
             "outgoing_sent_at",
             "outgoing_delivered_at",
             "outgoing_read_at",
             "outgoing_failed_at",
         ]
+
+    def get_platform_display(self, obj):
+        """Human-readable platform name (#116)."""
+        return obj.get_platform_display() if obj.platform else None
+
+    def get_channel_app_id(self, obj):
+        """Resolve channel app ID from linked outbound messages (#116)."""
+        if obj.platform == "WHATSAPP" and obj.outgoing_message_id:
+            return str(getattr(obj.outgoing_message, "wa_app_id", "") or "")
+        # Check channel-specific outbound FK
+        for attr, field in [
+            ("telegram_outbound", None),
+            ("sms_outbound_messages", "sms_app_id"),
+            ("rcs_outbound_messages", "rcs_app_id"),
+        ]:
+            qs = getattr(obj, attr, None)
+            if qs is not None:
+                linked = qs.first()
+                if linked:
+                    if attr == "telegram_outbound":
+                        return str(getattr(linked, "bot_app_id", "") or "")
+                    return str(getattr(linked, field, "") or "")
+        return None
 
     def get_read_by_name(self, obj):
         """Get the name of the user who read the message."""

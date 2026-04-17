@@ -9,6 +9,43 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
+@shared_task
+def send_scheduled_telegram_messages():
+    """Celery beat task: send TelegramOutboundMessages whose scheduled_time has arrived (#120)."""
+    from django.utils import timezone
+
+    from telegram.models import TelegramOutboundMessage
+    from telegram.services.bot_client import TelegramBotClient
+
+    now = timezone.now()
+    due = TelegramOutboundMessage.objects.filter(
+        status="PENDING",
+        scheduled_time__isnull=False,
+        scheduled_time__lte=now,
+    ).select_related("bot_app")
+
+    sent = 0
+    for msg in due[:100]:  # process up to 100 per tick
+        try:
+            client = TelegramBotClient(token=msg.bot_app.bot_token)
+            resp = client.send_message(chat_id=msg.chat_id, **msg.request_payload or {})
+            msg.provider_message_id = resp.get("result", {}).get("message_id")
+            msg.status = "SENT"
+            msg.sent_at = now
+            msg.save(update_fields=["provider_message_id", "status", "sent_at"])
+            sent += 1
+        except Exception:
+            logger.exception("[send_scheduled_telegram_messages] Failed to send msg %s", msg.pk)
+            msg.status = "FAILED"
+            msg.failed_at = now
+            msg.error_message = "Scheduled send failed"
+            msg.save(update_fields=["status", "failed_at", "error_message"])
+
+    if sent:
+        logger.info("[send_scheduled_telegram_messages] Sent %d scheduled messages", sent)
+    return {"sent": sent}
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def process_tg_event_task(self, event_id: str):
     """
@@ -40,7 +77,7 @@ def process_tg_event_task(self, event_id: str):
         elif event.event_type == "CALLBACK_QUERY":
             _handle_callback_query(event)
         elif event.event_type == "EDITED_MESSAGE":
-            logger.info("[process_tg_event_task] Edited message event %s — logged for audit", event_id)
+            _handle_edited_message(event)
         else:
             logger.info("[process_tg_event_task] Unknown event type %s for %s", event.event_type, event_id)
 
@@ -53,12 +90,20 @@ def process_tg_event_task(self, event_id: str):
         event.error_message = str(exc)[:2000]
         event.save(update_fields=["retry_count", "error_message"])
         logger.exception("[process_tg_event_task] Error processing event %s", event_id)
-        raise self.retry(exc=exc)
+        # Exponential backoff: 60s → 120s → 240s, capped at 300s (#106)
+        countdown = min(60 * (2 ** self.request.retries), 300)
+        try:
+            raise self.retry(exc=exc, countdown=countdown)
+        except self.MaxRetriesExceededError:
+            event.error_message = f"FAILED after {self.max_retries} retries: {exc!s}"[:2000]
+            event.save(update_fields=["error_message"])
+            logger.error("[process_tg_event_task] Event %s FAILED after max retries", event_id)
 
 
 def _handle_message(event):
     """Process an incoming Telegram message — upsert contact, write inbox."""
-    from contacts.models import ContactSource, TenantContact
+    from contacts.models import ContactSource
+    from contacts.services import resolve_or_create_contact
     from team_inbox.models import AuthorChoices, MessageDirectionChoices, MessagePlatformChoices
     from team_inbox.utils.inbox_message_factory import create_inbox_message
 
@@ -74,19 +119,17 @@ def _handle_message(event):
 
     tenant = event.bot_app.tenant
 
-    # Upsert contact — only set names on creation, never overwrite existing data
-    contact, created = TenantContact.objects.get_or_create(
+    # Upsert contact with fallback (#108)
+    contact = resolve_or_create_contact(
         tenant=tenant,
+        source=ContactSource.TELEGRAM,
         telegram_chat_id=chat_id,
         defaults={
             "first_name": (from_user.get("first_name") or "")[:150],
             "last_name": (from_user.get("last_name") or "")[:150],
             "telegram_username": (from_user.get("username") or "")[:150],
-            "source": ContactSource.TELEGRAM,
         },
     )
-    if created:
-        logger.info("[_handle_message] Created new contact %s for chat_id %s", contact.pk, chat_id)
 
     # Determine message content type
     content = _extract_message_content(message)
@@ -151,6 +194,45 @@ def _handle_callback_query(event):
         contact.pk,
         chat_id,
     )
+
+
+def _handle_edited_message(event):
+    """Update an existing inbox message when Telegram sends edited_message (#103)."""
+    from django.utils import timezone
+
+    from team_inbox.models import Messages
+
+    payload = event.payload
+    edited = payload.get("edited_message", {})
+    message_id = edited.get("message_id")
+    chat_id = edited.get("chat", {}).get("id")
+
+    if not message_id or not chat_id:
+        logger.warning("[_handle_edited_message] Missing message_id or chat_id in event %s", event.pk)
+        return
+
+    external_id = str(message_id)
+    tenant = event.bot_app.tenant
+
+    inbox_msg = Messages.objects.filter(
+        tenant=tenant,
+        external_message_id=external_id,
+        platform="TELEGRAM",
+    ).first()
+
+    if not inbox_msg:
+        logger.warning(
+            "[_handle_edited_message] No inbox message found for external_message_id=%s tenant=%s",
+            external_id,
+            tenant.pk,
+        )
+        return
+
+    new_content = _extract_message_content(edited)
+    inbox_msg.content = new_content
+    inbox_msg.edited_at = timezone.now()
+    inbox_msg.save(update_fields=["content", "edited_at"])
+    logger.info("[_handle_edited_message] Updated message pk=%s with edited content", inbox_msg.pk)
 
 
 def _extract_message_content(message: dict) -> dict:
