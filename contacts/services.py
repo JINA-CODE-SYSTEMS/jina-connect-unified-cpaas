@@ -32,8 +32,6 @@ def resolve_or_create_contact(
     Returns:
         TenantContact instance (existing or newly created).
     """
-    from contacts.models import ContactSource
-
     defaults = defaults or {}
     defaults.setdefault("source", source)
 

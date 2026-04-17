@@ -396,7 +396,6 @@ def process_message_webhook(pk: str):
         pk: UUID string of the WAWebhookEvent instance
     """
     try:
-        from contacts.models import TenantContact
         from team_inbox.models import AuthorChoices, MessageDirectionChoices, MessagePlatformChoices, Messages
         from tenants.models import BSPChoices, TenantWAApp
         from wa.models import WAWebhookEvent

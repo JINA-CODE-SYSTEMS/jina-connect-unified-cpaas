@@ -20,7 +20,6 @@ def process_import_job(self, import_job_id: int):
     Supports CSV and XLSX files. For XLSX, requires openpyxl.
     """
     from contacts.models import ImportJob, TenantContact
-    from phonenumber_field.phonenumber import PhoneNumber
 
     try:
         job = ImportJob.objects.get(pk=import_job_id)
