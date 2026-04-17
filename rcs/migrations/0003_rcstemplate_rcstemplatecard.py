@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("rcs", "0002_rename_fallback_sms_id_rcsoutboundmessage_fallback_sms"),
-        ("tenants", "__latest__"),
+        ("tenants", "0016_initial"),
     ]
 
     operations = [

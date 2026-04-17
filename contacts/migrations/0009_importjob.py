@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("contacts", "0008_tenantcontact_rcs_capable_rcs_checked_at"),
-        ("tenants", "__latest__"),
+        ("tenants", "0016_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

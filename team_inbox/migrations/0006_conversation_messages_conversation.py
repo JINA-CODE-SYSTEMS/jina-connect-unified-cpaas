@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("team_inbox", "0005_messages_edited_at"),
-        ("tenants", "__latest__"),
+        ("tenants", "0016_initial"),
         ("contacts", "0008_tenantcontact_rcs_capable_rcs_checked_at"),
     ]
 

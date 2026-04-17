@@ -14,6 +14,7 @@ class TelegramBroadcastViewSet(BroadcastViewSet):
         "retrieve": "broadcast.view",
         "create": "broadcast.create",
         "partial_update": "broadcast.create",
+        "cancel": "broadcast.edit",
         "reserve_keyword_list": "broadcast.view",
         "min_scheduled_time": "broadcast.view",
         "default": "broadcast.view",

@@ -118,11 +118,25 @@ def process_import_job(self, import_job_id: int):
         raise self.retry(exc=exc)
 
 
+def _deduplicate_headers(headers: list[str]) -> list[str]:
+    """Append _1, _2, … suffixes to duplicate header names."""
+    seen: dict[str, int] = {}
+    result: list[str] = []
+    for h in headers:
+        if h in seen:
+            seen[h] += 1
+            result.append(f"{h}_{seen[h]}")
+        else:
+            seen[h] = 0
+            result.append(h)
+    return result
+
+
 def _parse_csv(content: bytes) -> list[dict]:
     decoded = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(decoded))
     if reader.fieldnames:
-        reader.fieldnames = [n.strip().lower() for n in reader.fieldnames]
+        reader.fieldnames = _deduplicate_headers([n.strip().lower() for n in reader.fieldnames])
     return list(reader)
 
 
@@ -132,7 +146,8 @@ def _parse_xlsx(content: bytes) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
-    headers = [str(h).strip().lower() if h else f"col_{i}" for i, h in enumerate(next(rows_iter))]
+    raw_headers = [str(h).strip().lower() if h else f"col_{i}" for i, h in enumerate(next(rows_iter))]
+    headers = _deduplicate_headers(raw_headers)
     result = []
     for row in rows_iter:
         result.append({headers[i]: str(cell) if cell is not None else "" for i, cell in enumerate(row)})

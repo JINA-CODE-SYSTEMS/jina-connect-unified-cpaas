@@ -54,26 +54,6 @@ From a fresh clone to your first WhatsApp message sent: **under 5 minutes**. If 
 
 ---
 
-## Community and Resources
-
-- **Documentation**: coming soon
-- **Hosted product**: coming soon
-- **Discord community**: live (server id: `1494240125637496924`)
-- **Discord channel path**: `discord.com/channels/1494240125637496924`
-- **Discussions** (questions, ideas, show-and-tell): [GitHub Discussions](https://github.com/jina-code-systems/jina-connect-unified-cpaas/discussions)
-- **Issues** (bugs and feature requests): [GitHub Issues](https://github.com/jina-code-systems/jina-connect-unified-cpaas/issues)
-- **Twitter/X**: [@tryjinaconnect](https://x.com/tryjinaconnect)
-
-### What we have done so far (for the above)
-
-- Open-source repo is live with active issue tracking.
-- Public Discussions channel is defined for Q&A and ideas.
-- Discord community is created and server path is published.
-- Twitter/X handle is published for updates.
-- Documentation site and hosted product page will be linked here once public.
-
----
-
 ## What's in the box
 
 Everything below is open-source, shipped in this repo, and works out of the box.
@@ -96,15 +76,15 @@ Each channel plugs into the same unified abstraction, so features you use today 
 
 ### Outbound engagement
 
-**Broadcast engine (`broadcast`)** — Campaign management for outbound marketing. Draft → schedule → send lifecycle, batch processing with per-channel rate limiting, URL click tracking, and pre-send cost estimation. Works today on WhatsApp, Telegram, SMS, and RCS.
+**Broadcast engine (`broadcast`)** — Campaign management for outbound marketing. Draft → schedule → send lifecycle, batch processing with per-channel rate limiting, URL click tracking, pre-send cost estimation, scheduled auto-send, and broadcast cancellation. Works today on WhatsApp, Telegram, SMS, and RCS.
 
 **Chat flow builder (`chat_flow`)** — Visual flow designer for automated customer journeys. Node-edge graph model, conditional branching rules engine, multi-turn session tracking. Channel-agnostic by design — a flow you build can route across WhatsApp, Telegram, and SMS.
 
 ### Inbound and support
 
-**Team inbox (`team_inbox`)** — Real-time unified inbox across channels. WebSocket-based message delivery, activity event stream, sequential ordering across multiple agents. One conversation view no matter which channel the customer reached you on.
+**Team inbox (`team_inbox`)** — Real-time unified inbox across channels. WebSocket-based message delivery, activity event stream, sequential ordering across multiple agents. One conversation view no matter which channel the customer reached you on. Supports ad-hoc messaging (Telegram, SMS, RCS), message revocation (RCS), and agent mention/assignment notifications.
 
-**Contacts (`contacts`)** — Contact management at scale. Multi-source ingestion (CSV, API, webhook), lead scoring, tagging, segmentation. Channel-neutral: the same contact can be reached via WhatsApp today, SMS tomorrow, or Voice next month, all from the same record.
+**Contacts (`contacts`)** — Contact management at scale. Multi-source ingestion (CSV/XLSX bulk import, API, webhook), lead scoring, tagging, segmentation. Channel-neutral: the same contact can be reached via WhatsApp today, SMS tomorrow, or Voice next month, all from the same record.
 
 ### Platform
 
@@ -160,8 +140,8 @@ The roadmap below is organized by CPaaS capability. Each capability has a curren
 |---|---|---|---|
 | **WhatsApp Business API** | Meta Cloud API, Gupshup | WATI adapter, Twilio adapter | Sinch, Infobip, MessageBird |
 | **Telegram Bot API** | ✅ Native Bot API adapter, inline keyboards, file handling | Telegram Mini Apps, payments | — |
-| **SMS** | — | Twilio, MSG91, Fast2SMS adapters | Region-specific carriers, short-code support |
-| **RCS Business Messaging** | — | Meta RCS, Google RCS adapters | Rich cards, suggested replies, verified sender |
+| **SMS** | ✅ Twilio, MSG91, Fast2SMS adapters | Region-specific carriers, short-code support | — |
+| **RCS Business Messaging** | ✅ Google RBM, Meta RCS adapters | Rich cards, suggested replies, verified sender | — |
 | **Voice (calls, IVR)** | — | SIP trunking, basic IVR flows, Twilio Voice adapter | Advanced call routing, recording, transcription, agent handoff |
 
 ### 📤 Outbound Campaigns
@@ -227,7 +207,7 @@ The roadmap below is organized by CPaaS capability. Each capability has a curren
 |---|---|---|---|---|---|
 | **Open source** | ✅ AGPL v3 | ❌ | ❌ | ❌ | ❌ |
 | **Self-hostable** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Multi-channel** | ✅ WhatsApp + roadmap for SMS/RCS/Telegram/Voice | ❌ WhatsApp only | ⚠️ Partial | ✅ Multi-channel | ❌ WhatsApp only |
+| **Multi-channel** | ✅ WhatsApp, SMS, Telegram, RCS + roadmap for Voice | ❌ WhatsApp only | ⚠️ Partial | ✅ Multi-channel | ❌ WhatsApp only |
 | **Multi-provider per channel** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **MCP server** | ✅ Multi-provider | ✅ WATI only | ❌ | ✅ Twilio only | ❌ |
 | **Team inbox** | ✅ | ✅ | ⚠️ Limited | ⚠️ Limited | ✅ |

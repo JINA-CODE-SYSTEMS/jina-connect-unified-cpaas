@@ -750,8 +750,12 @@ class ContactsViewSet(BaseTenantModelViewSet):
         """Check the status of a bulk import job (#118)."""
         from contacts.models import ImportJob
 
+        tenant_user = self._get_tenant_user()
+        if tenant_user is None:
+            return Response({"error": "No active tenant"}, status=status.HTTP_403_FORBIDDEN)
+
         try:
-            job = ImportJob.objects.get(pk=job_id, tenant__tenant_users__user=request.user)
+            job = ImportJob.objects.get(pk=job_id, tenant=tenant_user.tenant)
         except ImportJob.DoesNotExist:
             return Response({"error": "Import job not found"}, status=status.HTTP_404_NOT_FOUND)
 
