@@ -70,7 +70,9 @@ class ContactsViewSet(BaseTenantModelViewSet):
     def perform_create(self, serializer):
         tenant_user = self._get_tenant_user()
         if not tenant_user:
-            raise serializers.ValidationError("Could not determine tenant for this request.")
+            raise serializers.ValidationError(
+                "Could not determine tenant for this request. Ensure the user has an active tenant membership."
+            )
         contact = serializer.save(tenant=tenant_user.tenant)
         try:
             from notifications.signals import create_contact_added_notification

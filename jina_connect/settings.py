@@ -252,7 +252,7 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 600000
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=config("ACCESS_TOKEN_LIFETIME", 90)),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=config("ACCESS_TOKEN_LIFETIME", 90, cast=int)),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=180),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,

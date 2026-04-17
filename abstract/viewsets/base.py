@@ -46,15 +46,22 @@ class BaseTenantModelViewSet(BaseModelViewSet):
     def _get_tenant_user(self):
         """
         Return the request user's active TenantUser (cached per-request).
+
+        Uses the ``tenant_id`` JWT claim when available so the lookup is
+        precise for users that belong to more than one tenant.
         """
         cache_attr = "_cached_tenant_user"
         if not hasattr(self.request, cache_attr):
             from tenants.models import TenantUser
 
+            filters = {"user": self.request.user, "is_active": True}
+            tenant_id = getattr(self.request.user, "tenant_id", None)
+            if tenant_id:
+                filters["tenant_id"] = tenant_id
             setattr(
                 self.request,
                 cache_attr,
-                TenantUser.objects.select_related("role").filter(user=self.request.user, is_active=True).first(),
+                TenantUser.objects.select_related("role").filter(**filters).first(),
             )
         return getattr(self.request, cache_attr)
 

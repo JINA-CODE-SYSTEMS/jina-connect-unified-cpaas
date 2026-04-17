@@ -6,12 +6,12 @@ from sms.viewsets.broadcast import SMSBroadcastViewSet
 from sms.viewsets.contacts import SMSContactsViewSet
 from sms.viewsets.sms_app import SMSAppViewSet
 from sms.viewsets.sms_message import SMSOutboundMessageViewSet
-from wa.viewsets.wa_template_v2 import WATemplateV2ViewSet
+from wa.viewsets.channel_template import SMSTemplateViewSet
 
 router = DefaultRouter()
 router.register(r"v1/apps", SMSAppViewSet, basename="sms-apps")
 router.register(r"v1/messages", SMSOutboundMessageViewSet, basename="sms-messages")
-router.register(r"v1/templates", WATemplateV2ViewSet, basename="sms-templates")
+router.register(r"v1/templates", SMSTemplateViewSet, basename="sms-templates")
 router.register(r"v1/broadcast", SMSBroadcastViewSet, basename="sms-broadcast")
 router.register(r"v1/contacts", SMSContactsViewSet, basename="sms-contacts")
 
