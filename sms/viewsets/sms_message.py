@@ -71,23 +71,5 @@ class SMSOutboundMessageViewSet(BaseTenantModelViewSet):
             dlt_template_id=data.get("dlt_template_id"),
         )
 
-        # Create inbox message for conversation tracking
-        if result.get("success") and contact:
-            try:
-                from team_inbox.utils.inbox_message_factory import create_inbox_message
-
-                create_inbox_message(
-                    tenant=tenant,
-                    contact=contact,
-                    platform="SMS",
-                    direction="OUTGOING",
-                    author="USER",
-                    content={"type": "text", "body": {"text": data["text"]}},
-                    external_message_id=result.get("message_id", ""),
-                    tenant_user=request.user,
-                )
-            except Exception:
-                pass  # Don't fail the send if inbox tracking fails
-
         resp_status = status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST
         return Response(result, status=resp_status)

@@ -28,7 +28,9 @@ def send_scheduled_telegram_messages():
     for msg in due[:100]:  # process up to 100 per tick
         try:
             client = TelegramBotClient(token=msg.bot_app.bot_token)
-            resp = client.send_message(chat_id=msg.chat_id, **msg.request_payload or {})
+            payload = dict(msg.request_payload or {})
+            payload.pop("chat_id", None)
+            resp = client.send_message(chat_id=msg.chat_id, **payload)
             msg.provider_message_id = resp.get("result", {}).get("message_id")
             msg.status = "SENT"
             msg.sent_at = now

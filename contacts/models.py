@@ -32,6 +32,7 @@ class ContactSource(models.TextChoices):
     VOICE = "VOICE", "Voice"
     SMS = "SMS", "SMS"
     RCS = "RCS", "RCS"
+    IMPORT = "IMPORT", "Import"
     # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 

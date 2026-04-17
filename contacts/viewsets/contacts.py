@@ -11,6 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 from abstract.viewsets.base import BaseTenantModelViewSet
 from contacts.filters import TenantContactFilter
@@ -689,7 +690,13 @@ class ContactsViewSet(BaseTenantModelViewSet):
             }
         )
 
-    @action(detail=False, methods=["post"], url_path="bulk-import", parser_classes=[MultiPartParser, FormParser])
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk-import",
+        parser_classes=[MultiPartParser, FormParser],
+        throttle_classes=[UserRateThrottle],
+    )
     def bulk_import(self, request):
         """Upload CSV or XLSX file for async bulk contact import (#118).
 
@@ -716,8 +723,10 @@ class ContactsViewSet(BaseTenantModelViewSet):
 
         # Save file to default storage
         from django.core.files.storage import default_storage
+        from django.utils.text import get_valid_filename
 
-        path = f"imports/{tenant.pk}/{file_obj.name}"
+        safe_name = get_valid_filename(file_obj.name)
+        path = f"imports/{tenant.pk}/{safe_name}"
         saved_path = default_storage.save(path, file_obj)
 
         job = ImportJob.objects.create(

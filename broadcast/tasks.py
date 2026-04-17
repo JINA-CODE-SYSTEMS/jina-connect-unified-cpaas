@@ -463,7 +463,16 @@ def process_scheduled_broadcasts():
         for broadcast in due:
             broadcast.status = BroadcastStatusChoices.SENDING
             broadcast.save(update_fields=["status"])
-            result = setup_broadcast_task.delay(broadcast.pk)
+            try:
+                result = setup_broadcast_task.delay(broadcast.pk)
+            except Exception:
+                logger.exception(
+                    "[process_scheduled_broadcasts] Failed to enqueue broadcast %s, reverting to SCHEDULED",
+                    broadcast.pk,
+                )
+                broadcast.status = BroadcastStatusChoices.SCHEDULED
+                broadcast.save(update_fields=["status"])
+                continue
             broadcast.task_id = result.id
             broadcast.save(update_fields=["task_id"])
             launched += 1

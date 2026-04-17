@@ -36,7 +36,8 @@ def process_import_job(self, import_job_id: int):
     total = 0
 
     try:
-        file_content = default_storage.open(job.file_path, "rb").read()
+        with default_storage.open(job.file_path, "rb") as f:
+            file_content = f.read()
         is_xlsx = job.file_name.lower().endswith(".xlsx")
 
         if is_xlsx:
