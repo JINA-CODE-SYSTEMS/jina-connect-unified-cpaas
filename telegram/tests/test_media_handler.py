@@ -18,14 +18,15 @@ class TestTelegramMediaHandler:
         self.client.get_file_url.return_value = "https://api.telegram.org/file/file_1.jpg"
 
         resp = MagicMock()
-        resp.content = b"binary-image"
+        resp.headers = {}
+        resp.iter_content.return_value = [b"binary-image"]
         mock_get.return_value = resp
 
         content, file_path = self.handler.download_file("file-id-1")
 
         self.client.get_file.assert_called_once_with("file-id-1")
         self.client.get_file_url.assert_called_once_with("photos/file_1.jpg")
-        mock_get.assert_called_once_with("https://api.telegram.org/file/file_1.jpg", timeout=60)
+        mock_get.assert_called_once_with("https://api.telegram.org/file/file_1.jpg", timeout=60, stream=True)
         resp.raise_for_status.assert_called_once()
         assert content == b"binary-image"
         assert file_path == "photos/file_1.jpg"
@@ -44,6 +45,39 @@ class TestTelegramMediaHandler:
         # No HTTP call should have been made
         mock_get.assert_not_called()
         self.client.get_file_url.assert_not_called()
+
+    @patch("telegram.services.media_handler.requests.get")
+    def test_download_rejects_oversize_content_length(self, mock_get):
+        """#128: Content-Length header triggers rejection when file_size is absent."""
+        self.client.get_file.return_value = {"file_path": "photos/big.jpg"}
+        self.client.get_file_url.return_value = "https://api.telegram.org/file/big.jpg"
+
+        resp = MagicMock()
+        resp.headers = {"Content-Length": str(TelegramMediaHandler.MAX_DOWNLOAD_BYTES + 1)}
+        mock_get.return_value = resp
+
+        with pytest.raises(ValueError, match="Content-Length"):
+            self.handler.download_file("no-size-id")
+
+        resp.close.assert_called_once()
+
+    @patch("telegram.services.media_handler.requests.get")
+    def test_download_rejects_oversize_during_stream(self, mock_get):
+        """#128: Streaming guard rejects download that exceeds limit mid-stream."""
+        self.client.get_file.return_value = {"file_path": "photos/sneaky.jpg"}
+        self.client.get_file_url.return_value = "https://api.telegram.org/file/sneaky.jpg"
+
+        # No file_size, no Content-Length, but actual data exceeds limit
+        oversize_chunk = b"x" * (TelegramMediaHandler.MAX_DOWNLOAD_BYTES + 1)
+        resp = MagicMock()
+        resp.headers = {}
+        resp.iter_content.return_value = [oversize_chunk]
+        mock_get.return_value = resp
+
+        with pytest.raises(ValueError, match="download exceeded limit"):
+            self.handler.download_file("sneaky-id")
+
+        resp.close.assert_called_once()
 
     def test_get_media_from_message_photo_uses_largest(self):
         message = {

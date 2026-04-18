@@ -46,9 +46,28 @@ class TelegramMediaHandler:
         file_path = file_info.get("file_path", "")
         url = self.client.get_file_url(file_path)
 
-        resp = requests.get(url, timeout=60)
+        resp = requests.get(url, timeout=60, stream=True)
         resp.raise_for_status()
-        return resp.content, file_path
+
+        # Fallback size check via Content-Length when file_size was absent
+        content_length = resp.headers.get("Content-Length")
+        if content_length and int(content_length) > self.MAX_DOWNLOAD_BYTES:
+            resp.close()
+            raise ValueError(
+                f"Telegram file_id={file_id} Content-Length {content_length} exceeds limit {self.MAX_DOWNLOAD_BYTES}"
+            )
+
+        # Stream with a byte counter to protect against missing/lying headers
+        chunks = []
+        downloaded = 0
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            downloaded += len(chunk)
+            if downloaded > self.MAX_DOWNLOAD_BYTES:
+                resp.close()
+                raise ValueError(f"Telegram file_id={file_id} download exceeded limit {self.MAX_DOWNLOAD_BYTES} bytes")
+            chunks.append(chunk)
+
+        return b"".join(chunks), file_path
 
     def get_media_from_message(self, message: dict) -> Optional[dict]:
         """

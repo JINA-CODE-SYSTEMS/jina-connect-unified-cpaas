@@ -210,6 +210,36 @@ class TestSendScheduledTelegramMessages:
         assert result["sent"] == 0
         msg.refresh_from_db()
         assert msg.status == "FAILED"
+        assert msg.sent_at is None
+        assert msg.failed_at is not None
+        assert msg.error_message
+
+    def test_rate_limited_stays_pending(self, bot_app, monkeypatch):
+        """429 rate-limit error maps to PENDING for retry via TELEGRAM_ERROR_MAP (#125)."""
+        from telegram.services.bot_client import TelegramAPIError, TelegramBotClient
+        from telegram.tasks import send_scheduled_telegram_messages
+
+        msg = TelegramOutboundMessage.objects.create(
+            tenant=bot_app.tenant,
+            bot_app=bot_app,
+            chat_id=12345,
+            message_type="TEXT",
+            status="PENDING",
+            scheduled_time=timezone.now() - timezone.timedelta(minutes=1),
+            request_payload={"text": "Rate limited"},
+        )
+
+        def raise_429(self, chat_id, **kwargs):
+            raise TelegramAPIError(429, "Too Many Requests: retry after 30")
+
+        monkeypatch.setattr(TelegramBotClient, "send_message", raise_429)
+
+        result = send_scheduled_telegram_messages()
+
+        assert result["sent"] == 0
+        msg.refresh_from_db()
+        assert msg.status == "PENDING"
+        assert msg.failed_at is None
 
     def test_chat_id_popped_from_payload(self, bot_app, monkeypatch):
         """chat_id in request_payload doesn't conflict with explicit kwarg (#20)."""

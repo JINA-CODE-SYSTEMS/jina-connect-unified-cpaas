@@ -19,20 +19,8 @@ from django.test import RequestFactory, TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tenants.models import (
-    DefaultRoleSlugs,
-    RolePermission,
-    Tenant,
-    TenantRole,
-    TenantUser,
-)
-from tenants.permission_classes import (
-    IsAdminOrAbove,
-    IsAgentOrAbove,
-    IsManagerOrAbove,
-    IsOwner,
-    TenantRolePermission,
-)
+from tenants.models import DefaultRoleSlugs, RolePermission, Tenant, TenantRole, TenantUser
+from tenants.permission_classes import IsAdminOrAbove, IsAgentOrAbove, IsManagerOrAbove, IsOwner, TenantRolePermission
 from tenants.permissions import (
     ALL_PERMISSIONS,
     DEFAULT_ROLE_PERMISSIONS,
