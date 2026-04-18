@@ -30,6 +30,21 @@ class TestTelegramMediaHandler:
         assert content == b"binary-image"
         assert file_path == "photos/file_1.jpg"
 
+    @patch("telegram.services.media_handler.requests.get")
+    def test_download_file_rejects_oversize(self, mock_get):
+        """#128: Files larger than MAX_DOWNLOAD_BYTES are rejected without download."""
+        self.client.get_file.return_value = {
+            "file_path": "videos/big.mp4",
+            "file_size": TelegramMediaHandler.MAX_DOWNLOAD_BYTES + 1,
+        }
+
+        with pytest.raises(ValueError, match="exceeds limit"):
+            self.handler.download_file("big-file-id")
+
+        # No HTTP call should have been made
+        mock_get.assert_not_called()
+        self.client.get_file_url.assert_not_called()
+
     def test_get_media_from_message_photo_uses_largest(self):
         message = {
             "photo": [

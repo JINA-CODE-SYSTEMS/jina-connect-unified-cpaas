@@ -37,6 +37,10 @@ class _ChannelTemplateMixin:
         serializer.is_valid(raise_exception=True)
 
         tenant_user = self._get_tenant_user()
+        if not tenant_user:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError("Could not determine tenant for this request.")
         template = serializer.save(
             platform=self._channel_platform,
             tenant=tenant_user.tenant,

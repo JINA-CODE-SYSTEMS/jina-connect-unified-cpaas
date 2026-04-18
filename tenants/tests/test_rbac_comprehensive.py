@@ -2989,7 +2989,7 @@ class PreProductionSweepTests(RBACIntegrationBase):
                 fp = os.path.join(dirpath, fn)
                 rel = os.path.relpath(fp, root)
                 rel_fwd = rel.replace("\\", "/")
-                if "__pycache__" in rel_fwd or "venv/" in rel_fwd or "test" in rel_fwd:
+                if "__pycache__" in rel_fwd or "venv/" in rel_fwd or "test" in rel_fwd or "site-packages" in rel_fwd:
                     continue
                 try:
                     with open(fp) as f:

@@ -22,14 +22,28 @@ class TelegramMediaHandler:
         """
         self.client = client
 
+    # Telegram allows files up to 2 GB but the Bot API caps downloads at 20 MB (#128).
+    # We mirror that limit here to protect worker memory.
+    MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
+
     def download_file(self, file_id: str) -> tuple[bytes, str]:
         """
         Download a file from Telegram servers.
+
+        Raises ``ValueError`` if the reported file size exceeds
+        :pyattr:`MAX_DOWNLOAD_BYTES`.
 
         Returns:
             Tuple of (file_content_bytes, file_path_on_telegram).
         """
         file_info = self.client.get_file(file_id)
+        file_size = file_info.get("file_size")
+        if file_size and file_size > self.MAX_DOWNLOAD_BYTES:
+            raise ValueError(
+                f"Telegram file_id={file_id} is {file_size} bytes, exceeds "
+                f"limit {self.MAX_DOWNLOAD_BYTES}"
+            )
+
         file_path = file_info.get("file_path", "")
         url = self.client.get_file_url(file_path)
 
