@@ -59,6 +59,8 @@ class RCSWebhookView(View):
         """Handle Google RBM Pub/Sub push webhook."""
         payload = _decode_pubsub_payload(request)
         if not payload:
+            # Always ack Pub/Sub to prevent redelivery storms (#111)
+            logger.warning("RCS webhook: failed to decode payload for app %s", rcs_app.id)
             return JsonResponse({"ok": True})
 
         # Check for Pub/Sub subscription confirmation
@@ -68,6 +70,15 @@ class RCSWebhookView(View):
             return JsonResponse({"ok": True})
 
         if not provider.validate_webhook_signature(request):
+            return JsonResponse({"ok": True})
+
+        # Validate decoded schema — required RBM fields (#111)
+        if not _validate_rbm_payload(payload):
+            logger.warning(
+                "RCS webhook: invalid RBM schema for app %s — payload keys: %s",
+                rcs_app.id,
+                list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__,
+            )
             return JsonResponse({"ok": True})
 
         event_type = _classify_event(payload)
@@ -140,15 +151,50 @@ class RCSWebhookView(View):
 
 
 def _decode_pubsub_payload(request):
-    """Decode Google Pub/Sub push message envelope."""
+    """Decode Google Pub/Sub push message envelope or direct webhook body (#111).
+
+    Handles two formats:
+    1. Pub/Sub: {"message": {"data": "<base64-encoded JSON>", "messageId": "..."}}
+    2. Direct: raw RBM JSON body
+    """
     try:
         body = json.loads(request.body or b"{}")
-        encoded_data = body.get("message", {}).get("data", "")
-        if encoded_data:
-            return json.loads(base64.b64decode(encoded_data))
+
+        # Pub/Sub envelope detection
+        pubsub_data = body.get("message", {})
+        if isinstance(pubsub_data, dict) and "data" in pubsub_data:
+            encoded_data = pubsub_data["data"]
+            decoded = json.loads(base64.b64decode(encoded_data))
+            logger.debug("RCS webhook: decoded Pub/Sub envelope (messageId=%s)", pubsub_data.get("messageId", ""))
+            return decoded
+
+        # Direct format — return body as-is
         return body
-    except (json.JSONDecodeError, Exception):
+    except (json.JSONDecodeError, Exception) as exc:
+        logger.warning("RCS webhook: payload decode error — %s", exc)
         return None
+
+
+def _validate_rbm_payload(payload: dict) -> bool:
+    """Validate that decoded RBM payload contains minimum required fields (#111).
+
+    An RBM payload must be a dict and contain at least one of:
+    - A message field (text, suggestionResponse, location, userFile)
+    - An event field (eventType with a known value)
+    - senderPhoneNumber + messageId (delivery/read events)
+    """
+    if not isinstance(payload, dict):
+        return False
+    # Message payloads
+    if any(k in payload for k in ("text", "suggestionResponse", "location", "userFile")):
+        return True
+    # Event payloads (DELIVERED, READ, IS_TYPING)
+    if payload.get("eventType") in ("DELIVERED", "READ", "IS_TYPING"):
+        return True
+    # Must have at least messageId or eventId to be useful
+    if payload.get("messageId") or payload.get("eventId"):
+        return True
+    return False
 
 
 def _classify_event(payload):

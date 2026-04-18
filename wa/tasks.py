@@ -299,6 +299,12 @@ def submit_template_to_gupshup(self, template_id: int):
             result["error"] = f"Template status is {template.status}, not PENDING"
             return result
 
+        if not template.wa_app:
+            logger.error("Template %s has no wa_app linked, cannot submit to Gupshup", template.element_name)
+            result["status"] = "error"
+            result["error"] = "Template has no linked WhatsApp app"
+            return result
+
         # Initialize the template API
         template_api = TemplateAPI(appId=template.wa_app.app_id, token=template.wa_app.app_secret)
 
@@ -396,7 +402,6 @@ def process_message_webhook(pk: str):
         pk: UUID string of the WAWebhookEvent instance
     """
     try:
-        from contacts.models import TenantContact
         from team_inbox.models import AuthorChoices, MessageDirectionChoices, MessagePlatformChoices, Messages
         from tenants.models import BSPChoices, TenantWAApp
         from wa.models import WAWebhookEvent
@@ -499,18 +504,18 @@ def process_message_webhook(pk: str):
                     instance.save(update_fields=["error_message"])
                     return
 
-                # Get or create contact by phone number
-                contact, created = TenantContact.objects.get_or_create(
+                # Get or create contact by phone number (#108 fallback)
+                from contacts.services import resolve_or_create_contact
+
+                contact = resolve_or_create_contact(
                     tenant=tenant,
+                    source=MessagePlatformChoices.WHATSAPP,
                     phone=contact_phone,
                     defaults={
                         "first_name": contact_name or "",
                         "last_name": "",
-                        "source": MessagePlatformChoices.WHATSAPP,
                     },
                 )
-                if created:
-                    logger.debug("Created new contact: %s", contact.phone)
 
                 # Build message content according to team_inbox validator schema
                 content = _build_team_inbox_content(extracted_data, instance)

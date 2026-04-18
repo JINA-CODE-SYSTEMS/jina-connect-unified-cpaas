@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db.models import Count, Q
+from rest_framework import status as drf_status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -21,12 +22,13 @@ class BroadcastViewSet(BaseTenantModelViewSet):
 
     queryset = Broadcast.objects.all()
     serializer_class = BroadcastSerializer
-    http_method_names = ["get"]
+    http_method_names = ["get", "post"]
     required_permissions = {
         "list": "broadcast.view",
         "retrieve": "broadcast.view",
         "reserve_keyword_list": "broadcast.view",
         "min_scheduled_time": "broadcast.view",
+        "cancel": "broadcast.cancel",
         "default": "broadcast.view",
     }
 
@@ -41,6 +43,14 @@ class BroadcastViewSet(BaseTenantModelViewSet):
         return BroadcastLimitedSerializer
 
     datetime_filter_fields = ["created_at", "scheduled_time"]
+
+    def create(self, request, *args, **kwargs):
+        """Disabled on base viewset — use channel-specific broadcast endpoints."""
+        return Response(
+            {"detail": "Use a channel-specific broadcast endpoint to create broadcasts."},
+            status=drf_status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
     filterset_fields = {
         "status": ["exact", "in"],
         "template_number__number": ["exact", "in"],
@@ -124,3 +134,49 @@ class BroadcastViewSet(BaseTenantModelViewSet):
     def min_scheduled_time(self, request):
         min_time = settings.BROADCAST_CANCELLATION_TIME_LIMIT_IN_MINUTES
         return Response({"min_scheduled_time_in_minutes": min_time}, status=200)
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        """Cancel a SCHEDULED or SENDING broadcast (#102).
+
+        - Revokes the Celery task if one is tracked.
+        - Transitions status → CANCELLED.
+        - Marks all PENDING/QUEUED BroadcastMessages as FAILED.
+        """
+        from django.db import transaction
+
+        from broadcast.models import BroadcastStatusChoices, MessageStatusChoices
+        from broadcast.tasks import cancel_broadcast_task
+
+        with transaction.atomic():
+            broadcast = Broadcast.objects.select_for_update().get(pk=pk)
+
+            cancellable = {
+                BroadcastStatusChoices.SCHEDULED,
+                BroadcastStatusChoices.QUEUED,
+                BroadcastStatusChoices.SENDING,
+            }
+            if broadcast.status not in cancellable:
+                return Response(
+                    {"detail": f"Cannot cancel broadcast in status {broadcast.status}."},
+                    status=400,
+                )
+
+            # Revoke Celery task
+            if broadcast.task_id:
+                cancel_broadcast_task.delay(broadcast.task_id)
+
+            reason = request.data.get("reason", "Cancelled by user")
+            broadcast.status = BroadcastStatusChoices.CANCELLED
+            broadcast.reason_for_cancellation = reason
+            broadcast.save(update_fields=["status", "reason_for_cancellation"])
+
+        # Mark unsent messages as FAILED (outside lock)
+        updated = broadcast.broadcasts.filter(
+            status__in=[MessageStatusChoices.PENDING, MessageStatusChoices.QUEUED],
+        ).update(status=MessageStatusChoices.FAILED)
+
+        return Response(
+            {"detail": "Broadcast cancelled.", "messages_cancelled": updated},
+            status=200,
+        )

@@ -21,6 +21,7 @@ class WABroadcastViewSet(BroadcastViewSet):
         "retrieve": "broadcast.view",
         "create": "broadcast.create",
         "partial_update": "broadcast.create",
+        "cancel": "broadcast.cancel",
         "get_sending_quota": "broadcast.view",
         "preflight_check": "broadcast.create",
         "get_charge_breakdown": "broadcast.charge_breakdown",

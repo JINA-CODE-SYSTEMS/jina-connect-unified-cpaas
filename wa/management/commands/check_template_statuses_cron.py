@@ -1,12 +1,16 @@
+import json
+import logging
+from datetime import datetime
+
+from django.core.management.base import BaseCommand
+
 """
 Django management command for checking WhatsApp template statuses.
 This command can be called by django-crontab or executed manually.
 """
 
-import json
-from datetime import datetime
 
-from django.core.management.base import BaseCommand
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -48,6 +52,9 @@ class Command(BaseCommand):
         self.stdout.write(f"Found {pending_templates.count()} pending templates that would be checked:")
 
         for template in pending_templates:
+            if not template.wa_app:
+                self.stdout.write(f"  - {template.element_name} (skipped: no wa_app)")
+                continue
             self.stdout.write(
                 f"  - {template.element_name} (ID: {template.bsp_template_id or template.meta_template_id}) - App: {template.wa_app.app_id}"
             )
@@ -90,6 +97,9 @@ class Command(BaseCommand):
 
         for template in pending_templates:
             try:
+                if not template.wa_app:
+                    logger.warning("Skipping template %s: no wa_app linked", template.element_name)
+                    continue
                 adapter = get_bsp_adapter(template.wa_app)
 
                 if verbose:

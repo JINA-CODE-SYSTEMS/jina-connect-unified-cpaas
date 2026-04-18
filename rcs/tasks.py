@@ -41,7 +41,14 @@ def process_rcs_event_task(self, event_id: str):
         event.retry_count += 1
         event.error_message = str(exc)[:2000]
         event.save(update_fields=["retry_count", "error_message"])
-        raise self.retry(exc=exc)
+        # Exponential backoff: 60s → 120s → 240s, capped at 300s (#106)
+        countdown = min(60 * (2**self.request.retries), 300)
+        try:
+            raise self.retry(exc=exc, countdown=countdown)
+        except self.MaxRetriesExceededError:
+            event.error_message = f"FAILED after {self.max_retries} retries: {exc!s}"[:2000]
+            event.save(update_fields=["error_message"])
+            logger.error("RCSWebhookEvent %s FAILED after max retries", event_id)
 
 
 def _handle_inbound_message(event: RCSWebhookEvent):
@@ -49,11 +56,13 @@ def _handle_inbound_message(event: RCSWebhookEvent):
     provider = get_rcs_provider(event.rcs_app)
     inbound = provider.parse_inbound_webhook(event.payload)
 
-    # 1. Upsert contact by phone
-    contact, _ = TenantContact.objects.get_or_create(
+    # 1. Upsert contact by phone with fallback (#108)
+    from contacts.services import resolve_or_create_contact
+
+    contact = resolve_or_create_contact(
         tenant=event.tenant,
+        source=ContactSource.RCS,
         phone=inbound.sender_phone,
-        defaults={"source": ContactSource.RCS},
     )
 
     # 2. Build inbox content

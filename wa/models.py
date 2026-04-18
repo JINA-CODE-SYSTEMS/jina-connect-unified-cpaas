@@ -192,7 +192,7 @@ class BroadcastStatus(models.TextChoices):
 
 class WATemplate(BaseTemplateMessages):
     """
-    Canonical WhatsApp Message Template.
+    Canonical Message Template.
 
     Extends BaseTemplateMessages which provides:
     - name, description, is_active, created_at, updated_at (from BaseModel)
@@ -205,12 +205,36 @@ class WATemplate(BaseTemplateMessages):
     Background jobs use adapters to sync with META/BSP APIs.
     """
 
-    filter_by_user_tenant_fk = "wa_app__tenant__tenant_users__user"
+    filter_by_user_tenant_fk = "tenant__tenant_users__user"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # Relationship to WA App
-    wa_app = models.ForeignKey(WAApp, on_delete=models.CASCADE, related_name="templates")
+    # Channel platform — defaults to WHATSAPP for backward compatibility.
+    platform = models.CharField(
+        max_length=20,
+        choices=[
+            ("WHATSAPP", "WhatsApp"),
+            ("SMS", "SMS"),
+            ("TELEGRAM", "Telegram"),
+            ("RCS", "RCS"),
+        ],
+        default="WHATSAPP",
+        db_index=True,
+        help_text="Channel this template belongs to.",
+    )
+
+    # Direct tenant link for non-WA templates (wa_app is nullable for them).
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="channel_templates",
+        help_text="Tenant owning this template (set for non-WA templates).",
+    )
+
+    # Relationship to WA App (nullable for non-WA templates)
+    wa_app = models.ForeignKey(WAApp, on_delete=models.CASCADE, related_name="templates", null=True, blank=True)
 
     # Link to TemplateNumber (used by Broadcast → TemplateNumber → WATemplate)
     # related_name kept as 'gupshup_template' for backward-compat with
@@ -292,10 +316,22 @@ class WATemplate(BaseTemplateMessages):
         db_table = "wa_template_v2"
         verbose_name = "WA Template"
         verbose_name_plural = "WA Templates"
-        unique_together = [["wa_app", "element_name", "language_code"]]
         indexes = [
             models.Index(fields=["status", "needs_sync"]),
             models.Index(fields=["wa_app", "status"]),
+            models.Index(fields=["platform", "tenant"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["wa_app", "element_name", "language_code"],
+                condition=models.Q(wa_app__isnull=False),
+                name="unique_wa_app_element_lang",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "platform", "element_name", "language_code"],
+                condition=models.Q(wa_app__isnull=True),
+                name="unique_tenant_platform_element_lang",
+            ),
         ]
 
     def __str__(self):
@@ -976,6 +1012,10 @@ class WATemplate(BaseTemplateMessages):
         elif self._state.adding:
             # New entry with no named placeholders — set empty dict instead of null
             self.placeholder_mapping = self.placeholder_mapping or {}
+
+        # Auto-populate tenant from wa_app when not explicitly set
+        if not self.tenant_id and self.wa_app_id:
+            self.tenant = self.wa_app.tenant
 
         super().save(*args, **kwargs)
 

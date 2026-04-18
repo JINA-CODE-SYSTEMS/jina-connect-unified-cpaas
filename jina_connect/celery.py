@@ -25,6 +25,21 @@ app.conf.beat_schedule = {
         "task": "wa.tasks.check_stuck_payments",
         "schedule": crontab(minute="*/5"),  # every 5 minutes
     },
+    # ── Scheduled broadcast auto-send (#101) ──
+    "process-scheduled-broadcasts": {
+        "task": "broadcast.tasks.process_scheduled_broadcasts",
+        "schedule": crontab(minute="*/1"),  # every minute
+    },
+    # ── Telegram scheduled message send (#120) ──
+    "send-scheduled-telegram-messages": {
+        "task": "telegram.tasks.send_scheduled_telegram_messages",
+        "schedule": crontab(minute="*/1"),  # every minute
+    },
+    # ── SMS DLR reconciliation (#107) ──
+    "reconcile-stale-sms-dlrs": {
+        "task": "sms.tasks.reconcile_stale_sms_dlrs",
+        "schedule": crontab(minute="*/15"),  # every 15 minutes
+    },
 }
 
 

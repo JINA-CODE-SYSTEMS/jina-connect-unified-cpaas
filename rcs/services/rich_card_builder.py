@@ -29,7 +29,11 @@ class RichCardBuilder:
         suggestions: Optional[list] = None,
         orientation: str = "VERTICAL",
         thumbnail_alignment: str = "LEFT",
+        device_profile: Optional[str] = None,
     ) -> dict:
+        # Force iOS-safe media height when targeting Apple devices (#113)
+        if device_profile and device_profile.upper() == "IOS" and media_url:
+            media_height = RichCardBuilder.IOS_SAFE_MEDIA_HEIGHT
         card_content: dict = {}
         if title:
             card_content["title"] = title[:200]

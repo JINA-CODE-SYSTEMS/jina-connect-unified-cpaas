@@ -239,7 +239,7 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
         # TenantMedia records with card_index + media_id set), then sends
         # only the media_handle string per card.  We match those records
         # back to this template so the preview can resolve media URLs.
-        if template.cards:
+        if template.cards and template.wa_app:
             tenant = template.wa_app.tenant
             for i, card in enumerate(template.cards):
                 media_handle = card.get("media_handle")
@@ -592,6 +592,11 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
         stored_on = "template"
 
         # Persist a local TenantMedia record so the frontend can preview the file
+        if not template.wa_app:
+            return Response(
+                {"error": "Template has no linked WhatsApp app."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         tenant = template.wa_app.tenant
         tenant_media = TenantMedia.objects.create(
             tenant=tenant,

@@ -146,6 +146,11 @@ class TelegramOutboundMessage(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    scheduled_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="If set, message will be sent at this time by the scheduler (#120)",
+    )
 
     class Meta:
         verbose_name = "Telegram Outbound Message"

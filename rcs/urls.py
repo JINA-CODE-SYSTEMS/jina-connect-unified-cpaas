@@ -6,12 +6,12 @@ from rcs.viewsets.broadcast import RCSBroadcastViewSet
 from rcs.viewsets.contacts import RCSContactsViewSet
 from rcs.viewsets.rcs_app import RCSAppViewSet
 from rcs.viewsets.rcs_message import RCSOutboundMessageViewSet
-from wa.viewsets.wa_template_v2 import WATemplateV2ViewSet
+from wa.viewsets.channel_template import RCSTemplateViewSet
 
 router = DefaultRouter()
 router.register(r"v1/apps", RCSAppViewSet, basename="rcs-apps")
 router.register(r"v1/messages", RCSOutboundMessageViewSet, basename="rcs-messages")
-router.register(r"v1/templates", WATemplateV2ViewSet, basename="rcs-templates")
+router.register(r"v1/templates", RCSTemplateViewSet, basename="rcs-templates")
 router.register(r"v1/broadcast", RCSBroadcastViewSet, basename="rcs-broadcast")
 router.register(r"v1/contacts", RCSContactsViewSet, basename="rcs-contacts")
 

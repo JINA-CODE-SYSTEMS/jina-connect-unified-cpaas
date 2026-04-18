@@ -102,6 +102,11 @@ class Messages(BaseTenantModelForFilterUser):
         db_index=True,
         help_text="External message ID (gs_id) for status tracking via BroadcastMessage lookup",
     )
+    edited_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when message was last edited (e.g. Telegram edited_message)",
+    )
     name = None
 
     # Custom manager with annotation methods

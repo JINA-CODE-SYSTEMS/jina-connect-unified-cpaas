@@ -26,6 +26,10 @@ class Command(BaseCommand):
                 skipped_templates += 1
                 continue
 
+            if not template.wa_app:
+                skipped_templates += 1
+                continue
+
             tenant = template.wa_app.tenant
             existing_media_ids = {media.id for media in template.card_media.all()}
 

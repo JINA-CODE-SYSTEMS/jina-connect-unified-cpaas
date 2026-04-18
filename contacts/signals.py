@@ -223,6 +223,7 @@ def _broadcast_assignment_event(contact, event, previous_type, previous_id, prev
                 },
             },
         )
+
         logger.info(f"Broadcasted new_event for contact {contact.id} to room {room_group_name}")
     except Exception as e:
         logger.error(f"Failed to broadcast assignment event: {e}")

@@ -41,6 +41,16 @@ class SMSApp(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Provider failover (#104) — if this app fails, try fallback_app
+    fallback_app = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fallback_for",
+        help_text="Fallback SMS app to use if sending via this app fails",
+    )
+
     class Meta:
         unique_together = ("tenant", "provider", "sender_id")
         verbose_name = "SMS App"
@@ -127,6 +137,14 @@ class SMSOutboundMessage(models.Model):
         null=True,
         blank=True,
         related_name="sms_outbound_messages",
+    )
+
+    # Which provider actually sent this message (#104)
+    provider_used = models.CharField(
+        max_length=20,
+        choices=PROVIDER_CHOICES,
+        blank=True,
+        help_text="Provider that actually sent this message (may differ from sms_app.provider after failover)",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

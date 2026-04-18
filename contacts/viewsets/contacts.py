@@ -11,6 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 from abstract.viewsets.base import BaseTenantModelViewSet
 from contacts.filters import TenantContactFilter
@@ -60,6 +61,8 @@ class ContactsViewSet(BaseTenantModelViewSet):
         "contact_tags_list": "contact.view",
         "download_template": "contact.import",
         "upload_csv": "contact.import",
+        "bulk_import": "contact.import",
+        "import_status": "contact.import",
         "export_csv": "contact.export",
         "dashboard": "analytics.view",
         "default": "contact.view",
@@ -70,7 +73,9 @@ class ContactsViewSet(BaseTenantModelViewSet):
     def perform_create(self, serializer):
         tenant_user = self._get_tenant_user()
         if not tenant_user:
-            raise serializers.ValidationError("Could not determine tenant for this request.")
+            raise serializers.ValidationError(
+                "Could not determine tenant for this request. Ensure the user has an active tenant membership."
+            )
         contact = serializer.save(tenant=tenant_user.tenant)
         try:
             from notifications.signals import create_contact_added_notification
@@ -682,5 +687,89 @@ class ContactsViewSet(BaseTenantModelViewSet):
                     "converted": engaged_count,
                 },
                 "period": period,
+            }
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk-import",
+        parser_classes=[MultiPartParser, FormParser],
+        throttle_classes=[UserRateThrottle],
+    )
+    def bulk_import(self, request):
+        """Upload CSV or XLSX file for async bulk contact import (#118).
+
+        Returns an ImportJob ID that can be polled via ``import-status/<id>/``.
+        """
+        from contacts.models import ImportJob
+        from contacts.tasks import process_import_job
+
+        file_obj = request.FILES.get("file")
+        if not file_obj:
+            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        name = file_obj.name.lower()
+        if not (name.endswith(".csv") or name.endswith(".xlsx")):
+            return Response({"error": "Only .csv and .xlsx files are supported"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if file_obj.size > 10 * 1024 * 1024:
+            return Response({"error": "File size exceeds 10 MB limit"}, status=status.HTTP_400_BAD_REQUEST)
+
+        tenant_user = self._get_tenant_user()
+        if not tenant_user:
+            return Response({"error": "Could not determine tenant"}, status=status.HTTP_400_BAD_REQUEST)
+        tenant = tenant_user.tenant
+
+        # Save file to default storage
+        from django.core.files.storage import default_storage
+        from django.utils.text import get_valid_filename
+
+        safe_name = get_valid_filename(file_obj.name)
+        path = f"imports/{tenant.pk}/{safe_name}"
+        saved_path = default_storage.save(path, file_obj)
+
+        job = ImportJob.objects.create(
+            tenant=tenant,
+            created_by=request.user,
+            file_name=file_obj.name,
+            file_path=saved_path,
+            skip_duplicates=request.data.get("skip_duplicates", "true").lower() in ("true", "1", "yes"),
+            default_tag=request.data.get("default_tag", ""),
+        )
+
+        process_import_job.delay(job.pk)
+
+        return Response(
+            {"import_job_id": job.pk, "status": job.status, "file_name": job.file_name},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(detail=False, methods=["get"], url_path=r"import-status/(?P<job_id>\d+)")
+    def import_status(self, request, job_id=None):
+        """Check the status of a bulk import job (#118)."""
+        from contacts.models import ImportJob
+
+        tenant_user = self._get_tenant_user()
+        if tenant_user is None:
+            return Response({"error": "No active tenant"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            job = ImportJob.objects.get(pk=job_id, tenant=tenant_user.tenant)
+        except ImportJob.DoesNotExist:
+            return Response({"error": "Import job not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(
+            {
+                "id": job.pk,
+                "status": job.status,
+                "file_name": job.file_name,
+                "total_rows": job.total_rows,
+                "created_count": job.created_count,
+                "skipped_count": job.skipped_count,
+                "error_count": job.error_count,
+                "errors": job.errors[:20],
+                "created_at": job.created_at.isoformat(),
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
             }
         )
