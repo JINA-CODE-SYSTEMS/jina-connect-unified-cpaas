@@ -40,8 +40,7 @@ class TelegramMediaHandler:
         file_size = file_info.get("file_size")
         if file_size and file_size > self.MAX_DOWNLOAD_BYTES:
             raise ValueError(
-                f"Telegram file_id={file_id} is {file_size} bytes, exceeds "
-                f"limit {self.MAX_DOWNLOAD_BYTES}"
+                f"Telegram file_id={file_id} is {file_size} bytes, exceeds limit {self.MAX_DOWNLOAD_BYTES}"
             )
 
         file_path = file_info.get("file_path", "")

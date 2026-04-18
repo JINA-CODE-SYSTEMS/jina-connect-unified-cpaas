@@ -44,9 +44,7 @@ def send_scheduled_telegram_messages():
         if claimed_ids:
             # Optimistically mark as SENT before the HTTP call. If the call fails
             # we transition to FAILED below. This guarantees at-most-once delivery.
-            TelegramOutboundMessage.objects.filter(pk__in=claimed_ids).update(
-                status="SENT", sent_at=now
-            )
+            TelegramOutboundMessage.objects.filter(pk__in=claimed_ids).update(status="SENT", sent_at=now)
 
     if not claimed_ids:
         return {"sent": 0}

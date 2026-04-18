@@ -17,13 +17,14 @@ class TestResolveMediaToStorage:
             "media": {"file_id": "tg-file-123", "mime_type": "image/jpeg"},
         }
 
-        with patch("telegram.services.bot_client.TelegramBotClient"), patch(
-            "telegram.services.media_handler.TelegramMediaHandler"
-        ) as mock_handler_cls, patch(
-            "django.core.files.storage.default_storage.save", return_value="telegram/1/tg-file-123.jpg"
-        ) as mock_save, patch(
-            "django.core.files.storage.default_storage.url", return_value="https://gcs.example/url"
-        ) as mock_url:
+        with (
+            patch("telegram.services.bot_client.TelegramBotClient"),
+            patch("telegram.services.media_handler.TelegramMediaHandler") as mock_handler_cls,
+            patch(
+                "django.core.files.storage.default_storage.save", return_value="telegram/1/tg-file-123.jpg"
+            ) as mock_save,
+            patch("django.core.files.storage.default_storage.url", return_value="https://gcs.example/url") as mock_url,
+        ):
             mock_handler = mock_handler_cls.return_value
             mock_handler.download_file.return_value = (b"binary", "photos/file_1.jpg")
 
