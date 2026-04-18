@@ -15,18 +15,20 @@ def send_scheduled_telegram_messages():
 
     Concurrency model:
     - A short transaction claims up to 100 PENDING rows by flipping their status
-      to ``SENT`` (with ``sent_at = now``) under ``select_for_update(skip_locked=True)``.
+      to ``SENDING`` under ``select_for_update(skip_locked=True)``.
       Other concurrent workers skip locked rows, so the same row is never claimed twice.
     - HTTP send happens *after* the claim transaction commits, so row locks are
-      not held during network I/O and a worker crash mid-batch cannot un-claim
-      already-sent messages (which would cause a duplicate send on the next tick).
-    - On send failure we transition the claimed row to ``FAILED``.
+      not held during network I/O.
+    - On success the row transitions to ``SENT`` with ``sent_at``.
+    - On failure, ``TELEGRAM_ERROR_MAP`` decides the status: 429/500 → ``PENDING``
+      (retry on the next tick), 403 → ``BLOCKED``, others → ``FAILED``.
     """
     from django.db import transaction
     from django.utils import timezone
 
+    from telegram.constants import TELEGRAM_ERROR_MAP
     from telegram.models import TelegramOutboundMessage
-    from telegram.services.bot_client import TelegramBotClient
+    from telegram.services.bot_client import TelegramAPIError, TelegramBotClient
 
     now = timezone.now()
 
@@ -42,9 +44,7 @@ def send_scheduled_telegram_messages():
             .values_list("pk", flat=True)[:100]
         )
         if claimed_ids:
-            # Optimistically mark as SENT before the HTTP call. If the call fails
-            # we transition to FAILED below. This guarantees at-most-once delivery.
-            TelegramOutboundMessage.objects.filter(pk__in=claimed_ids).update(status="SENT", sent_at=now)
+            TelegramOutboundMessage.objects.filter(pk__in=claimed_ids).update(status="SENDING")
 
     if not claimed_ids:
         return {"sent": 0}
@@ -58,15 +58,21 @@ def send_scheduled_telegram_messages():
             payload.pop("chat_id", None)
             resp = client.send_message(chat_id=msg.chat_id, **payload)
             msg.provider_message_id = resp.get("result", {}).get("message_id")
-            msg.save(update_fields=["provider_message_id"])
+            msg.status = "SENT"
+            msg.sent_at = now
+            msg.save(update_fields=["provider_message_id", "status", "sent_at"])
             sent += 1
-        except Exception:
+        except Exception as exc:
             logger.exception("[send_scheduled_telegram_messages] Failed to send msg %s", msg.pk)
-            msg.status = "FAILED"
-            msg.failed_at = timezone.now()
-            msg.sent_at = None
-            msg.error_message = "Scheduled send failed"
-            msg.save(update_fields=["status", "failed_at", "sent_at", "error_message"])
+            if isinstance(exc, TelegramAPIError):
+                msg.status = TELEGRAM_ERROR_MAP.get(exc.status_code, "FAILED")
+                msg.error_message = exc.description[:2000]
+            else:
+                msg.status = "FAILED"
+                msg.error_message = str(exc)[:2000]
+            if msg.status == "FAILED":
+                msg.failed_at = timezone.now()
+            msg.save(update_fields=["status", "failed_at", "error_message"])
 
     if sent:
         logger.info("[send_scheduled_telegram_messages] Sent %d scheduled messages", sent)

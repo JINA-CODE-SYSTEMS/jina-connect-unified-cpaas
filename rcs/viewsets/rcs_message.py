@@ -40,7 +40,17 @@ class RCSOutboundMessageViewSet(BaseTenantModelViewSet):
     }
 
     def get_queryset(self):
-        return RCSOutboundMessage.objects.filter(tenant__tenant_users__user=self.request.user).order_by("-created_at")
+        tenant_user = self._get_tenant_user()
+        if tenant_user:
+            return RCSOutboundMessage.objects.filter(tenant=tenant_user.tenant).order_by("-created_at")
+        return RCSOutboundMessage.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        """Disabled — use the /send/ action instead."""
+        return Response(
+            {"detail": "Use the /send/ action to send RCS messages."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
 
     @action(detail=True, methods=["post"], url_path="revoke")
     def revoke(self, request, pk=None):

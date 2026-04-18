@@ -22,7 +22,7 @@ class BroadcastViewSet(BaseTenantModelViewSet):
 
     queryset = Broadcast.objects.all()
     serializer_class = BroadcastSerializer
-    http_method_names = ["get"]
+    http_method_names = ["get", "post"]
     required_permissions = {
         "list": "broadcast.view",
         "retrieve": "broadcast.view",
