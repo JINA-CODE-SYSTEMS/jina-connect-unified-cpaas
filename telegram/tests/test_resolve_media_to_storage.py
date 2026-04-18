@@ -17,7 +17,7 @@ class TestResolveMediaToStorage:
             "media": {"file_id": "tg-file-123", "mime_type": "image/jpeg"},
         }
 
-        with patch("telegram.services.bot_client.TelegramBotClient") as mock_client_cls, patch(
+        with patch("telegram.services.bot_client.TelegramBotClient"), patch(
             "telegram.services.media_handler.TelegramMediaHandler"
         ) as mock_handler_cls, patch(
             "django.core.files.storage.default_storage.save", return_value="telegram/1/tg-file-123.jpg"
