@@ -4,7 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
-from tenants.models import Tenant, TenantUser
+from tenants.models import Tenant, TenantRole, TenantUser
 
 User = get_user_model()
 
@@ -15,7 +15,8 @@ def auth_client(db):
         username="bcast_test", email="bcast@test.local", mobile="+919100999990", password="testpass123"
     )
     tenant = Tenant.objects.create(name="Broadcast Test Tenant")
-    TenantUser.objects.create(user=user, tenant=tenant, is_active=True)
+    role, _ = TenantRole.objects.get_or_create(tenant=tenant, slug="owner", defaults={"name": "Owner", "priority": 100})
+    TenantUser.objects.create(user=user, tenant=tenant, role=role, is_active=True)
     client = APIClient()
     client.force_authenticate(user=user)
     return client

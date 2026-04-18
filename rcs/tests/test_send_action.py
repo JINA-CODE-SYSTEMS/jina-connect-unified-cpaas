@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from rcs.models import RCSApp
-from tenants.models import Tenant, TenantUser
+from tenants.models import Tenant, TenantRole, TenantUser
 
 User = get_user_model()
 
@@ -21,7 +21,8 @@ def user_in_tenant(db):
         password="testpass123",
     )
     tenant = Tenant.objects.create(name="RCS Send Tenant")
-    TenantUser.objects.create(user=user, tenant=tenant, is_active=True)
+    role, _ = TenantRole.objects.get_or_create(tenant=tenant, slug="owner", defaults={"name": "Owner", "priority": 100})
+    TenantUser.objects.create(user=user, tenant=tenant, role=role, is_active=True)
     return user, tenant
 
 
@@ -125,3 +126,39 @@ class TestRCSSendAction:
         assert response.status_code == 200
         mock_sender_cls.return_value.send_media.assert_called_once()
         mock_sender_cls.return_value.send_text.assert_not_called()
+
+    def test_send_rejects_invalid_e164_chat_id(self, user_in_tenant):
+        """#129 review item 6: chat_id must be a valid E.164 phone number."""
+        user, _tenant = user_in_tenant
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/rcs/v1/messages/send/",
+            {"chat_id": "not-a-phone", "text": "hi"},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "chat_id" in response.data
+
+    def test_send_rejects_contact_id_not_in_tenant(self, user_in_tenant):
+        """#129 review item 7: contact_id not belonging to tenant returns 400."""
+        user, tenant = user_in_tenant
+        RCSApp.objects.create(
+            tenant=tenant,
+            provider="GOOGLE_RBM",
+            agent_id="agent3@rbm.goog",
+            is_active=True,
+            daily_limit=1000,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/rcs/v1/messages/send/",
+            {"chat_id": "+14155550100", "text": "hi", "contact_id": 999999},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert "not found" in str(response.data).lower()

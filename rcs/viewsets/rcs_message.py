@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class RCSSendMessageSerializer(serializers.Serializer):
-    chat_id = serializers.CharField(help_text="E.164 phone number of the recipient")
+    chat_id = serializers.RegexField(
+        r"^\+[1-9]\d{1,14}$",
+        help_text="E.164 phone number of the recipient (e.g. +14155550100)",
+    )
     text = serializers.CharField(required=False, allow_blank=True, help_text="Message text")
     media_url = serializers.URLField(required=False, help_text="URL of media to send")
     media_type = serializers.ChoiceField(
@@ -113,6 +116,11 @@ class RCSOutboundMessageViewSet(BaseTenantModelViewSet):
             from contacts.models import TenantContact
 
             contact = TenantContact.objects.filter(pk=data["contact_id"], tenant=tenant).first()
+            if contact is None:
+                return Response(
+                    {"error": f"TenantContact {data['contact_id']} not found for this tenant."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         chat_id = data["chat_id"]
         text = data.get("text", "")
