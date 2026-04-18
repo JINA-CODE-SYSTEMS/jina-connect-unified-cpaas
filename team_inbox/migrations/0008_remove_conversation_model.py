@@ -4,17 +4,16 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('team_inbox', '0007_rename_team_inbox_conv_tenant_contact_team_inbox__tenant__ef00a5_idx_and_more'),
+        ("team_inbox", "0007_rename_team_inbox_conv_tenant_contact_team_inbox__tenant__ef00a5_idx_and_more"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='messages',
-            name='conversation',
+            model_name="messages",
+            name="conversation",
         ),
         migrations.DeleteModel(
-            name='Conversation',
+            name="Conversation",
         ),
     ]
