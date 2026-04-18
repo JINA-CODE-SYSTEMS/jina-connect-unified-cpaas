@@ -19,20 +19,8 @@ from django.test import RequestFactory, TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from tenants.models import (
-    DefaultRoleSlugs,
-    RolePermission,
-    Tenant,
-    TenantRole,
-    TenantUser,
-)
-from tenants.permission_classes import (
-    IsAdminOrAbove,
-    IsAgentOrAbove,
-    IsManagerOrAbove,
-    IsOwner,
-    TenantRolePermission,
-)
+from tenants.models import DefaultRoleSlugs, RolePermission, Tenant, TenantRole, TenantUser
+from tenants.permission_classes import IsAdminOrAbove, IsAgentOrAbove, IsManagerOrAbove, IsOwner, TenantRolePermission
 from tenants.permissions import (
     ALL_PERMISSIONS,
     DEFAULT_ROLE_PERMISSIONS,
@@ -2989,7 +2977,7 @@ class PreProductionSweepTests(RBACIntegrationBase):
                 fp = os.path.join(dirpath, fn)
                 rel = os.path.relpath(fp, root)
                 rel_fwd = rel.replace("\\", "/")
-                if "__pycache__" in rel_fwd or "venv/" in rel_fwd or "test" in rel_fwd:
+                if "__pycache__" in rel_fwd or "venv/" in rel_fwd or "test" in rel_fwd or "site-packages" in rel_fwd:
                     continue
                 try:
                     with open(fp) as f:

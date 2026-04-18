@@ -49,6 +49,7 @@ MESSAGE_TYPE_CHOICES = [
 # Status choices for outbound messages
 OUTBOUND_STATUS_CHOICES = [
     ("PENDING", "Pending"),
+    ("SENDING", "Sending"),
     ("SENT", "Sent"),
     ("FAILED", "Failed"),
     ("BLOCKED", "Blocked"),

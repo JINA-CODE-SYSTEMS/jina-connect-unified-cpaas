@@ -75,7 +75,8 @@ RCS (Rich Communication Services) enables rich messaging on Android devices with
 | `PUT` | `/rcs/v1/apps/{id}/` | Update RCS app |
 | `DELETE` | `/rcs/v1/apps/{id}/` | Delete RCS app |
 | `GET` | `/rcs/v1/messages/` | List outbound messages |
-| `POST` | `/rcs/v1/messages/` | Send RCS message |
+| `POST` | `/rcs/v1/messages/send/` | Send RCS message (#129) |
+| `POST` | `/rcs/v1/messages/{id}/revoke/` | Revoke a sent message (#112) |
 | `GET` | `/rcs/v1/messages/{id}/` | Get message details |
 
 ## Sending Messages
@@ -83,11 +84,11 @@ RCS (Rich Communication Services) enables rich messaging on Android devices with
 ### Basic Text Message
 
 ```bash
-curl -X POST http://localhost:8000/rcs/v1/messages/ \
+curl -X POST http://localhost:8000/rcs/v1/messages/send/ \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "phone": "+1234567890",
+    "chat_id": "+1234567890",
     "text": "Your order has been shipped!"
   }'
 ```
@@ -95,11 +96,11 @@ curl -X POST http://localhost:8000/rcs/v1/messages/ \
 ### With Quick Reply Suggestions
 
 ```bash
-curl -X POST http://localhost:8000/rcs/v1/messages/ \
+curl -X POST http://localhost:8000/rcs/v1/messages/send/ \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "phone": "+1234567890",
+    "chat_id": "+1234567890",
     "text": "Your order has been shipped! Track it?",
     "suggestions": [
       {"type": "reply", "text": "Track Order"},
