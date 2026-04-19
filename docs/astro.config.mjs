@@ -15,12 +15,23 @@ export default defineConfig({
       },
       description:
         "Open-source unified CPaaS — WhatsApp, Telegram, SMS, RCS, Voice. Multi-provider. AI-native. Self-hostable.",
-      social: {
-        github:
-          "https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas",
-        discord: "https://discord.gg/jbN5cwKR",
-        "x.com": "https://x.com/tryjinaconnect",
-      },
+      social: [
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/JINA-CODE-SYSTEMS/jina-connect-unified-cpaas",
+        },
+        {
+          icon: "discord",
+          label: "Discord",
+          href: "https://discord.gg/jbN5cwKR",
+        },
+        {
+          icon: "x.com",
+          label: "X",
+          href: "https://x.com/tryjinaconnect",
+        },
+      ],
       customCss: ["./src/styles/custom.css"],
       editLink: {
         baseUrl:
