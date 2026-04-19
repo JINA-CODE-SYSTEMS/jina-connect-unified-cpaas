@@ -269,3 +269,33 @@ class TestSendScheduledTelegramMessages:
 
         # The explicit chat_id from the model field should be used, not from payload
         assert captured_kwargs["chat_id"] == 12345
+
+    def test_stale_sending_recovered_to_pending(self, bot_app, monkeypatch):
+        """Rows stuck in SENDING for > 5 min are recovered to PENDING and retried."""
+        from telegram.services.bot_client import TelegramBotClient
+        from telegram.tasks import send_scheduled_telegram_messages
+
+        msg = TelegramOutboundMessage.objects.create(
+            tenant=bot_app.tenant,
+            bot_app=bot_app,
+            chat_id=12345,
+            message_type="TEXT",
+            status="SENDING",
+            scheduled_time=timezone.now() - timezone.timedelta(minutes=10),
+            request_payload={"text": "Stuck message"},
+        )
+
+        monkeypatch.setattr(
+            TelegramBotClient,
+            "send_message",
+            lambda self, chat_id, **kwargs: {"ok": True, "result": {"message_id": 7777}},
+        )
+
+        result = send_scheduled_telegram_messages()
+
+        msg.refresh_from_db()
+        # The stale SENDING row should have been recovered to PENDING,
+        # then claimed and sent successfully in the same tick.
+        assert msg.status == "SENT"
+        assert msg.provider_message_id == 7777
+        assert result["sent"] == 1

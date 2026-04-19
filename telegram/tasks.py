@@ -32,6 +32,18 @@ def send_scheduled_telegram_messages():
 
     now = timezone.now()
 
+    # Phase 0 — recover rows stuck in SENDING for > 5 minutes (worker crash)
+    stale_cutoff = now - timezone.timedelta(minutes=5)
+    stale_recovered = TelegramOutboundMessage.objects.filter(
+        status="SENDING",
+        scheduled_time__lte=stale_cutoff,
+    ).update(status="PENDING")
+    if stale_recovered:
+        logger.warning(
+            "[send_scheduled_telegram_messages] Recovered %d stale SENDING rows back to PENDING",
+            stale_recovered,
+        )
+
     # Phase 1 — claim rows in a short transaction
     with transaction.atomic():
         claimed_ids = list(
