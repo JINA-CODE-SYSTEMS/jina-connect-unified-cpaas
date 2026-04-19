@@ -14,9 +14,7 @@
     "astro": "6.1.7",
     "sharp": "^0.33.0"
   },
-  "overrides": {
-    "zod": "3.23.8",
-    "zod-to-json-schema": "3.23.3",
-    "@astrojs/sitemap": "3.2.1"
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
