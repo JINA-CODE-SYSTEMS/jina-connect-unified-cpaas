@@ -36,7 +36,7 @@ def send_scheduled_telegram_messages():
     stale_cutoff = now - timezone.timedelta(minutes=5)
     stale_recovered = TelegramOutboundMessage.objects.filter(
         status="SENDING",
-        scheduled_time__lte=stale_cutoff,
+        updated_at__lte=stale_cutoff,
     ).update(status="PENDING")
     if stale_recovered:
         logger.warning(
