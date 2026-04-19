@@ -210,6 +210,36 @@ class TestSendScheduledTelegramMessages:
         assert result["sent"] == 0
         msg.refresh_from_db()
         assert msg.status == "FAILED"
+        assert msg.sent_at is None
+        assert msg.failed_at is not None
+        assert msg.error_message
+
+    def test_rate_limited_stays_pending(self, bot_app, monkeypatch):
+        """429 rate-limit error maps to PENDING for retry via TELEGRAM_ERROR_MAP (#125)."""
+        from telegram.services.bot_client import TelegramAPIError, TelegramBotClient
+        from telegram.tasks import send_scheduled_telegram_messages
+
+        msg = TelegramOutboundMessage.objects.create(
+            tenant=bot_app.tenant,
+            bot_app=bot_app,
+            chat_id=12345,
+            message_type="TEXT",
+            status="PENDING",
+            scheduled_time=timezone.now() - timezone.timedelta(minutes=1),
+            request_payload={"text": "Rate limited"},
+        )
+
+        def raise_429(self, chat_id, **kwargs):
+            raise TelegramAPIError(429, "Too Many Requests: retry after 30")
+
+        monkeypatch.setattr(TelegramBotClient, "send_message", raise_429)
+
+        result = send_scheduled_telegram_messages()
+
+        assert result["sent"] == 0
+        msg.refresh_from_db()
+        assert msg.status == "PENDING"
+        assert msg.failed_at is None
 
     def test_chat_id_popped_from_payload(self, bot_app, monkeypatch):
         """chat_id in request_payload doesn't conflict with explicit kwarg (#20)."""
@@ -239,3 +269,60 @@ class TestSendScheduledTelegramMessages:
 
         # The explicit chat_id from the model field should be used, not from payload
         assert captured_kwargs["chat_id"] == 12345
+
+    def test_stale_sending_recovered_to_pending(self, bot_app, monkeypatch):
+        """Rows stuck in SENDING for > 5 min (by updated_at) are recovered and retried."""
+        from telegram.services.bot_client import TelegramBotClient
+        from telegram.tasks import send_scheduled_telegram_messages
+
+        msg = TelegramOutboundMessage.objects.create(
+            tenant=bot_app.tenant,
+            bot_app=bot_app,
+            chat_id=12345,
+            message_type="TEXT",
+            status="SENDING",
+            scheduled_time=timezone.now() - timezone.timedelta(minutes=10),
+            request_payload={"text": "Stuck message"},
+        )
+        # Backdate updated_at so the row looks stale (auto_now prevents direct set)
+        TelegramOutboundMessage.objects.filter(pk=msg.pk).update(
+            updated_at=timezone.now() - timezone.timedelta(minutes=10)
+        )
+
+        monkeypatch.setattr(
+            TelegramBotClient,
+            "send_message",
+            lambda self, chat_id, **kwargs: {"ok": True, "result": {"message_id": 7777}},
+        )
+
+        result = send_scheduled_telegram_messages()
+
+        msg.refresh_from_db()
+        # The stale SENDING row should have been recovered to PENDING,
+        # then claimed and sent successfully in the same tick.
+        assert msg.status == "SENT"
+        assert msg.provider_message_id == 7777
+        assert result["sent"] == 1
+
+    def test_recently_claimed_sending_not_recovered(self, bot_app, monkeypatch):
+        """A SENDING row claimed moments ago must NOT be reset (no duplicate send)."""
+        from telegram.tasks import send_scheduled_telegram_messages
+
+        msg = TelegramOutboundMessage.objects.create(
+            tenant=bot_app.tenant,
+            bot_app=bot_app,
+            chat_id=12345,
+            message_type="TEXT",
+            status="SENDING",
+            # Scheduled long ago, but updated_at is fresh (just claimed)
+            scheduled_time=timezone.now() - timezone.timedelta(hours=1),
+            request_payload={"text": "In-flight message"},
+        )
+        # updated_at is auto-set to now by create(), so it's fresh — no backdate
+
+        result = send_scheduled_telegram_messages()
+
+        msg.refresh_from_db()
+        # Must still be SENDING — the sweep should NOT touch it
+        assert msg.status == "SENDING"
+        assert result["sent"] == 0

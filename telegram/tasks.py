@@ -11,21 +11,59 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def send_scheduled_telegram_messages():
-    """Celery beat task: send TelegramOutboundMessages whose scheduled_time has arrived (#120)."""
+    """Celery beat task: send TelegramOutboundMessages whose scheduled_time has arrived (#120, #125).
+
+    Concurrency model:
+    - A short transaction claims up to 100 PENDING rows by flipping their status
+      to ``SENDING`` under ``select_for_update(skip_locked=True)``.
+      Other concurrent workers skip locked rows, so the same row is never claimed twice.
+    - HTTP send happens *after* the claim transaction commits, so row locks are
+      not held during network I/O.
+    - On success the row transitions to ``SENT`` with ``sent_at``.
+    - On failure, ``TELEGRAM_ERROR_MAP`` decides the status: 429/500 → ``PENDING``
+      (retry on the next tick), 403 → ``BLOCKED``, others → ``FAILED``.
+    """
+    from django.db import transaction
     from django.utils import timezone
 
+    from telegram.constants import TELEGRAM_ERROR_MAP
     from telegram.models import TelegramOutboundMessage
-    from telegram.services.bot_client import TelegramBotClient
+    from telegram.services.bot_client import TelegramAPIError, TelegramBotClient
 
     now = timezone.now()
-    due = TelegramOutboundMessage.objects.filter(
-        status="PENDING",
-        scheduled_time__isnull=False,
-        scheduled_time__lte=now,
-    ).select_related("bot_app")
 
+    # Phase 0 — recover rows stuck in SENDING for > 5 minutes (worker crash)
+    stale_cutoff = now - timezone.timedelta(minutes=5)
+    stale_recovered = TelegramOutboundMessage.objects.filter(
+        status="SENDING",
+        updated_at__lte=stale_cutoff,
+    ).update(status="PENDING")
+    if stale_recovered:
+        logger.warning(
+            "[send_scheduled_telegram_messages] Recovered %d stale SENDING rows back to PENDING",
+            stale_recovered,
+        )
+
+    # Phase 1 — claim rows in a short transaction
+    with transaction.atomic():
+        claimed_ids = list(
+            TelegramOutboundMessage.objects.filter(
+                status="PENDING",
+                scheduled_time__isnull=False,
+                scheduled_time__lte=now,
+            )
+            .select_for_update(skip_locked=True)
+            .values_list("pk", flat=True)[:100]
+        )
+        if claimed_ids:
+            TelegramOutboundMessage.objects.filter(pk__in=claimed_ids).update(status="SENDING")
+
+    if not claimed_ids:
+        return {"sent": 0}
+
+    # Phase 2 — send outside the lock
     sent = 0
-    for msg in due[:100]:  # process up to 100 per tick
+    for msg in TelegramOutboundMessage.objects.filter(pk__in=claimed_ids).select_related("bot_app"):
         try:
             client = TelegramBotClient(token=msg.bot_app.bot_token)
             payload = dict(msg.request_payload or {})
@@ -36,11 +74,16 @@ def send_scheduled_telegram_messages():
             msg.sent_at = now
             msg.save(update_fields=["provider_message_id", "status", "sent_at"])
             sent += 1
-        except Exception:
+        except Exception as exc:
             logger.exception("[send_scheduled_telegram_messages] Failed to send msg %s", msg.pk)
-            msg.status = "FAILED"
-            msg.failed_at = now
-            msg.error_message = "Scheduled send failed"
+            if isinstance(exc, TelegramAPIError):
+                msg.status = TELEGRAM_ERROR_MAP.get(exc.status_code, "FAILED")
+                msg.error_message = exc.description[:2000]
+            else:
+                msg.status = "FAILED"
+                msg.error_message = str(exc)[:2000]
+            if msg.status == "FAILED":
+                msg.failed_at = timezone.now()
             msg.save(update_fields=["status", "failed_at", "error_message"])
 
     if sent:
@@ -135,6 +178,13 @@ def _handle_message(event):
 
     # Determine message content type
     content = _extract_message_content(message)
+
+    # Download media from Telegram and persist to storage (#128)
+    if content.get("media", {}).get("file_id"):
+        try:
+            content = _resolve_media_to_storage(event.bot_app, content, tenant)
+        except Exception:
+            logger.exception("[_handle_message] Failed to download media for event %s", event.pk)
 
     # Create inbox message
     create_inbox_message(
@@ -410,3 +460,42 @@ def _handle_chatflow_routing_telegram(contact, message_content: dict):
             contact.pk,
             chatflow_id,
         )
+
+
+def _resolve_media_to_storage(bot_app, content: dict, tenant) -> dict:
+    """
+    Download a Telegram file and persist it to default storage (GCS).
+
+    Replaces the ``file_id`` in *content["media"]* with a public ``url``.
+    Returns a **new** content dict so the caller can use it directly.
+    """
+    import copy
+
+    from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
+    from telegram.services.bot_client import TelegramBotClient
+    from telegram.services.media_handler import TelegramMediaHandler
+
+    media = content.get("media", {})
+    file_id = media.get("file_id")
+    if not file_id:
+        return content
+
+    client = TelegramBotClient(token=bot_app.bot_token)
+    handler = TelegramMediaHandler(client)
+    file_bytes, tg_file_path = handler.download_file(file_id)
+
+    # Derive a stable storage path
+    ext = tg_file_path.rsplit(".", 1)[-1] if "." in tg_file_path else "bin"
+    storage_path = f"telegram/{tenant.pk}/{file_id}.{ext}"
+    saved_path = default_storage.save(storage_path, ContentFile(file_bytes))
+    saved_url = default_storage.url(saved_path)
+
+    content = copy.deepcopy(content)
+    content["media"] = {
+        "url": saved_url,
+        "mime_type": media.get("mime_type", ""),
+        "file_name": media.get("file_name", ""),
+    }
+    return content

@@ -22,20 +22,52 @@ class TelegramMediaHandler:
         """
         self.client = client
 
+    # Telegram allows files up to 2 GB but the Bot API caps downloads at 20 MB (#128).
+    # We mirror that limit here to protect worker memory.
+    MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
+
     def download_file(self, file_id: str) -> tuple[bytes, str]:
         """
         Download a file from Telegram servers.
+
+        Raises ``ValueError`` if the reported file size exceeds
+        :pyattr:`MAX_DOWNLOAD_BYTES`.
 
         Returns:
             Tuple of (file_content_bytes, file_path_on_telegram).
         """
         file_info = self.client.get_file(file_id)
+        file_size = file_info.get("file_size")
+        if file_size and file_size > self.MAX_DOWNLOAD_BYTES:
+            raise ValueError(
+                f"Telegram file_id={file_id} is {file_size} bytes, exceeds limit {self.MAX_DOWNLOAD_BYTES}"
+            )
+
         file_path = file_info.get("file_path", "")
         url = self.client.get_file_url(file_path)
 
-        resp = requests.get(url, timeout=60)
+        resp = requests.get(url, timeout=60, stream=True)
         resp.raise_for_status()
-        return resp.content, file_path
+
+        # Fallback size check via Content-Length when file_size was absent
+        content_length = resp.headers.get("Content-Length")
+        if content_length and int(content_length) > self.MAX_DOWNLOAD_BYTES:
+            resp.close()
+            raise ValueError(
+                f"Telegram file_id={file_id} Content-Length {content_length} exceeds limit {self.MAX_DOWNLOAD_BYTES}"
+            )
+
+        # Stream with a byte counter to protect against missing/lying headers
+        chunks = []
+        downloaded = 0
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            downloaded += len(chunk)
+            if downloaded > self.MAX_DOWNLOAD_BYTES:
+                resp.close()
+                raise ValueError(f"Telegram file_id={file_id} download exceeded limit {self.MAX_DOWNLOAD_BYTES} bytes")
+            chunks.append(chunk)
+
+        return b"".join(chunks), file_path
 
     def get_media_from_message(self, message: dict) -> Optional[dict]:
         """
