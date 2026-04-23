@@ -7,10 +7,24 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## Endpoints
 
+<Aside type="caution">
+  The base `/broadcast/` endpoint **does not accept POST** requests. Use channel-specific endpoints below to create broadcasts.
+</Aside>
+
+### Channel-Specific Endpoints
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/broadcast/` | List broadcasts |
-| `POST` | `/broadcast/` | Create broadcast |
+| `POST` | `/wa/broadcast/` | Create WhatsApp broadcast |
+| `POST` | `/sms/broadcast/` | Create SMS broadcast |
+| `POST` | `/rcs/broadcast/` | Create RCS broadcast |
+| `POST` | `/telegram/broadcast/` | Create Telegram broadcast |
+
+### Read/Update/Delete Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/broadcast/` | List all broadcasts (cross-channel) |
 | `GET` | `/broadcast/{id}/` | Get broadcast details |
 | `PUT` | `/broadcast/{id}/` | Update broadcast |
 | `DELETE` | `/broadcast/{id}/` | Delete broadcast |
@@ -18,18 +32,40 @@ import { Aside } from "@astrojs/starlight/components";
 | `GET` | `/broadcast/dashboard/` | Campaign analytics dashboard |
 | `GET` | `/broadcast/url-tracking/` | URL click tracking |
 
+<Aside type="note">
+  `/mobile/broadcast/` (mobile client endpoint) also returns **405 Method Not Allowed** for POST requests.
+</Aside>
+
 ## Create Broadcast
 
+### WhatsApp Broadcast
+
 ```bash
-curl -X POST http://localhost:8000/broadcast/ \
+curl -X POST http://localhost:8000/wa/broadcast/ \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Summer Sale Campaign",
-    "platform": "WHATSAPP",
-    "template_name": "summer_sale",
+    "template_number": 123,
     "recipients": ["contact-uuid-1", "contact-uuid-2"],
-    "scheduled_at": "2024-07-01T10:00:00Z"
+    "placeholder_data": {"1": "John", "2": "25% off"},
+    "scheduled_time": "2024-07-01T10:00:00Z",
+    "status": "SCHEDULED"
+  }'
+```
+
+### SMS/RCS/Telegram Broadcast
+
+```bash
+curl -X POST http://localhost:8000/sms/broadcast/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Flash Sale Alert",
+    "message": "Hi {{1}}, enjoy {{2}} on all items today!",
+    "recipients": ["contact-uuid-1", "contact-uuid-2"],
+    "placeholder_data": {"1": "John", "2": "25% off"},
+    "status": "QUEUED"
   }'
 ```
 

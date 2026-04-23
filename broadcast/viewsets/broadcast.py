@@ -45,11 +45,26 @@ class BroadcastViewSet(BaseTenantModelViewSet):
     datetime_filter_fields = ["created_at", "scheduled_time"]
 
     def create(self, request, *args, **kwargs):
-        """Disabled on base viewset — use channel-specific broadcast endpoints."""
-        return Response(
-            {"detail": "Use a channel-specific broadcast endpoint to create broadcasts."},
-            status=drf_status.HTTP_405_METHOD_NOT_ALLOWED,
-        )
+        """Block create on the generic base viewsets; delegate for channel subclasses.
+
+        ``BroadcastViewSet`` and ``MobileBroadcastViewSet`` are channel-agnostic
+        and must not create broadcasts directly — callers must use a
+        channel-specific endpoint (WA, SMS, RCS, Telegram, ...).
+
+        Channel subclasses are expected to either:
+          * override ``create()`` and call ``super().create(...)`` (e.g.
+            ``WABroadcastViewSet`` does this to attach low-balance warnings), or
+          * delegate directly to ``CreateModelMixin.create`` themselves.
+
+        The ``super().create(...)`` call below is the path taken by subclasses
+        in the first category and is therefore not dead code.
+        """
+        if type(self).__name__ in {"BroadcastViewSet", "MobileBroadcastViewSet"}:
+            return Response(
+                {"detail": "Use a channel-specific broadcast endpoint to create broadcasts."},
+                status=drf_status.HTTP_405_METHOD_NOT_ALLOWED,
+            )
+        return super().create(request, *args, **kwargs)
 
     filterset_fields = {
         "status": ["exact", "in"],
