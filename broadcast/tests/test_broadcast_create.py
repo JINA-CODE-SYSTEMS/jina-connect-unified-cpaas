@@ -29,6 +29,11 @@ class TestBroadcastCreateDisabled:
         response = auth_client.post("/broadcast/", {"name": "test"}, format="json")
         assert response.status_code == 405
 
+    def test_post_mobile_broadcast_returns_405(self, auth_client):
+        """POST /mobile/broadcast/ (MobileBroadcastViewSet) is also blocked — channel-specific endpoints must be used."""
+        response = auth_client.post("/mobile/broadcast/", {"name": "test"}, format="json")
+        assert response.status_code == 405
+
     def test_subclass_create_is_not_blocked_by_base_405(self):
         """
         Regression: BroadcastViewSet.create() must only short-circuit with 405

@@ -45,15 +45,13 @@ class BroadcastViewSet(BaseTenantModelViewSet):
     datetime_filter_fields = ["created_at", "scheduled_time"]
 
     def create(self, request, *args, **kwargs):
-        """Disabled on the base viewset only — channel-specific subclasses handle create."""
-        if type(self) is BroadcastViewSet:
+        """Disabled on the generic base — channel-specific subclasses handle create."""
+        if type(self).__name__ in {"BroadcastViewSet", "MobileBroadcastViewSet"}:
             return Response(
                 {"detail": "Use a channel-specific broadcast endpoint to create broadcasts."},
                 status=drf_status.HTTP_405_METHOD_NOT_ALLOWED,
             )
-        # Subclass (e.g. WABroadcastViewSet) — defer to default ModelViewSet.create
-        from rest_framework.mixins import CreateModelMixin
-        return CreateModelMixin.create(self, request, *args, **kwargs)
+        return super().create(request, *args, **kwargs)
 
     filterset_fields = {
         "status": ["exact", "in"],
