@@ -71,6 +71,5 @@ class TestBroadcastCreateDisabled:
             return
 
         assert response.status_code != 405, (
-            "Subclass of BroadcastViewSet was incorrectly blocked by the "
-            "base-class 405 guard."
+            "Subclass of BroadcastViewSet was incorrectly blocked by the base-class 405 guard."
         )
