@@ -28,3 +28,44 @@ class TestBroadcastCreateDisabled:
         """#124: POST /broadcast/ on base viewset returns 405."""
         response = auth_client.post("/broadcast/", {"name": "test"}, format="json")
         assert response.status_code == 405
+
+    def test_subclass_create_is_not_blocked_by_base_405(self):
+        """
+        Regression: BroadcastViewSet.create() must only short-circuit with 405
+        for the base class itself. Channel-specific subclasses (e.g.
+        WABroadcastViewSet) call super().create() and were previously blocked,
+        making it impossible to create any broadcast from any channel.
+        """
+        from rest_framework.test import APIRequestFactory
+
+        from broadcast.viewsets.broadcast import BroadcastViewSet
+
+        class DummyChannelBroadcastViewSet(BroadcastViewSet):
+            pass
+
+        factory = APIRequestFactory()
+        request = factory.post("/dummy/", {}, format="json")
+        view = DummyChannelBroadcastViewSet()
+        view.action_map = {"post": "create"}
+        view.request = view.initialize_request(request)
+        view.format_kwarg = None
+        view.action = "create"
+        view.kwargs = {}
+
+        # The base-class guard must NOT trigger for subclasses.
+        # We only assert the 405 short-circuit isn't returned; the real
+        # CreateModelMixin path is exercised in channel-specific test suites
+        # (e.g. wa/tests/) where full fixtures (WAApp, template, contacts)
+        # are available.
+        try:
+            response = view.create(view.request)
+        except Exception:
+            # Falling through to the real create path will raise because
+            # no queryset/serializer is configured on the dummy subclass.
+            # That is the expected, correct behaviour — the guard let us pass.
+            return
+
+        assert response.status_code != 405, (
+            "Subclass of BroadcastViewSet was incorrectly blocked by the "
+            "base-class 405 guard."
+        )
