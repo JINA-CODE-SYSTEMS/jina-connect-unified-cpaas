@@ -116,12 +116,19 @@ class BroadcastSerializer(BaseSerializer):
         logger.debug(f"[SERIALIZER CREATE] status == QUEUED: {status == BroadcastStatusChoices.QUEUED}")
         logger.debug(f"[SERIALIZER CREATE] select_all={select_all}, tag_filter={tag_filter}")
         if status == BroadcastStatusChoices.QUEUED:
-            # Validate template_number is set for QUEUED broadcasts
+            # Validate template_number is set for QUEUED broadcasts (WhatsApp only)
+            # Telegram, SMS, RCS use placeholder_data directly without templates
             template_number = validated_data.get("template_number")
-            if not template_number:
+            platform = validated_data.get("platform")
+
+            # Only require template for WhatsApp
+            from broadcast.models import BroadcastPlatformChoices
+
+            if platform == BroadcastPlatformChoices.WHATSAPP and not template_number:
                 from rest_framework.exceptions import ValidationError
 
-                raise ValidationError({"template_number": "A template is required to send a broadcast."})
+                raise ValidationError({"template_number": "A template is required for WhatsApp broadcasts."})
+
             validated_data.pop("status")
             scheduled_time = validated_data.pop("scheduled_time", None)
             logger.debug(f"[SERIALIZER CREATE] Popped status & scheduled_time={scheduled_time}. Creating as DRAFT...")
