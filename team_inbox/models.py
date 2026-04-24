@@ -152,22 +152,30 @@ class Messages(BaseTenantModelForFilterUser):
     def outgoing_status(self) -> Union[str, None]:
         """
         Returns the status of the outgoing message.
-        Checks GupshupOutgoingMessages first, then BroadcastMessage by external_message_id.
+        Checks WhatsApp outgoing_message, Telegram outbound, or BroadcastMessage.
         Only relevant for OUTGOING messages.
         """
         if self.direction == MessageDirectionChoices.OUTGOING:
             if self.outgoing_message:
                 return self.outgoing_message.status
+            # Check Telegram outbound messages
+            telegram_msg = self.telegram_outbound.first()
+            if telegram_msg:
+                return telegram_msg.status
             if self._broadcast_message:
                 return self._broadcast_message.status
         return None
 
     @property
     def outgoing_sent_at(self):
-        """Timestamp when outgoing message was sent to Gupshup API."""
+        """Timestamp when outgoing message was sent."""
         if self.direction == MessageDirectionChoices.OUTGOING:
             if self.outgoing_message:
                 return self.outgoing_message.sent_at
+            # Check Telegram outbound messages
+            telegram_msg = self.telegram_outbound.first()
+            if telegram_msg:
+                return telegram_msg.sent_at
             if self._broadcast_message:
                 return self._broadcast_message.sent_at
         return None
@@ -198,6 +206,10 @@ class Messages(BaseTenantModelForFilterUser):
         if self.direction == MessageDirectionChoices.OUTGOING:
             if self.outgoing_message:
                 return self.outgoing_message.failed_at
+            # Check Telegram outbound messages
+            telegram_msg = self.telegram_outbound.first()
+            if telegram_msg:
+                return telegram_msg.failed_at
             if self._broadcast_message:
                 return self._broadcast_message.failed_at
         return None
