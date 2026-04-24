@@ -17,10 +17,24 @@ class TelegramSendMessageSerializer(serializers.Serializer):
         required=False,
     )
     contact_id = serializers.IntegerField(required=False, help_text="TenantContact ID for inbox tracking")
+    buttons = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        help_text="Array of button objects (type, text, url, phone_number)",
+    )
+    # Frontend sends media via these fields
+    photo = serializers.URLField(required=False, help_text="Photo URL (alternative to media_url)")
+    video = serializers.URLField(required=False, help_text="Video URL (alternative to media_url)")
+    document = serializers.URLField(required=False, help_text="Document URL (alternative to media_url)")
 
     def validate(self, attrs):
-        if not attrs.get("text") and not attrs.get("media_url"):
-            raise serializers.ValidationError("Either 'text' or 'media_url' must be provided.")
+        has_text = bool(attrs.get("text"))
+        has_media = bool(
+            attrs.get("media_url") or attrs.get("photo") or attrs.get("video") or attrs.get("document")
+        )
+        
+        if not has_text and not has_media:
+            raise serializers.ValidationError("Either 'text' or media (media_url/photo/video/document) must be provided.")
         if not attrs.get("chat_id") and not attrs.get("contact_id"):
             raise serializers.ValidationError("Either 'chat_id' or 'contact_id' must be provided.")
         return attrs
@@ -97,6 +111,31 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
         text = data.get("text", "")
         media_url = data.get("media_url")
         media_type = data.get("media_type", "photo")
+        buttons = data.get("buttons")
+        
+        # Handle frontend media format (photo/video/document fields)
+        if not media_url:
+            if data.get("photo"):
+                media_url = data.get("photo")
+                media_type = "photo"
+            elif data.get("video"):
+                media_url = data.get("video")
+                media_type = "video"
+            elif data.get("document"):
+                media_url = data.get("document")
+                media_type = "document"
+
+        # Log incoming request for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        text_preview = text[:50] if text else ""
+        logger.info(f"[TelegramMessage] Sending to contact_id={data.get('contact_id')}, chat_id={chat_id}, text={text_preview}..., buttons={buttons}, media_url={media_url}")
+
+        # Build reply_markup from buttons if provided
+        reply_markup = None
+        if buttons:
+            reply_markup = self._convert_buttons_to_telegram_keyboard(buttons)
+            logger.info(f"[TelegramMessage] Built reply_markup: {reply_markup}")
 
         if media_url:
             result = sender.send_media(
@@ -111,7 +150,64 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
                 chat_id=chat_id,
                 text=text,
                 contact=contact,
+                reply_markup=reply_markup,
             )
 
         resp_status = status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST
         return Response(result, status=resp_status)
+
+    def _convert_buttons_to_telegram_keyboard(self, buttons: list[dict]) -> dict:
+        """
+        Convert WATemplate button format to Telegram inline_keyboard format.
+
+        WATemplate buttons:
+        [
+            {"type": "QUICK_REPLY", "text": "Yes"},
+            {"type": "URL", "text": "Visit", "url": "https://example.com"},
+            {"type": "PHONE_NUMBER", "text": "Call", "phone_number": "+911234567890"}
+        ]
+
+        Telegram inline_keyboard:
+        {
+            "inline_keyboard": [
+                [{"text": "Yes", "callback_data": "quick_reply:Yes"}],
+                [{"text": "Visit", "url": "https://example.com"}],
+                [{"text": "Call", "url": "tel:+911234567890"}]
+            ]
+        }
+        """
+        rows = []
+        for btn in buttons:
+            btn_type = btn.get("type", "").upper()
+            text = btn.get("text", "")
+
+            if not text:
+                continue  # Skip buttons without text
+
+            telegram_btn = {"text": text}
+
+            if btn_type == "URL" and btn.get("url"):
+                telegram_btn["url"] = btn["url"]
+            elif btn_type == "PHONE_NUMBER" and btn.get("phone_number"):
+                # Telegram doesn't have native phone button in inline keyboards
+                # Use URL with tel: scheme
+                telegram_btn["url"] = f"tel:{btn['phone_number']}"
+            elif btn_type in ("QUICK_REPLY", "COPY_CODE", "OTP"):
+                # Use callback_data for quick reply buttons
+                # Format: button_type:button_text (truncated to 64 bytes)
+                callback_data = f"{btn_type.lower()}:{text}"
+                if len(callback_data.encode("utf-8")) > 64:
+                    # Truncate if too long
+                    callback_data = callback_data[:61] + "..."
+                telegram_btn["callback_data"] = callback_data
+            else:
+                # Default: treat as callback button
+                callback_data = f"action:{text}"
+                if len(callback_data.encode("utf-8")) > 64:
+                    callback_data = callback_data[:61] + "..."
+                telegram_btn["callback_data"] = callback_data
+
+            # Each button on its own row
+            rows.append([telegram_btn])
+
+        return {"inline_keyboard": rows}
