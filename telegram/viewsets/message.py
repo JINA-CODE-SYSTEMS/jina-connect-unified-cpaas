@@ -32,7 +32,7 @@ class TelegramSendMessageSerializer(serializers.Serializer):
         has_media = bool(
             attrs.get("media_url") or attrs.get("photo") or attrs.get("video") or attrs.get("document")
         )
-        
+
         if not has_text and not has_media:
             raise serializers.ValidationError("Either 'text' or media (media_url/photo/video/document) must be provided.")
         if not attrs.get("chat_id") and not attrs.get("contact_id"):
@@ -112,7 +112,7 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
         media_url = data.get("media_url")
         media_type = data.get("media_type", "photo")
         buttons = data.get("buttons")
-        
+
         # Handle frontend media format (photo/video/document fields)
         if not media_url:
             if data.get("photo"):
