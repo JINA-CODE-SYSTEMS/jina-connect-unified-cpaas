@@ -90,7 +90,7 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
                 chat_id = str(contact.telegram_chat_id)
             else:
                 return Response(
-                    {"error": "Could not determine telegram chat_id from contact."},
+                    {"error": "Could not determine telegram_chat_id from contact."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 

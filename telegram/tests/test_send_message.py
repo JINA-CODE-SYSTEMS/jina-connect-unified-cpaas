@@ -562,4 +562,4 @@ class TestTelegramSendWithContactId:
         ).first()
         assert msg is not None
         assert msg.contact == contact
-        assert msg.chat_id == str(contact.telegram_chat_id)
+        assert str(msg.chat_id) == str(contact.telegram_chat_id)
