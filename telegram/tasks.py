@@ -181,8 +181,15 @@ def _handle_message(event):
 
     # Download media from Telegram and persist to storage (#128)
     if content.get("media", {}).get("file_id"):
+        file_id = content["media"]["file_id"]
+        logger.info("[_handle_message] Attempting to download media file_id=%s for event %s", file_id, event.pk)
         try:
             content = _resolve_media_to_storage(event.bot_app, content, tenant)
+            logger.info(
+                "[_handle_message] Media download SUCCESS for file_id=%s, url=%s",
+                file_id,
+                content.get("media", {}).get("url", "NO_URL"),
+            )
         except Exception:
             logger.exception("[_handle_message] Failed to download media for event %s", event.pk)
 
@@ -471,6 +478,8 @@ def _resolve_media_to_storage(bot_app, content: dict, tenant) -> dict:
     """
     import copy
 
+    from django.conf import settings
+    from django.contrib.sites.models import Site
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
 
@@ -480,21 +489,38 @@ def _resolve_media_to_storage(bot_app, content: dict, tenant) -> dict:
     media = content.get("media", {})
     file_id = media.get("file_id")
     if not file_id:
+        logger.warning("[_resolve_media_to_storage] No file_id found in content")
         return content
 
+    logger.info("[_resolve_media_to_storage] Starting download for file_id=%s", file_id)
     client = TelegramBotClient(token=bot_app.bot_token)
     handler = TelegramMediaHandler(client)
     file_bytes, tg_file_path = handler.download_file(file_id)
+    logger.info("[_resolve_media_to_storage] Downloaded %d bytes, path=%s", len(file_bytes), tg_file_path)
 
     # Derive a stable storage path
     ext = tg_file_path.rsplit(".", 1)[-1] if "." in tg_file_path else "bin"
     storage_path = f"telegram/{tenant.pk}/{file_id}.{ext}"
     saved_path = default_storage.save(storage_path, ContentFile(file_bytes))
-    saved_url = default_storage.url(saved_path)
+
+    # Build absolute URL (handle both GCS and local storage)
+    relative_url = default_storage.url(saved_path)
+    if relative_url.startswith("http"):
+        absolute_url = relative_url
+    else:
+        # Convert relative URL to absolute for local storage
+        try:
+            domain = Site.objects.get(id=1).domain
+            absolute_url = f"https://{domain}{relative_url}"
+        except Exception:
+            base = getattr(settings, "BASE_URL", "")
+            absolute_url = f"{base}{relative_url}" if base else relative_url
+
+    logger.info("[_resolve_media_to_storage] Saved to storage: path=%s, url=%s", saved_path, absolute_url)
 
     content = copy.deepcopy(content)
     content["media"] = {
-        "url": saved_url,
+        "url": absolute_url,
         "mime_type": media.get("mime_type", ""),
         "file_name": media.get("file_name", ""),
     }
