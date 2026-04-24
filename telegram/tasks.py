@@ -185,7 +185,11 @@ def _handle_message(event):
         logger.info("[_handle_message] Attempting to download media file_id=%s for event %s", file_id, event.pk)
         try:
             content = _resolve_media_to_storage(event.bot_app, content, tenant)
-            logger.info("[_handle_message] Media download SUCCESS for file_id=%s, url=%s", file_id, content.get("media", {}).get("url", "NO_URL"))
+            logger.info(
+                "[_handle_message] Media download SUCCESS for file_id=%s, url=%s",
+                file_id,
+                content.get("media", {}).get("url", "NO_URL"),
+            )
         except Exception:
             logger.exception("[_handle_message] Failed to download media for event %s", event.pk)
 
