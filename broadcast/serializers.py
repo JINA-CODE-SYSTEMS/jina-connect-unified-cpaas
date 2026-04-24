@@ -36,6 +36,11 @@ class BroadcastSerializer(BaseSerializer):
     class Meta:
         model = Broadcast
         fields = "__all__"
+        extra_kwargs = {
+            "tenant": {"required": False},  # Set by viewset in perform_create()
+            "created_by": {"required": False},  # Set by viewset in perform_create()
+            "platform": {"required": False},  # Set by viewset in perform_create()
+        }
 
     def get_pending_count(self, obj):
         return getattr(obj, "pending_count", 0)
