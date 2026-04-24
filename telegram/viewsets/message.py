@@ -34,9 +34,13 @@ class TelegramSendMessageSerializer(serializers.Serializer):
         )
 
         if not has_text and not has_media:
-            raise serializers.ValidationError("Either 'text' or media (media_url/photo/video/document) must be provided.")
+            raise serializers.ValidationError(
+                "Either 'text' or media (media_url/photo/video/document) must be provided."
+            )
         if not attrs.get("chat_id") and not attrs.get("contact_id"):
-            raise serializers.ValidationError("Either 'chat_id' or 'contact_id' must be provided.")
+            raise serializers.ValidationError(
+                "Either 'chat_id' or 'contact_id' must be provided."
+            )
         return attrs
 
 
@@ -127,9 +131,13 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
 
         # Log incoming request for debugging
         import logging
+
         logger = logging.getLogger(__name__)
         text_preview = text[:50] if text else ""
-        logger.info(f"[TelegramMessage] Sending to contact_id={data.get('contact_id')}, chat_id={chat_id}, text={text_preview}..., buttons={buttons}, media_url={media_url}")
+        logger.info(
+            f"[TelegramMessage] Sending to contact_id={data.get('contact_id')}, "
+            f"chat_id={chat_id}, text={text_preview}..., buttons={buttons}, media_url={media_url}"
+        )
 
         # Build reply_markup from buttons if provided
         reply_markup = None
