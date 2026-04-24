@@ -326,3 +326,240 @@ class TestSendScheduledTelegramMessages:
         # Must still be SENDING — the sweep should NOT touch it
         assert msg.status == "SENDING"
         assert result["sent"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Contact ID lookup tests (PR #135)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestTelegramSendWithContactId:
+    """Test Telegram message sending with contact_id parameter for telegram_chat_id lookup."""
+
+    @pytest.fixture()
+    def contact(self, tenant):
+        """Contact with telegram_chat_id."""
+        from contacts.models import TenantContact
+
+        return TenantContact.objects.create(
+            tenant=tenant,
+            first_name="Test",
+            last_name="User",
+            phone="+919876543210",
+            telegram_chat_id="987654321",
+        )
+
+    @pytest.fixture()
+    def contact_no_telegram(self, tenant):
+        """Contact without telegram_chat_id."""
+        from contacts.models import TenantContact
+
+        return TenantContact.objects.create(
+            tenant=tenant,
+            first_name="No",
+            last_name="Telegram",
+            phone="+919999999999",
+            telegram_chat_id=None,
+        )
+
+    @pytest.fixture()
+    def other_tenant(self, db):
+        """Different tenant for cross-tenant isolation tests."""
+        from tenants.models import Tenant
+
+        return Tenant.objects.create(name="Other Tenant")
+
+    @pytest.fixture()
+    def other_contact(self, other_tenant):
+        """Contact belonging to a different tenant."""
+        from contacts.models import TenantContact
+
+        return TenantContact.objects.create(
+            tenant=other_tenant,
+            first_name="Other",
+            last_name="Contact",
+            phone="+918888888888",
+            telegram_chat_id="111222333",
+        )
+
+    def test_send_text_with_contact_id_only(self, api_client, bot_app, contact, monkeypatch):
+        """Test sending text message with only contact_id (no chat_id)."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        monkeypatch.setattr(TelegramMessageSender, "send_text", _fake_sender_send_text)
+
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "contact_id": contact.id,
+                "text": "Hello from contact_id test",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_send_text_with_chat_id_only(self, api_client, bot_app, monkeypatch):
+        """Test sending with only chat_id (original behavior - backward compatibility)."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        monkeypatch.setattr(TelegramMessageSender, "send_text", _fake_sender_send_text)
+
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "chat_id": "111222333",
+                "text": "Hello from chat_id test",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_send_with_both_chat_id_and_contact_id(self, api_client, bot_app, contact, monkeypatch):
+        """Test that chat_id takes precedence when both are provided."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        call_args = []
+
+        def capture_send_text(self, chat_id, text, **kwargs):
+            call_args.append({"chat_id": chat_id, "text": text})
+            return _fake_sender_send_text(self, chat_id, text, **kwargs)
+
+        monkeypatch.setattr(TelegramMessageSender, "send_text", capture_send_text)
+
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "chat_id": "explicit_chat_id",
+                "contact_id": contact.id,
+                "text": "Test precedence",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        # Verify explicit chat_id was used (not looked up from contact)
+        assert call_args[0]["chat_id"] == "explicit_chat_id"
+
+    def test_send_without_chat_id_or_contact_id(self, api_client, bot_app):
+        """Test validation error when neither chat_id nor contact_id provided."""
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "text": "Missing identifiers",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        error_msg = str(response.data).lower()
+        assert "chat_id" in error_msg or "contact_id" in error_msg
+
+    def test_send_with_invalid_contact_id(self, api_client, bot_app):
+        """Test error when contact_id does not exist."""
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "contact_id": 99999,
+                "text": "Invalid contact",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "not found" in response.json()["error"].lower()
+
+    def test_send_with_contact_without_telegram_chat_id(self, api_client, bot_app, contact_no_telegram):
+        """Test error when contact doesn't have telegram_chat_id."""
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "contact_id": contact_no_telegram.id,
+                "text": "No telegram chat id",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "telegram_chat_id" in response.json()["error"].lower()
+
+    def test_send_cross_tenant_isolation(self, api_client, bot_app, other_contact):
+        """Test that contact_id from a different tenant is rejected."""
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "contact_id": other_contact.id,
+                "text": "Cross-tenant attempt",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "not found" in response.json()["error"].lower()
+
+    def test_send_media_with_contact_id(self, api_client, bot_app, contact, monkeypatch):
+        """Test sending media message using contact_id lookup."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        monkeypatch.setattr(TelegramMessageSender, "send_media", _fake_sender_send_media)
+
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "contact_id": contact.id,
+                "media_url": "https://example.com/photo.jpg",
+                "media_type": "photo",
+                "text": "Caption text",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_outbound_message_links_contact(self, api_client, bot_app, contact, monkeypatch):
+        """Test that TelegramOutboundMessage.contact is properly linked when using contact_id."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        # Create a real outbound message instead of just faking the response
+        def real_send_text(self, chat_id, text, contact=None, **kwargs):
+            msg = TelegramOutboundMessage.objects.create(
+                tenant=self.bot_app.tenant,
+                bot_app=self.bot_app,
+                chat_id=chat_id,
+                message_type="TEXT",
+                contact=contact,
+                status="SENT",
+                provider_message_id=12345,
+                request_payload={"text": text},
+            )
+            return {"success": True, "message_id": 12345, "outbound_id": str(msg.id)}
+
+        monkeypatch.setattr(TelegramMessageSender, "send_text", real_send_text)
+
+        response = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "contact_id": contact.id,
+                "text": "Test contact linkage",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+
+        # Verify outbound message was created with correct contact link
+        msg = TelegramOutboundMessage.objects.filter(
+            tenant=bot_app.tenant,
+            contact=contact,
+        ).first()
+        assert msg is not None
+        assert msg.contact == contact
+        assert str(msg.chat_id) == str(contact.telegram_chat_id)

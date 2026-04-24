@@ -8,7 +8,7 @@ from abstract.viewsets.base import BaseTenantModelViewSet
 
 
 class TelegramSendMessageSerializer(serializers.Serializer):
-    chat_id = serializers.CharField(help_text="Telegram chat ID of the recipient")
+    chat_id = serializers.CharField(required=False, help_text="Telegram chat ID of the recipient")
     text = serializers.CharField(required=False, allow_blank=True, help_text="Message text")
     media_url = serializers.URLField(required=False, help_text="URL of media to send")
     media_type = serializers.ChoiceField(
@@ -21,6 +21,8 @@ class TelegramSendMessageSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not attrs.get("text") and not attrs.get("media_url"):
             raise serializers.ValidationError("Either 'text' or 'media_url' must be provided.")
+        if not attrs.get("chat_id") and not attrs.get("contact_id"):
+            raise serializers.ValidationError("Either 'chat_id' or 'contact_id' must be provided.")
         return attrs
 
 
@@ -75,8 +77,23 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
             from contacts.models import TenantContact
 
             contact = TenantContact.objects.filter(pk=data["contact_id"], tenant=tenant).first()
+            if not contact:
+                return Response(
+                    {"error": f"Contact with ID {data['contact_id']} not found."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        chat_id = data["chat_id"]
+        # Get chat_id - either from payload or from contact
+        chat_id = data.get("chat_id")
+        if not chat_id:
+            if contact and contact.telegram_chat_id:
+                chat_id = str(contact.telegram_chat_id)
+            else:
+                return Response(
+                    {"error": "Could not determine telegram_chat_id from contact."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         text = data.get("text", "")
         media_url = data.get("media_url")
         media_type = data.get("media_type", "photo")
