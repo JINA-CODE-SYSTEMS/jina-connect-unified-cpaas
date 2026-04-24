@@ -29,18 +29,14 @@ class TelegramSendMessageSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         has_text = bool(attrs.get("text"))
-        has_media = bool(
-            attrs.get("media_url") or attrs.get("photo") or attrs.get("video") or attrs.get("document")
-        )
+        has_media = bool(attrs.get("media_url") or attrs.get("photo") or attrs.get("video") or attrs.get("document"))
 
         if not has_text and not has_media:
             raise serializers.ValidationError(
                 "Either 'text' or media (media_url/photo/video/document) must be provided."
             )
         if not attrs.get("chat_id") and not attrs.get("contact_id"):
-            raise serializers.ValidationError(
-                "Either 'chat_id' or 'contact_id' must be provided."
-            )
+            raise serializers.ValidationError("Either 'chat_id' or 'contact_id' must be provided.")
         return attrs
 
 
