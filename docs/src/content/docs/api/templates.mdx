@@ -7,6 +7,8 @@ description: WhatsApp message template management with full lifecycle tracking.
 
 WhatsApp Business API requires pre-approved templates for business-initiated conversations. Jina Connect manages the full template lifecycle across BSPs.
 
+Channel-scoped template endpoints for SMS, Telegram, and RCS reuse the same template model, but they do not wait for BSP approval. Those templates are created immediately as `APPROVED` with `needs_sync=false` because no WhatsApp BSP sync is required.
+
 ## Endpoints
 
 | Method | Endpoint | Description |
@@ -59,6 +61,11 @@ curl -X POST http://localhost:8000/wa/v2/templates/ \
 | `PAUSED` | Temporarily paused by BSP |
 | `DISABLED` | Permanently disabled |
 | `FAILED` | Submission failed |
+
+This lifecycle applies to WhatsApp templates created through `/wa/v2/templates/`.
+
+- WhatsApp templates start as `DRAFT`, keep `needs_sync=true`, and move through the BSP approval flow.
+- SMS, Telegram, and RCS templates created through their channel-specific endpoints start as `APPROVED` with `needs_sync=false`.
 
 ## Button Types
 

@@ -88,6 +88,45 @@ class TestTelegramSendEndpoint:
         assert resp.status_code == 200
         assert resp.data["success"] is True
 
+    def test_send_text_buttons_builds_reply_markup(self, api_client, bot_app, monkeypatch):
+        """Buttons are converted to Telegram inline_keyboard and passed to send_text."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        captured = {}
+
+        def fake_send_text(self, chat_id, text, **kwargs):
+            captured["chat_id"] = chat_id
+            captured["text"] = text
+            captured["reply_markup"] = kwargs.get("reply_markup")
+            return {"success": True, "message_id": "12345", "outbound_id": "fake-uuid"}
+
+        monkeypatch.setattr(TelegramMessageSender, "send_text", fake_send_text)
+
+        resp = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "chat_id": "99999",
+                "text": "Choose one",
+                "buttons": [
+                    {"type": "URL", "text": "Visit", "url": "https://example.com"},
+                    {"type": "PHONE_NUMBER", "text": "Call", "phone_number": "+911234567890"},
+                    {"type": "QUICK_REPLY", "text": "Yes"},
+                ],
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert captured["chat_id"] == "99999"
+        assert captured["text"] == "Choose one"
+        assert captured["reply_markup"] == {
+            "inline_keyboard": [
+                [{"text": "Visit", "url": "https://example.com"}],
+                [{"text": "Call", "url": "tel:+911234567890"}],
+                [{"text": "Yes", "callback_data": "quick_reply:Yes"}],
+            ]
+        }
+
     def test_send_media_success(self, api_client, bot_app, monkeypatch):
         """POST /telegram/v1/messages/send/ with media_url returns 200."""
         from telegram.services.message_sender import TelegramMessageSender
@@ -102,6 +141,115 @@ class TestTelegramSendEndpoint:
 
         assert resp.status_code == 200
         assert resp.data["success"] is True
+
+    @pytest.mark.parametrize(
+        ("field_name", "media_url", "expected_type"),
+        [
+            ("photo", "https://example.com/img.jpg", "photo"),
+            ("video", "https://example.com/video.mp4", "video"),
+            ("document", "https://example.com/file.pdf", "document"),
+        ],
+    )
+    def test_media_aliases_route_to_send_media(
+        self,
+        api_client,
+        bot_app,
+        monkeypatch,
+        field_name,
+        media_url,
+        expected_type,
+    ):
+        """Frontend media aliases map to the correct Telegram media_type."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        captured = {}
+
+        def fake_send_media(self, chat_id, media_type, media_url, caption=None, **kwargs):
+            captured["chat_id"] = chat_id
+            captured["media_type"] = media_type
+            captured["media_url"] = media_url
+            captured["caption"] = caption
+            captured["reply_markup"] = kwargs.get("reply_markup")
+            return {"success": True, "message_id": "12346", "outbound_id": "fake-uuid"}
+
+        monkeypatch.setattr(TelegramMessageSender, "send_media", fake_send_media)
+
+        resp = api_client.post(
+            "/telegram/v1/messages/send/",
+            {"chat_id": "99999", field_name: media_url},
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert captured["chat_id"] == "99999"
+        assert captured["media_type"] == expected_type
+        assert captured["media_url"] == media_url
+        assert captured["caption"] is None
+        assert captured["reply_markup"] is None
+
+    def test_media_url_takes_precedence_over_alias_fields(self, api_client, bot_app, monkeypatch):
+        """media_url remains the source of truth when alias fields are also present."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        captured = {}
+
+        def fake_send_media(self, chat_id, media_type, media_url, caption=None, **kwargs):
+            captured["media_type"] = media_type
+            captured["media_url"] = media_url
+            return {"success": True, "message_id": "12346", "outbound_id": "fake-uuid"}
+
+        monkeypatch.setattr(TelegramMessageSender, "send_media", fake_send_media)
+
+        resp = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "chat_id": "99999",
+                "media_url": "https://example.com/primary.pdf",
+                "media_type": "document",
+                "photo": "https://example.com/ignored.jpg",
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert captured["media_type"] == "document"
+        assert captured["media_url"] == "https://example.com/primary.pdf"
+
+    def test_send_media_with_buttons_passes_reply_markup(self, api_client, bot_app, monkeypatch):
+        """Buttons are preserved when sending media payloads."""
+        from telegram.services.message_sender import TelegramMessageSender
+
+        captured = {}
+
+        def fake_send_media(self, chat_id, media_type, media_url, caption=None, **kwargs):
+            captured["chat_id"] = chat_id
+            captured["media_type"] = media_type
+            captured["media_url"] = media_url
+            captured["caption"] = caption
+            captured["reply_markup"] = kwargs.get("reply_markup")
+            return {"success": True, "message_id": "12346", "outbound_id": "fake-uuid"}
+
+        monkeypatch.setattr(TelegramMessageSender, "send_media", fake_send_media)
+
+        resp = api_client.post(
+            "/telegram/v1/messages/send/",
+            {
+                "chat_id": "99999",
+                "photo": "https://example.com/img.jpg",
+                "text": "See attachment",
+                "buttons": [{"type": "QUICK_REPLY", "text": "Acknowledge"}],
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 200
+        assert captured["chat_id"] == "99999"
+        assert captured["media_type"] == "photo"
+        assert captured["media_url"] == "https://example.com/img.jpg"
+        assert captured["caption"] == "See attachment"
+        assert captured["reply_markup"] == {
+            "inline_keyboard": [[{"text": "Acknowledge", "callback_data": "quick_reply:Acknowledge"}]]
+        }
 
     def test_rejects_empty_payload(self, api_client, bot_app):
         """text and media_url both absent → 400."""

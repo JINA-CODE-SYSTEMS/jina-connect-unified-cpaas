@@ -1,10 +1,15 @@
 """Telegram ad-hoc message sending viewset."""
 
+import logging
+
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from abstract.viewsets.base import BaseTenantModelViewSet
+from telegram.services.keyboard_builder import build_template_button_keyboard
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramSendMessageSerializer(serializers.Serializer):
@@ -125,21 +130,19 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
                 media_url = data.get("document")
                 media_type = "document"
 
-        # Log incoming request for debugging
-        import logging
-
-        logger = logging.getLogger(__name__)
-        text_preview = text[:50] if text else ""
-        logger.info(
-            f"[TelegramMessage] Sending to contact_id={data.get('contact_id')}, "
-            f"chat_id={chat_id}, text={text_preview}..., buttons={buttons}, media_url={media_url}"
+        logger.debug(
+            "[TelegramMessage] send contact_id=%s chat_id=%s has_text=%s has_buttons=%s media_type=%s has_media=%s",
+            data.get("contact_id"),
+            chat_id,
+            bool(text),
+            bool(buttons),
+            media_type,
+            bool(media_url),
         )
 
-        # Build reply_markup from buttons if provided
         reply_markup = None
         if buttons:
-            reply_markup = self._convert_buttons_to_telegram_keyboard(buttons)
-            logger.info(f"[TelegramMessage] Built reply_markup: {reply_markup}")
+            reply_markup = build_template_button_keyboard(buttons)
 
         if media_url:
             result = sender.send_media(
@@ -148,6 +151,7 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
                 media_url=media_url,
                 caption=text or None,
                 contact=contact,
+                reply_markup=reply_markup,
             )
         else:
             result = sender.send_text(
@@ -159,59 +163,3 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
 
         resp_status = status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST
         return Response(result, status=resp_status)
-
-    def _convert_buttons_to_telegram_keyboard(self, buttons: list[dict]) -> dict:
-        """
-        Convert WATemplate button format to Telegram inline_keyboard format.
-
-        WATemplate buttons:
-        [
-            {"type": "QUICK_REPLY", "text": "Yes"},
-            {"type": "URL", "text": "Visit", "url": "https://example.com"},
-            {"type": "PHONE_NUMBER", "text": "Call", "phone_number": "+911234567890"}
-        ]
-
-        Telegram inline_keyboard:
-        {
-            "inline_keyboard": [
-                [{"text": "Yes", "callback_data": "quick_reply:Yes"}],
-                [{"text": "Visit", "url": "https://example.com"}],
-                [{"text": "Call", "url": "tel:+911234567890"}]
-            ]
-        }
-        """
-        rows = []
-        for btn in buttons:
-            btn_type = btn.get("type", "").upper()
-            text = btn.get("text", "")
-
-            if not text:
-                continue  # Skip buttons without text
-
-            telegram_btn = {"text": text}
-
-            if btn_type == "URL" and btn.get("url"):
-                telegram_btn["url"] = btn["url"]
-            elif btn_type == "PHONE_NUMBER" and btn.get("phone_number"):
-                # Telegram doesn't have native phone button in inline keyboards
-                # Use URL with tel: scheme
-                telegram_btn["url"] = f"tel:{btn['phone_number']}"
-            elif btn_type in ("QUICK_REPLY", "COPY_CODE", "OTP"):
-                # Use callback_data for quick reply buttons
-                # Format: button_type:button_text (truncated to 64 bytes)
-                callback_data = f"{btn_type.lower()}:{text}"
-                if len(callback_data.encode("utf-8")) > 64:
-                    # Truncate if too long
-                    callback_data = callback_data[:61] + "..."
-                telegram_btn["callback_data"] = callback_data
-            else:
-                # Default: treat as callback button
-                callback_data = f"action:{text}"
-                if len(callback_data.encode("utf-8")) > 64:
-                    callback_data = callback_data[:61] + "..."
-                telegram_btn["callback_data"] = callback_data
-
-            # Each button on its own row
-            rows.append([telegram_btn])
-
-        return {"inline_keyboard": rows}

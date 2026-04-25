@@ -56,9 +56,23 @@ Each tenant can register their own Telegram bot. Messages are sent via the Teleg
 
 ## Sending Messages
 
-Messages are sent through the message sender service (`telegram/services/message_sender.py`):
+Messages can be sent ad hoc through `POST /telegram/v1/messages/send/` or through the message sender service (`telegram/services/message_sender.py`):
 
 ```bash
+# Ad hoc send
+curl -X POST http://localhost:8000/telegram/v1/messages/send/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_id": "99999",
+    "text": "Choose an option",
+    "buttons": [
+      {"type": "URL", "text": "Visit site", "url": "https://example.com"},
+      {"type": "PHONE_NUMBER", "text": "Call support", "phone_number": "+911234567890"},
+      {"type": "QUICK_REPLY", "text": "Track order"}
+    ]
+  }'
+
 # Via MCP tool (simplest)
 # Use the send_message tool with channel="TELEGRAM"
 
@@ -71,6 +85,39 @@ curl -X POST http://localhost:8000/broadcast/ \
     "platform": "TELEGRAM",
     "message_text": "Hello from Jina Connect!",
     "recipients": ["contact-uuid-1", "contact-uuid-2"]
+  }'
+```
+
+`buttons` are converted into Telegram `inline_keyboard` rows with one button per row:
+
+- `URL` maps to a Telegram URL button.
+- `PHONE_NUMBER` maps to a `tel:` URL button.
+- `QUICK_REPLY`, `COPY_CODE`, and `OTP` map to `callback_data` buttons.
+- Unknown button types fall back to `callback_data` with the `action:` prefix.
+
+Telegram limits `callback_data` to 64 bytes. Jina Connect truncates oversized values safely on UTF-8 byte boundaries before sending.
+
+The ad hoc endpoint also accepts frontend media aliases in place of `media_url`:
+
+- `photo`
+- `video`
+- `document`
+
+When both `media_url` and one of these alias fields are supplied, `media_url` takes precedence.
+
+Example media payload with buttons:
+
+```bash
+curl -X POST http://localhost:8000/telegram/v1/messages/send/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_id": "99999",
+    "photo": "https://example.com/invoice.jpg",
+    "text": "Invoice ready",
+    "buttons": [
+      {"type": "QUICK_REPLY", "text": "Acknowledge"}
+    ]
   }'
 ```
 
