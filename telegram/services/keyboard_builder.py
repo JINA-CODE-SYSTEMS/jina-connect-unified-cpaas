@@ -14,6 +14,46 @@ from telegram.constants import CALLBACK_DATA_MAX_LENGTH, CALLBACK_DATA_VERSION
 _CALLBACK_RE = re.compile(r"^(?P<version>v\d+):(?P<action>\w+):(?P<id>[^:]+):(?P<nonce>[^:]+)$")
 
 
+def _truncate_callback_data(data: str) -> str:
+    """Trim callback_data to Telegram's byte limit without splitting UTF-8 codepoints."""
+    encoded = data.encode("utf-8")
+    if len(encoded) <= CALLBACK_DATA_MAX_LENGTH:
+        return data
+
+    ellipsis = "..."
+    max_prefix_bytes = CALLBACK_DATA_MAX_LENGTH - len(ellipsis.encode("utf-8"))
+    truncated = encoded[:max_prefix_bytes].decode("utf-8", errors="ignore")
+    return f"{truncated}{ellipsis}"
+
+
+def build_template_button_keyboard(buttons: list[dict]) -> Optional[dict]:
+    """Convert flat channel-template button specs into Telegram inline keyboard markup."""
+    rows = []
+    for button in buttons:
+        text = (button.get("text") or "").strip()
+        if not text:
+            continue
+
+        button_type = (button.get("type") or "").upper()
+        normalized = {"text": text}
+
+        if button_type == "URL" and button.get("url"):
+            normalized["url"] = button["url"]
+        elif button_type == "PHONE_NUMBER" and button.get("phone_number"):
+            normalized["url"] = f"tel:{button['phone_number']}"
+        elif button_type in ("QUICK_REPLY", "COPY_CODE", "OTP"):
+            normalized["callback_data"] = _truncate_callback_data(f"{button_type.lower()}:{text}")
+        else:
+            normalized["callback_data"] = _truncate_callback_data(f"action:{text}")
+
+        rows.append([normalized])
+
+    if not rows:
+        return None
+
+    return build_inline_keyboard(rows)
+
+
 def build_inline_keyboard(buttons: list[list[dict]]) -> dict:
     """
     Build a Telegram InlineKeyboardMarkup from a nested button spec.

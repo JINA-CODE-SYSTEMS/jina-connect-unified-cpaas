@@ -62,14 +62,15 @@ TEMPLATE_PAYLOAD = {
 @pytest.mark.django_db
 class TestSMSTemplateViewSet:
     def test_create_sets_platform_and_tenant(self, api_client, tenant_user):
-        """POST /sms/v1/templates/ creates template with platform=SMS and correct tenant (#21)."""
+        """POST /sms/v1/templates/ creates an approved SMS template for the tenant (#21)."""
         resp = api_client.post("/sms/v1/templates/", TEMPLATE_PAYLOAD, format="json")
 
         assert resp.status_code == 201
         tpl = WATemplate.objects.get(pk=resp.data["id"])
         assert tpl.platform == "SMS"
         assert tpl.tenant == tenant_user.tenant
-        assert tpl.status == TemplateStatus.DRAFT
+        assert tpl.status == TemplateStatus.APPROVED
+        assert tpl.needs_sync is False
 
     def test_list_filters_by_platform(self, api_client, tenant_user):
         """GET /sms/v1/templates/ only returns SMS templates."""
@@ -86,13 +87,15 @@ class TestSMSTemplateViewSet:
 @pytest.mark.django_db
 class TestTelegramTemplateViewSet:
     def test_create_sets_platform_and_tenant(self, api_client, tenant_user):
-        """POST /telegram/v1/templates/ creates with platform=TELEGRAM."""
+        """POST /telegram/v1/templates/ creates an approved TELEGRAM template."""
         resp = api_client.post("/telegram/v1/templates/", TEMPLATE_PAYLOAD, format="json")
 
         assert resp.status_code == 201
         tpl = WATemplate.objects.get(pk=resp.data["id"])
         assert tpl.platform == "TELEGRAM"
         assert tpl.tenant == tenant_user.tenant
+        assert tpl.status == TemplateStatus.APPROVED
+        assert tpl.needs_sync is False
 
     def test_list_filters_by_platform(self, api_client, tenant_user):
         """GET /telegram/v1/templates/ only returns TELEGRAM templates."""
@@ -109,13 +112,15 @@ class TestTelegramTemplateViewSet:
 @pytest.mark.django_db
 class TestRCSTemplateViewSet:
     def test_create_sets_platform_and_tenant(self, api_client, tenant_user):
-        """POST /rcs/v1/templates/ creates with platform=RCS."""
+        """POST /rcs/v1/templates/ creates an approved RCS template."""
         resp = api_client.post("/rcs/v1/templates/", TEMPLATE_PAYLOAD, format="json")
 
         assert resp.status_code == 201
         tpl = WATemplate.objects.get(pk=resp.data["id"])
         assert tpl.platform == "RCS"
         assert tpl.tenant == tenant_user.tenant
+        assert tpl.status == TemplateStatus.APPROVED
+        assert tpl.needs_sync is False
 
 
 @pytest.mark.django_db

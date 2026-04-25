@@ -60,10 +60,13 @@ class TelegramMessageSender(BaseChannelAdapter):
                 parse_mode=parse_mode,
                 reply_markup=reply_markup,
             )
+            request_payload = {"text": text}
+            if reply_markup:
+                request_payload["reply_markup"] = reply_markup
             outbound = self._persist_outbound(
                 chat_id=int(chat_id),
                 message_type="TEXT",
-                request_payload={"text": text},
+                request_payload=request_payload,
                 result=result,
                 contact=kwargs.get("contact"),
             )
@@ -86,6 +89,9 @@ class TelegramMessageSender(BaseChannelAdapter):
         """Send a media message (photo, document, video, audio, voice)."""
         if err := self._check_rate_limit():
             return err
+
+        reply_markup = kwargs.get("reply_markup")
+        parse_mode = kwargs.get("parse_mode")
 
         # Validate URL scheme
         from urllib.parse import urlparse
@@ -120,11 +126,18 @@ class TelegramMessageSender(BaseChannelAdapter):
             send_kwargs = {"chat_id": int(chat_id), media_key: media_url}
             if caption:
                 send_kwargs["caption"] = caption
+            if parse_mode:
+                send_kwargs["parse_mode"] = parse_mode
+            if reply_markup:
+                send_kwargs["reply_markup"] = reply_markup
             result = send_fn(**send_kwargs)
+            request_payload = {media_key: media_url, "caption": caption}
+            if reply_markup:
+                request_payload["reply_markup"] = reply_markup
             outbound = self._persist_outbound(
                 chat_id=int(chat_id),
                 message_type=media_type.upper(),
-                request_payload={media_key: media_url, "caption": caption},
+                request_payload=request_payload,
                 result=result,
                 contact=kwargs.get("contact"),
             )

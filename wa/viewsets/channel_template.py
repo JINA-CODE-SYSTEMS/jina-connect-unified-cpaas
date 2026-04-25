@@ -41,11 +41,17 @@ class _ChannelTemplateMixin:
             from rest_framework.exceptions import ValidationError
 
             raise ValidationError("Could not determine tenant for this request.")
+
+        # Non-WhatsApp templates don't need approval - set APPROVED immediately
+        # WhatsApp templates need to go through Meta approval process
+        initial_status = TemplateStatus.APPROVED if self._channel_platform != "WHATSAPP" else TemplateStatus.DRAFT
+        needs_sync = self._channel_platform == "WHATSAPP"  # Only WhatsApp templates need BSP sync
+
         template = serializer.save(
             platform=self._channel_platform,
             tenant=tenant_user.tenant,
-            status=TemplateStatus.DRAFT,
-            needs_sync=True,
+            status=initial_status,
+            needs_sync=needs_sync,
         )
         return Response(WATemplateV2Serializer(template).data, status=drf_status.HTTP_201_CREATED)
 
