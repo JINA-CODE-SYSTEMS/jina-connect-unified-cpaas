@@ -124,6 +124,101 @@ class TestRCSTemplateViewSet:
 
 
 @pytest.mark.django_db
+class TestTelegramMediaTemplates:
+    """Verify the Telegram media-template contract (Issue #143).
+
+    Telegram templates use URL-based media via ``example_media_url``.
+    File upload (tenant_media / media_handle) is not supported.
+    """
+
+    MEDIA_URL = "https://example.com/sample.jpg"
+
+    def test_image_template_with_media_url_accepted(self, api_client):
+        """POST IMAGE template with example_media_url → 201, url persisted."""
+        payload = {
+            "name": "tg_img_tpl",
+            "element_name": "tg_img_tpl",
+            "content": "See the image",
+            "language_code": "en",
+            "category": "MARKETING",
+            "template_type": "IMAGE",
+            "example_media_url": self.MEDIA_URL,
+        }
+        resp = api_client.post("/telegram/v1/templates/", payload, format="json")
+        assert resp.status_code == 201
+        assert resp.data["example_media_url"] == self.MEDIA_URL
+        assert resp.data["template_type"] == "IMAGE"
+
+    def test_image_template_without_media_url_rejected(self, api_client):
+        """POST IMAGE template without example_media_url → 400 with explicit error."""
+        payload = {
+            "name": "tg_img_nurl",
+            "element_name": "tg_img_nurl",
+            "content": "No URL provided",
+            "language_code": "en",
+            "category": "MARKETING",
+            "template_type": "IMAGE",
+        }
+        resp = api_client.post("/telegram/v1/templates/", payload, format="json")
+        assert resp.status_code == 400
+        assert "example_media_url" in resp.data
+
+    def test_video_template_without_media_url_rejected(self, api_client):
+        """POST VIDEO template without example_media_url → 400."""
+        payload = {
+            "name": "tg_vid_nurl",
+            "element_name": "tg_vid_nurl",
+            "content": "No URL provided",
+            "language_code": "en",
+            "category": "MARKETING",
+            "template_type": "VIDEO",
+        }
+        resp = api_client.post("/telegram/v1/templates/", payload, format="json")
+        assert resp.status_code == 400
+        assert "example_media_url" in resp.data
+
+    def test_document_template_with_media_url_accepted(self, api_client):
+        """POST DOCUMENT template with example_media_url → 201."""
+        payload = {
+            "name": "tg_doc_tpl",
+            "element_name": "tg_doc_tpl",
+            "content": "See the document",
+            "language_code": "en",
+            "category": "UTILITY",
+            "template_type": "DOCUMENT",
+            "example_media_url": "https://example.com/sample.pdf",
+        }
+        resp = api_client.post("/telegram/v1/templates/", payload, format="json")
+        assert resp.status_code == 201
+        assert resp.data["example_media_url"] == "https://example.com/sample.pdf"
+
+    def test_types_returns_only_telegram_applicable(self, api_client):
+        """GET /telegram/v1/templates/types/ returns only TEXT, IMAGE, VIDEO, DOCUMENT."""
+        resp = api_client.get("/telegram/v1/templates/types/")
+        assert resp.status_code == 200
+        values = {entry["value"] for entry in resp.data}
+        assert values == {"TEXT", "IMAGE", "VIDEO", "DOCUMENT"}
+        # WA-specific types must not be present
+        assert "CAROUSEL" not in values
+        assert "CATALOG" not in values
+        assert "PRODUCT" not in values
+        assert "ORDER_DETAILS" not in values
+
+    def test_text_template_creates_without_media_url(self, api_client):
+        """TEXT templates need no media URL."""
+        payload = {
+            "name": "tg_text_ok",
+            "element_name": "tg_text_ok",
+            "content": "Hello world",
+            "language_code": "en",
+            "category": "UTILITY",
+            "template_type": "TEXT",
+        }
+        resp = api_client.post("/telegram/v1/templates/", payload, format="json")
+        assert resp.status_code == 201
+
+
+@pytest.mark.django_db
 class TestChannelTemplateIsolation:
     def test_cross_tenant_template_not_visible(self, user, tenant_user):
         """Templates from tenant A are not visible to tenant B."""
