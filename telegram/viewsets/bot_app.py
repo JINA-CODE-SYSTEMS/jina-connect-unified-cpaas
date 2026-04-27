@@ -10,6 +10,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from telegram.constants import WEBHOOK_ALLOWED_UPDATES
 from telegram.models import TelegramBotApp
 from telegram.serializers import TelegramBotAppCreateSerializer, TelegramBotAppSerializer
 
@@ -60,7 +61,7 @@ class TelegramBotAppViewSet(viewsets.ModelViewSet):
             client.set_webhook(
                 url=bot_app.webhook_url,
                 secret_token=bot_app.webhook_secret,
-                allowed_updates=["message", "callback_query", "edited_message"],
+                allowed_updates=WEBHOOK_ALLOWED_UPDATES,
             )
             return Response({"ok": True, "webhook_url": bot_app.webhook_url})
         except TelegramAPIError as exc:

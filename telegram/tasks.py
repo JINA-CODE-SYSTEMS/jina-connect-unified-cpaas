@@ -123,6 +123,8 @@ def process_tg_event_task(self, event_id: str):
             _handle_callback_query(event)
         elif event.event_type == "EDITED_MESSAGE":
             _handle_edited_message(event)
+        elif event.event_type == "MESSAGE_REACTION":
+            _handle_message_reaction(event)
         else:
             logger.info("[process_tg_event_task] Unknown event type %s for %s", event.event_type, event_id)
 
@@ -294,6 +296,71 @@ def _handle_edited_message(event):
     logger.info("[_handle_edited_message] Updated message pk=%s with edited content", inbox_msg.pk)
 
 
+def _handle_message_reaction(event):
+    """
+    Process a Telegram message_reaction event.
+
+    Appends the reaction emoji to the ``reactions`` JSON field of the original
+    inbox message and broadcasts a ``message_updated`` WebSocket event.
+    If the original message is not found, the reaction is silently discarded.
+    """
+    from django.utils import timezone
+
+    from team_inbox.models import Messages
+    from team_inbox.signals import broadcast_to_tenant_team
+
+    payload = event.payload
+    reaction_event = payload.get("message_reaction", {})
+    message_id = reaction_event.get("message_id")
+    user = reaction_event.get("user", {})
+    new_reactions = reaction_event.get("new_reaction", [])
+
+    if not message_id or not new_reactions:
+        logger.info("[_handle_message_reaction] No message_id or reactions in event %s, skipping", event.pk)
+        return
+
+    tenant = event.bot_app.tenant
+    external_id = str(message_id)
+
+    inbox_msg = Messages.objects.filter(
+        tenant=tenant,
+        external_message_id=external_id,
+        platform="TELEGRAM",
+    ).first()
+
+    if not inbox_msg:
+        logger.info(
+            "[_handle_message_reaction] No inbox message for external_message_id=%s, discarding reaction",
+            external_id,
+        )
+        return
+
+    timestamp = timezone.now().isoformat()
+    user_id = user.get("id")
+    existing = list(inbox_msg.reactions or [])
+
+    for reaction in new_reactions:
+        emoji = reaction.get("emoji", "")
+        if emoji:
+            existing.append({"emoji": emoji, "user_id": user_id, "timestamp": timestamp})
+
+    inbox_msg.reactions = existing
+    inbox_msg.save(update_fields=["reactions"])
+
+    logger.info("[_handle_message_reaction] Updated reactions on message pk=%s: %s", inbox_msg.pk, existing)
+
+    broadcast_to_tenant_team(
+        tenant_id=tenant.pk,
+        message_type="message_updated",
+        data={
+            "message_id": inbox_msg.pk,
+            "external_message_id": external_id,
+            "reactions": existing,
+            "contact_id": inbox_msg.contact_id,
+        },
+    )
+
+
 def _extract_message_content(message: dict) -> dict:
     """
     Extract a normalised content dict from a Telegram message.
@@ -374,6 +441,33 @@ def _extract_message_content(message: dict) -> dict:
                 "last_name": ct.get("last_name", ""),
             },
         }
+
+    # Sticker
+    if "sticker" in message:
+        sticker = message["sticker"]
+        return {
+            "type": "sticker",
+            "body": {"text": ""},
+            "media": {"file_id": sticker.get("file_id", ""), "mime_type": sticker.get("mime_type", "image/webp")},
+        }
+
+    # Video note (circle video)
+    if "video_note" in message:
+        vn = message["video_note"]
+        return {
+            "type": "video",
+            "body": {"text": ""},
+            "media": {"file_id": vn.get("file_id", ""), "mime_type": "video/mp4"},
+        }
+
+    # Poll — render question as text bubble
+    if "poll" in message:
+        poll = message["poll"]
+        question = poll.get("question", "")
+        options = [opt.get("text", "") for opt in poll.get("options", [])]
+        options_text = "\n".join(f"• {o}" for o in options)
+        body_text = f"📊 {question}\n{options_text}" if options_text else f"📊 {question}"
+        return {"type": "text", "body": {"text": body_text}}
 
     # Fallback
     return {"type": "text", "body": {"text": "[Unsupported message type]"}}
@@ -508,13 +602,18 @@ def _resolve_media_to_storage(bot_app, content: dict, tenant) -> dict:
     if relative_url.startswith("http"):
         absolute_url = relative_url
     else:
-        # Convert relative URL to absolute for local storage
-        try:
-            domain = Site.objects.get(id=1).domain
-            absolute_url = f"https://{domain}{relative_url}"
-        except Exception:
-            base = getattr(settings, "BASE_URL", "")
-            absolute_url = f"{base}{relative_url}" if base else relative_url
+        # Convert relative URL to absolute for local storage.
+        # Prefer BASE_URL from settings (explicitly configured server domain);
+        # fall back to Django Sites framework only if BASE_URL is not set.
+        base = getattr(settings, "BASE_URL", "")
+        if base:
+            absolute_url = f"{base}{relative_url}"
+        else:
+            try:
+                domain = Site.objects.get(id=1).domain
+                absolute_url = f"https://{domain}{relative_url}"
+            except Exception:
+                absolute_url = relative_url
 
     logger.info("[_resolve_media_to_storage] Saved to storage: path=%s, url=%s", saved_path, absolute_url)
 

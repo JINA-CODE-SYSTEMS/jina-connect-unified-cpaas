@@ -53,7 +53,7 @@ def validate_message_content(value):
         raise ValidationError("Message must contain 'type' field.")
 
     msg_type = value["type"]
-    valid_types = {"text", "image", "video", "audio", "document", "cards"}
+    valid_types = {"text", "image", "video", "audio", "document", "cards", "sticker", "location", "contact"}
     if msg_type not in valid_types:
         raise ValidationError(f"Invalid message type: {msg_type}. Must be one of {valid_types}")
 
@@ -65,6 +65,9 @@ def validate_message_content(value):
         "audio": _validate_audio_message,
         "document": _validate_document_message,
         "cards": _validate_cards_message,
+        "sticker": _validate_passthrough,
+        "location": _validate_passthrough,
+        "contact": _validate_passthrough,
     }
 
     validators[msg_type](value)
@@ -280,3 +283,8 @@ def _validate_cards_message(value):
     # Optional body for the overall carousel message
     if "body" in value:
         _validate_body(value["body"])
+
+
+def _validate_passthrough(value):
+    """No structural validation for incoming-only types (sticker, location, contact)."""
+    pass

@@ -8,6 +8,7 @@ Usage:
 
 from django.core.management.base import BaseCommand, CommandError
 
+from telegram.constants import WEBHOOK_ALLOWED_UPDATES
 from telegram.models import TelegramBotApp
 from telegram.services.bot_client import TelegramAPIError, TelegramBotClient
 
@@ -51,7 +52,7 @@ class Command(BaseCommand):
             client.set_webhook(
                 url=bot_app.webhook_url,
                 secret_token=bot_app.webhook_secret,
-                allowed_updates=["message", "callback_query", "edited_message"],
+                allowed_updates=WEBHOOK_ALLOWED_UPDATES,
             )
             self.stdout.write(self.style.SUCCESS(f"Webhook registered: {bot_app.webhook_url}"))
         except TelegramAPIError as exc:

@@ -474,6 +474,24 @@ class TestTemplateList(TemplateTestBase):
         resp = client.get(self.list_url)
         self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_non_whatsapp_templates_excluded(self):
+        """#149: TELEGRAM/SMS templates must not appear in /wa/v2/templates/."""
+        from wa.models import WATemplate
+
+        suffix = uuid.uuid4().hex[:8]
+        WATemplate.objects.create(
+            name=f"TG Template {suffix}",
+            element_name=f"tg_tpl_{suffix}",
+            platform="TELEGRAM",
+            tenant=self.tenant,
+        )
+
+        resp = self.client.get(self.list_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        platforms = [t["platform"] for t in resp.data.get("results", [])]
+        self.assertNotIn("TELEGRAM", platforms)
+        self.assertTrue(all(p == "WHATSAPP" for p in platforms))
+
 
 class TestTemplateRetrieve(TemplateTestBase):
     """Tests for GET /wa/v2/templates/{id}/"""

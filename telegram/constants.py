@@ -18,7 +18,16 @@ UPDATE_TYPE_MAP = {
     "edited_message": "EDITED_MESSAGE",
     "callback_query": "CALLBACK_QUERY",
     "inline_query": "INLINE_QUERY",
+    "message_reaction": "MESSAGE_REACTION",
 }
+
+# Subscribed update types when registering Telegram webhooks.
+WEBHOOK_ALLOWED_UPDATES = [
+    "message",
+    "callback_query",
+    "edited_message",
+    "message_reaction",
+]
 
 # Callback data versioning
 CALLBACK_DATA_VERSION = "v1"
@@ -30,6 +39,7 @@ EVENT_TYPE_CHOICES = [
     ("CALLBACK_QUERY", "Callback Query"),
     ("EDITED_MESSAGE", "Edited Message"),
     ("INLINE_QUERY", "Inline Query"),
+    ("MESSAGE_REACTION", "Message Reaction"),
     ("UNKNOWN", "Unknown"),
 ]
 

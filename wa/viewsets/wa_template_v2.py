@@ -117,8 +117,15 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
         """
         Custom queryset to filter by tenant through wa_app relationship.
         Prefetches tenant_media and card_media for efficient serialization.
+        Only returns WHATSAPP-platform templates; other channels use their own viewsets.
         """
-        queryset = super().get_queryset().select_related("tenant_media").prefetch_related("card_media")
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related("tenant_media")
+            .prefetch_related("card_media")
+            .filter(platform="WHATSAPP")
+        )
         user = self.request.user
 
         if user.is_superuser:

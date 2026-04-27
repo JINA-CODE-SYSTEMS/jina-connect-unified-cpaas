@@ -44,3 +44,32 @@ class TestResolveMediaToStorage:
 
         content_in = {"type": "text", "body": {"text": "hi"}}
         assert _resolve_media_to_storage(bot_app, content_in, bot_app.tenant) is content_in
+
+    def test_base_url_preferred_over_sites_framework(self, bot_app):
+        """#147 regression: BASE_URL from settings is used before Sites framework.
+
+        When default_storage.url() returns a relative path, the absolute URL must
+        be built from settings.BASE_URL — Site.objects must never be queried.
+        """
+        from telegram.tasks import _resolve_media_to_storage
+
+        content_in = {
+            "type": "image",
+            "body": {"text": ""},
+            "media": {"file_id": "test-file-id", "mime_type": "image/jpeg"},
+        }
+
+        with (
+            patch("telegram.services.bot_client.TelegramBotClient"),
+            patch("telegram.services.media_handler.TelegramMediaHandler") as mock_handler_cls,
+            patch("django.core.files.storage.default_storage.save", return_value="telegram/1/test-file-id.jpg"),
+            patch("django.core.files.storage.default_storage.url", return_value="/media/telegram/1/test-file-id.jpg"),
+            patch("django.conf.settings.BASE_URL", "https://api.myserver.com", create=True),
+            patch("django.contrib.sites.models.Site.objects") as mock_site,
+        ):
+            mock_handler_cls.return_value.download_file.return_value = (b"bytes", "photos/f.jpg")
+
+            content_out = _resolve_media_to_storage(bot_app, content_in, bot_app.tenant)
+
+        assert content_out["media"]["url"] == "https://api.myserver.com/media/telegram/1/test-file-id.jpg"
+        mock_site.get.assert_not_called()
