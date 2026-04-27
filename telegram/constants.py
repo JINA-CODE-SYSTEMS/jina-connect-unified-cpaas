@@ -21,6 +21,14 @@ UPDATE_TYPE_MAP = {
     "message_reaction": "MESSAGE_REACTION",
 }
 
+# Subscribed update types when registering Telegram webhooks.
+WEBHOOK_ALLOWED_UPDATES = [
+    "message",
+    "callback_query",
+    "edited_message",
+    "message_reaction",
+]
+
 # Callback data versioning
 CALLBACK_DATA_VERSION = "v1"
 CALLBACK_DATA_MAX_LENGTH = 64  # Telegram hard limit (bytes)
