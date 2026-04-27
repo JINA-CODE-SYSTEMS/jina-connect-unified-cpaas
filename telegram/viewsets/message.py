@@ -1,10 +1,15 @@
 """Telegram ad-hoc message sending viewset."""
 
+import logging
+
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from abstract.viewsets.base import BaseTenantModelViewSet
+from telegram.services.keyboard_builder import build_template_button_keyboard
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramSendMessageSerializer(serializers.Serializer):
@@ -17,10 +22,24 @@ class TelegramSendMessageSerializer(serializers.Serializer):
         required=False,
     )
     contact_id = serializers.IntegerField(required=False, help_text="TenantContact ID for inbox tracking")
+    buttons = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        help_text="Array of button objects (type, text, url, phone_number)",
+    )
+    # Frontend sends media via these fields
+    photo = serializers.URLField(required=False, help_text="Photo URL (alternative to media_url)")
+    video = serializers.URLField(required=False, help_text="Video URL (alternative to media_url)")
+    document = serializers.URLField(required=False, help_text="Document URL (alternative to media_url)")
 
     def validate(self, attrs):
-        if not attrs.get("text") and not attrs.get("media_url"):
-            raise serializers.ValidationError("Either 'text' or 'media_url' must be provided.")
+        has_text = bool(attrs.get("text"))
+        has_media = bool(attrs.get("media_url") or attrs.get("photo") or attrs.get("video") or attrs.get("document"))
+
+        if not has_text and not has_media:
+            raise serializers.ValidationError(
+                "Either 'text' or media (media_url/photo/video/document) must be provided."
+            )
         if not attrs.get("chat_id") and not attrs.get("contact_id"):
             raise serializers.ValidationError("Either 'chat_id' or 'contact_id' must be provided.")
         return attrs
@@ -97,6 +116,33 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
         text = data.get("text", "")
         media_url = data.get("media_url")
         media_type = data.get("media_type", "photo")
+        buttons = data.get("buttons")
+
+        # Handle frontend media format (photo/video/document fields)
+        if not media_url:
+            if data.get("photo"):
+                media_url = data.get("photo")
+                media_type = "photo"
+            elif data.get("video"):
+                media_url = data.get("video")
+                media_type = "video"
+            elif data.get("document"):
+                media_url = data.get("document")
+                media_type = "document"
+
+        logger.debug(
+            "[TelegramMessage] send contact_id=%s chat_id=%s has_text=%s has_buttons=%s media_type=%s has_media=%s",
+            data.get("contact_id"),
+            chat_id,
+            bool(text),
+            bool(buttons),
+            media_type,
+            bool(media_url),
+        )
+
+        reply_markup = None
+        if buttons:
+            reply_markup = build_template_button_keyboard(buttons)
 
         if media_url:
             result = sender.send_media(
@@ -105,12 +151,14 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
                 media_url=media_url,
                 caption=text or None,
                 contact=contact,
+                reply_markup=reply_markup,
             )
         else:
             result = sender.send_text(
                 chat_id=chat_id,
                 text=text,
                 contact=contact,
+                reply_markup=reply_markup,
             )
 
         resp_status = status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST

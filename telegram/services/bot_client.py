@@ -212,6 +212,7 @@ class TelegramBotClient:
         document: str,
         caption: Optional[str] = None,
         parse_mode: Optional[str] = None,
+        reply_markup: Optional[dict] = None,
         **kwargs,
     ) -> dict:
         """Send a document (``sendDocument``). ``document`` can be a URL or file_id."""
@@ -220,6 +221,8 @@ class TelegramBotClient:
             data["caption"] = caption
         if parse_mode:
             data["parse_mode"] = parse_mode
+        if reply_markup:
+            data["reply_markup"] = reply_markup
         data.update(kwargs)
         return self._request("sendDocument", data)
 
