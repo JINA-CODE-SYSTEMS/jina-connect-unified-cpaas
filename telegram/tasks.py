@@ -347,9 +347,7 @@ def _handle_message_reaction(event):
     inbox_msg.reactions = existing
     inbox_msg.save(update_fields=["reactions"])
 
-    logger.info(
-        "[_handle_message_reaction] Updated reactions on message pk=%s: %s", inbox_msg.pk, existing
-    )
+    logger.info("[_handle_message_reaction] Updated reactions on message pk=%s: %s", inbox_msg.pk, existing)
 
     broadcast_to_tenant_team(
         tenant_id=tenant.pk,

@@ -120,7 +120,8 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
         Only returns WHATSAPP-platform templates; other channels use their own viewsets.
         """
         queryset = (
-            super().get_queryset()
+            super()
+            .get_queryset()
             .select_related("tenant_media")
             .prefetch_related("card_media")
             .filter(platform="WHATSAPP")
