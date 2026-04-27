@@ -107,6 +107,11 @@ class Messages(BaseTenantModelForFilterUser):
         blank=True,
         help_text="Timestamp when message was last edited (e.g. Telegram edited_message)",
     )
+    reactions = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of reactions on this message: [{emoji, user_id, timestamp}]",
+    )
     name = None
 
     # Custom manager with annotation methods

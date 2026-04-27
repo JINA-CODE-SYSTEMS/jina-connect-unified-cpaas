@@ -48,6 +48,8 @@ class MessagesSerializer(serializers.ModelSerializer):
             "outgoing_delivered_at",
             "outgoing_read_at",
             "outgoing_failed_at",
+            "reactions",
+            "edited_at",
         ]
         read_only_fields = [
             "id",
@@ -66,6 +68,8 @@ class MessagesSerializer(serializers.ModelSerializer):
             "outgoing_delivered_at",
             "outgoing_read_at",
             "outgoing_failed_at",
+            "reactions",
+            "edited_at",
         ]
 
     def get_platform_display(self, obj):
