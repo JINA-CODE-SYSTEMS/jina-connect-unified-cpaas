@@ -14,6 +14,7 @@ from broadcast.models import (
     BroadcastStatusChoices,
     MessageStatusChoices,
 )
+from broadcast.serializers import BroadcastSerializer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -178,6 +179,44 @@ class TestSetupBroadcastTask:
 
     def test_nonexistent_broadcast(self):
         """Task handles missing broadcast gracefully."""
+
+
+@pytest.mark.django_db
+class TestBroadcastTotalMessagesSerializer:
+    def test_queued_broadcast_falls_back_to_recipient_count(self, tenant, user, contact):
+        """Queued/Scheduled broadcast should not report false zero before async rows are created."""
+        bc = Broadcast.objects.create(
+            tenant=tenant,
+            name="Queued Telegram",
+            status=BroadcastStatusChoices.QUEUED,
+            platform=BroadcastPlatformChoices.TELEGRAM,
+            created_by=user,
+        )
+        bc.recipients.add(contact)
+
+        data = BroadcastSerializer(instance=bc).data
+        assert data["total_messages"] == 1
+
+    def test_non_queued_broadcast_uses_created_message_rows(self, tenant, user, contact):
+        """For non-queued states, total_messages reflects actual BroadcastMessage rows."""
+        bc = Broadcast.objects.create(
+            tenant=tenant,
+            name="Sending Telegram",
+            status=BroadcastStatusChoices.SENDING,
+            platform=BroadcastPlatformChoices.TELEGRAM,
+            created_by=user,
+        )
+        bc.recipients.add(contact)
+
+        BroadcastMessage.objects.create(
+            broadcast=bc,
+            contact=contact,
+            status=MessageStatusChoices.PENDING,
+            created_by=user,
+        )
+
+        data = BroadcastSerializer(instance=bc).data
+        assert data["total_messages"] == 1
         from broadcast.tasks import setup_broadcast_task
 
         result = setup_broadcast_task(999999)
