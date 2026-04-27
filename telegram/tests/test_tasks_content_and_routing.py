@@ -130,8 +130,42 @@ class TestExtractMessageContent:
             },
         }
 
-    def test_extract_fallback_for_unsupported_message(self):
+    def test_extract_sticker(self):
+        content = _extract_message_content({"sticker": {"file_id": "sticker-id", "mime_type": "image/webp"}})
+        assert content == {
+            "type": "sticker",
+            "body": {"text": ""},
+            "media": {"file_id": "sticker-id", "mime_type": "image/webp"},
+        }
+
+    def test_extract_sticker_defaults_mime_type(self):
         content = _extract_message_content({"sticker": {"file_id": "sticker-id"}})
+        assert content["type"] == "sticker"
+        assert content["media"]["mime_type"] == "image/webp"
+
+    def test_extract_video_note(self):
+        content = _extract_message_content({"video_note": {"file_id": "vn-id", "duration": 10}})
+        assert content == {
+            "type": "video",
+            "body": {"text": ""},
+            "media": {"file_id": "vn-id", "mime_type": "video/mp4"},
+        }
+
+    def test_extract_poll(self):
+        message = {
+            "poll": {
+                "question": "Favourite colour?",
+                "options": [{"text": "Red"}, {"text": "Blue"}],
+            }
+        }
+        content = _extract_message_content(message)
+        assert content["type"] == "text"
+        assert "Favourite colour?" in content["body"]["text"]
+        assert "Red" in content["body"]["text"]
+        assert "Blue" in content["body"]["text"]
+
+    def test_extract_fallback_for_unsupported_message(self):
+        content = _extract_message_content({"dice": {"emoji": "🎲", "value": 3}})
         assert content == {
             "type": "text",
             "body": {"text": "[Unsupported message type]"},
