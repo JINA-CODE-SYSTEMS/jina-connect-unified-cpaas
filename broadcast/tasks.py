@@ -883,9 +883,9 @@ def handle_telegram_message(message):
 
         sender = TelegramMessageSender(bot_app)
 
-        # Determine content from broadcast placeholder_data
+        # Render content with per-contact placeholder substitution
         data = message.broadcast.placeholder_data or {}
-        text = data.get("message") or data.get("text") or data.get("body", "")
+        text = message.rendered_content
         media_url = data.get("media_url") or data.get("image_url") or data.get("image")
         media_type = data.get("media_type", "photo")
 

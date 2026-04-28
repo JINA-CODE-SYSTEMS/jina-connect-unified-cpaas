@@ -45,8 +45,10 @@ class TelegramBotAppCreateSerializer(serializers.ModelSerializer):
         try:
             client = TelegramBotClient(token=value)
             client.get_me()
-        except TelegramAPIError as exc:
-            raise serializers.ValidationError(f"Invalid bot token: {exc.description}") from exc
+        except TelegramAPIError:
+            raise serializers.ValidationError(
+                "Could not verify bot token with Telegram. Check the token and try again."
+            )
         return value
 
 

@@ -30,6 +30,17 @@ class TelegramBroadcastViewSet(BroadcastViewSet):
         tenant_user = self._get_tenant_user()
         if not tenant_user:
             raise ValidationError("Could not determine tenant.")
+
+        # For QUEUED broadcasts, ensure placeholder_data has message content
+        from broadcast.models import BroadcastStatusChoices
+
+        if serializer.validated_data.get("status") == BroadcastStatusChoices.QUEUED:
+            pd = serializer.validated_data.get("placeholder_data") or {}
+            if not (pd.get("message") or pd.get("text") or pd.get("body")):
+                raise ValidationError(
+                    {"placeholder_data": "Telegram broadcasts require a 'message' key in placeholder_data."}
+                )
+
         serializer.save(
             tenant=tenant_user.tenant,
             created_by=self.request.user,
