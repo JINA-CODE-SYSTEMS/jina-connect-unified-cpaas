@@ -49,10 +49,11 @@ class TelegramBotAppViewSet(viewsets.ModelViewSet):
             bot_app.save(update_fields=["bot_username", "bot_user_id"])
         except Exception as exc:
             # Token is invalid — delete the partially saved record and reject
+            logger.exception("[TelegramBotAppViewSet] getMe failed for new bot: %s", exc)
             bot_app.delete()
             raise serializers.ValidationError(
-                {"bot_token": f"Could not verify bot token with Telegram: {exc}"}
-            ) from exc
+                {"bot_token": "Could not verify bot token with Telegram. Check the token and try again."}
+            )
 
     @action(detail=True, methods=["post"])
     def register_webhook(self, request, pk=None):
