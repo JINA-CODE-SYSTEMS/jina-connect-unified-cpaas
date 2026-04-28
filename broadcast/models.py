@@ -553,6 +553,15 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
         template_number = self.broadcast.template_number
         if self.broadcast.platform == BroadcastPlatformChoices.WHATSAPP:
             content = template_number.gupshup_template.content
+        elif self.broadcast.platform in (
+            BroadcastPlatformChoices.TELEGRAM,
+            BroadcastPlatformChoices.SMS,
+            BroadcastPlatformChoices.RCS,
+        ):
+            data = self.broadcast.placeholder_data or {}
+            content = data.get("message") or data.get("text") or data.get("body", "")
+            if not content:
+                return ""
         else:
             raise NotImplementedError("Rendering not implemented for this platform {}".format(self.broadcast.platform))
 

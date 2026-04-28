@@ -4,7 +4,7 @@ TelegramBotApp ViewSet — CRUD + custom actions for bot management.
 
 import logging
 
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -40,15 +40,19 @@ class TelegramBotAppViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("User has no associated tenant.")
         bot_app = serializer.save(tenant=tenant_user.tenant)
 
-        # Populate bot info from getMe
+        # Populate bot info from getMe — validates the token is functional
         try:
             client = TelegramBotClient(token=bot_app.bot_token)
             me = client.get_me()
             bot_app.bot_username = me.get("username", "")
             bot_app.bot_user_id = me.get("id")
             bot_app.save(update_fields=["bot_username", "bot_user_id"])
-        except Exception:
-            logger.exception("[TelegramBotAppViewSet] Failed to fetch bot info on create")
+        except Exception as exc:
+            # Token is invalid — delete the partially saved record and reject
+            bot_app.delete()
+            raise serializers.ValidationError(
+                {"bot_token": f"Could not verify bot token with Telegram: {exc}"}
+            ) from exc
 
     @action(detail=True, methods=["post"])
     def register_webhook(self, request, pk=None):
