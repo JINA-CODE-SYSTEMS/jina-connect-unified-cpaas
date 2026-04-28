@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.urls import reverse
 from rest_framework.test import APIClient
 
 from broadcast.models import Broadcast, BroadcastPlatformChoices
@@ -35,9 +34,7 @@ def tenant(db, user):
 
 @pytest.fixture
 def role(tenant):
-    role, _ = TenantRole.objects.get_or_create(
-        tenant=tenant, slug="owner", defaults={"name": "Owner", "priority": 100}
-    )
+    role, _ = TenantRole.objects.get_or_create(tenant=tenant, slug="owner", defaults={"name": "Owner", "priority": 100})
     return role
 
 
@@ -54,6 +51,7 @@ def auth_client(user, tenant_user):
 
 
 # ── TelegramBotAppViewSet ────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestTelegramBotAppCreate:
@@ -107,6 +105,7 @@ class TestTelegramBotAppCreate:
 
 
 # ── TelegramBroadcastViewSet ─────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestTelegramBroadcastCreate:
