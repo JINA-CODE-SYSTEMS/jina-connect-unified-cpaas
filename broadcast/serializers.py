@@ -67,7 +67,21 @@ class BroadcastSerializer(BaseSerializer):
         return getattr(obj, "blocked_count", 0)
 
     def get_total_messages(self, obj):
-        return getattr(obj, "total_messages", 0)
+        # Prefer annotated value from queryset; this is used in list/retrieve views.
+        annotated_total = getattr(obj, "total_messages", None)
+        if annotated_total is not None:
+            return annotated_total
+
+        # For freshly created queued/scheduled broadcasts, message rows may not
+        # exist yet because dispatch is asynchronous. Expose recipient count as
+        # the expected total to avoid reporting a false zero immediately after create.
+        if obj.status in {BroadcastStatusChoices.QUEUED, BroadcastStatusChoices.SCHEDULED}:
+            created_rows = obj.broadcasts.count()
+            if created_rows > 0:
+                return created_rows
+            return obj.recipients.count()
+
+        return obj.broadcasts.count()
 
     def get_success_count(self, obj):
         return getattr(obj, "success_count", 0)

@@ -14,6 +14,7 @@ from broadcast.models import (
     BroadcastStatusChoices,
     MessageStatusChoices,
 )
+from broadcast.serializers import BroadcastSerializer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -182,6 +183,99 @@ class TestSetupBroadcastTask:
 
         result = setup_broadcast_task(999999)
         assert "error" in result
+
+
+@pytest.mark.django_db
+class TestBroadcastTotalMessagesSerializer:
+    def test_queued_broadcast_falls_back_to_recipient_count(self, tenant, user, contact):
+        """Queued/Scheduled broadcast should not report false zero before async rows are created."""
+        bc = Broadcast.objects.create(
+            tenant=tenant,
+            name="Queued Telegram",
+            status=BroadcastStatusChoices.QUEUED,
+            platform=BroadcastPlatformChoices.TELEGRAM,
+            created_by=user,
+        )
+        bc.recipients.add(contact)
+
+        data = BroadcastSerializer(instance=bc).data
+        assert data["total_messages"] == 1
+
+    def test_non_queued_broadcast_uses_created_message_rows(self, tenant, user, contact):
+        """For non-queued states, total_messages reflects actual BroadcastMessage rows."""
+        bc = Broadcast.objects.create(
+            tenant=tenant,
+            name="Sending Telegram",
+            status=BroadcastStatusChoices.SENDING,
+            platform=BroadcastPlatformChoices.TELEGRAM,
+            created_by=user,
+        )
+        bc.recipients.add(contact)
+
+        BroadcastMessage.objects.create(
+            broadcast=bc,
+            contact=contact,
+            status=MessageStatusChoices.PENDING,
+            created_by=user,
+        )
+
+        data = BroadcastSerializer(instance=bc).data
+        assert data["total_messages"] == 1
+
+
+@pytest.mark.django_db
+class TestSignalSchedulingOnCommit:
+    def test_schedule_enqueue_happens_on_commit(self, tenant, user, contact, monkeypatch):
+        from broadcast import signals
+
+        bc = Broadcast.objects.create(
+            tenant=tenant,
+            name="On Commit Queue",
+            status=BroadcastStatusChoices.QUEUED,
+            platform=BroadcastPlatformChoices.TELEGRAM,
+            template_number_id=None,
+            created_by=user,
+            scheduled_time=timezone.now() + timezone.timedelta(minutes=10),
+        )
+        bc.recipients.add(contact)
+
+        # Bypass pricing/credit side effects for this scheduling unit test.
+        monkeypatch.setattr(
+            signals.BroadcastCreditManager,
+            "deduct_credits_for_broadcast",
+            lambda self, broadcast: None,
+        )
+
+        queued_callbacks = []
+        monkeypatch.setattr(signals.transaction, "on_commit", lambda fn: queued_callbacks.append(fn))
+
+        apply_calls = []
+
+        class _FakeTaskResult:
+            id = "commit-task-id"
+
+        from broadcast.tasks import setup_broadcast_task
+
+        monkeypatch.setattr(
+            setup_broadcast_task,
+            "apply_async",
+            lambda args, countdown: apply_calls.append((args, countdown)) or _FakeTaskResult(),
+        )
+
+        signals._schedule_broadcast_task(bc, timezone.now())
+
+        bc.refresh_from_db()
+        assert bc.status == BroadcastStatusChoices.SCHEDULED
+        assert bc.task_id is None
+        assert apply_calls == []
+        assert len(queued_callbacks) == 1
+
+        queued_callbacks[0]()
+
+        bc.refresh_from_db()
+        assert apply_calls
+        assert apply_calls[0][0] == [bc.pk]
+        assert bc.task_id == "commit-task-id"
 
 
 # ---------------------------------------------------------------------------

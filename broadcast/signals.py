@@ -1,6 +1,7 @@
 import logging
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -242,19 +243,27 @@ def _schedule_broadcast_task(broadcast_instance, current_time):
             logger.error("[CREDIT ERROR] %s", error_msg)
             # Don't fail the broadcast for non-balance errors, just log
 
-        # Schedule the Celery task only after credits are secured
-        task_result = setup_broadcast_task.apply_async(args=[broadcast_instance.id], countdown=countdown)
-
-        # Save task_id
-        broadcast_instance.task_id = task_result.id
-        broadcast_instance.reason_for_cancellation = None
-        broadcast_instance.status = BroadcastStatusChoices.SCHEDULED
-        # Prevent infinite recursion by updating only specific fields
+        # Persist SCHEDULED state first; enqueue is done on transaction commit
+        # so workers never observe partially committed broadcast state.
         Broadcast.objects.filter(pk=broadcast_instance.pk).update(
-            task_id=task_result.id, reason_for_cancellation=None, status=BroadcastStatusChoices.SCHEDULED
+            task_id=None, reason_for_cancellation=None, status=BroadcastStatusChoices.SCHEDULED
         )
 
-        logger.debug(f"[TASK SCHEDULED] Broadcast {broadcast_instance.id}: Task {task_result.id} in {countdown}s")
+        broadcast_id = broadcast_instance.pk
+
+        def _enqueue_broadcast_task():
+            try:
+                task_result = setup_broadcast_task.apply_async(args=[broadcast_id], countdown=countdown)
+                Broadcast.objects.filter(pk=broadcast_id).update(task_id=task_result.id)
+                logger.debug(f"[TASK SCHEDULED] Broadcast {broadcast_id}: Task {task_result.id} in {countdown}s")
+            except Exception as enqueue_error:
+                error_msg = f"Failed to schedule broadcast task: {str(enqueue_error)}"
+                logger.error("[TASK ERROR] %s", error_msg)
+                Broadcast.objects.filter(pk=broadcast_id).update(
+                    status=BroadcastStatusChoices.FAILED, reason_for_cancellation=error_msg
+                )
+
+        transaction.on_commit(_enqueue_broadcast_task)
 
     except Exception as e:
         error_msg = f"Failed to schedule broadcast task: {str(e)}"
