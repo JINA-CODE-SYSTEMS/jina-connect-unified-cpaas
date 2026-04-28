@@ -179,6 +179,10 @@ class TestSetupBroadcastTask:
 
     def test_nonexistent_broadcast(self):
         """Task handles missing broadcast gracefully."""
+        from broadcast.tasks import setup_broadcast_task
+
+        result = setup_broadcast_task(999999)
+        assert "error" in result
 
 
 @pytest.mark.django_db
@@ -217,10 +221,6 @@ class TestBroadcastTotalMessagesSerializer:
 
         data = BroadcastSerializer(instance=bc).data
         assert data["total_messages"] == 1
-        from broadcast.tasks import setup_broadcast_task
-
-        result = setup_broadcast_task(999999)
-        assert "error" in result
 
 
 @pytest.mark.django_db
