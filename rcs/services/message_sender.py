@@ -9,18 +9,27 @@ from typing import Any, Dict, Optional
 from django.db.models import F
 from django.utils import timezone
 
+from jina_connect.platform_choices import PlatformChoices
 from rcs.providers import get_rcs_provider
 from rcs.services.capability_checker import RCSCapabilityChecker
 from rcs.services.rate_limiter import check_rate_limit
 from rcs.services.rich_card_builder import RichCardBuilder
 from rcs.services.suggestion_builder import SuggestionBuilder
-from wa.adapters.channel_base import BaseChannelAdapter
+from wa.adapters.channel_base import BaseChannelAdapter, Capabilities
 
 logger = logging.getLogger(__name__)
 
 
 class RCSMessageSender(BaseChannelAdapter):
     """Implements BaseChannelAdapter for RCS channel with SMS fallback."""
+
+    platform = PlatformChoices.RCS
+    capabilities = Capabilities(
+        supports_text=True,
+        supports_media=True,
+        supports_keyboards=True,
+        supports_template_buttons=True,
+    )
 
     def __init__(self, rcs_app):
         self.rcs_app = rcs_app

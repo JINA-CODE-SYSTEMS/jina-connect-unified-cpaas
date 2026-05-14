@@ -858,3 +858,230 @@ class SessionTenantFKTests(TestCase):
         # Only one active session per contact+flow
         active = UserChatFlowSession.objects.filter(contact=self.contact, flow=self.flow, is_active=True)
         self.assertEqual(active.count(), 1)
+
+
+# =============================================================================
+# Node-type registry tests (#157)
+# =============================================================================
+
+from chat_flow.node_registry import (
+    NodeTypeSpec,
+    _REGISTRY,
+    get_node_type,
+    list_node_types_for_platform,
+    register_node_type,
+    unregister_node_type,
+    validate_flow_for_platform,
+)
+from jina_connect.platform_choices import PlatformChoices
+
+
+class NodeRegistryTests(TestCase):
+    """Unit tests for the chat_flow node-type registry."""
+
+    def setUp(self):
+        self._registry_snapshot = dict(_REGISTRY)
+        _REGISTRY.clear()
+
+    def tearDown(self):
+        _REGISTRY.clear()
+        _REGISTRY.update(self._registry_snapshot)
+
+    def test_register_and_lookup(self):
+        spec = NodeTypeSpec(
+            type_id="t.foo",
+            display_name="Foo",
+            description="A foo",
+            supported_platforms=frozenset(["VOICE"]),
+            required_data_fields=frozenset(),
+        )
+        register_node_type(spec)
+        self.assertIs(get_node_type("t.foo"), spec)
+
+    def test_register_duplicate_raises(self):
+        spec = NodeTypeSpec(
+            type_id="t.dup",
+            display_name="Dup",
+            description="",
+            supported_platforms=frozenset(),
+            required_data_fields=frozenset(),
+        )
+        register_node_type(spec)
+        with self.assertRaises(ValueError):
+            register_node_type(spec)
+
+    def test_unknown_type_returns_none(self):
+        self.assertIsNone(get_node_type("does.not.exist"))
+
+    def test_list_for_platform_filters_correctly(self):
+        voice_spec = NodeTypeSpec(
+            type_id="v.play",
+            display_name="Play",
+            description="",
+            supported_platforms=frozenset(["VOICE"]),
+            required_data_fields=frozenset(),
+        )
+        wa_spec = NodeTypeSpec(
+            type_id="w.send",
+            display_name="Send",
+            description="",
+            supported_platforms=frozenset(["WHATSAPP"]),
+            required_data_fields=frozenset(),
+        )
+        agnostic = NodeTypeSpec(
+            type_id="c.if",
+            display_name="If",
+            description="",
+            supported_platforms=frozenset(),
+            required_data_fields=frozenset(),
+        )
+        register_node_type(voice_spec)
+        register_node_type(wa_spec)
+        register_node_type(agnostic)
+
+        for_voice = list_node_types_for_platform("VOICE")
+        self.assertIn(voice_spec, for_voice)
+        self.assertIn(agnostic, for_voice)
+        self.assertNotIn(wa_spec, for_voice)
+
+    def test_unregister_removes_spec(self):
+        spec = NodeTypeSpec(
+            type_id="t.rm",
+            display_name="Rm",
+            description="",
+            supported_platforms=frozenset(),
+            required_data_fields=frozenset(),
+        )
+        register_node_type(spec)
+        unregister_node_type("t.rm")
+        self.assertIsNone(get_node_type("t.rm"))
+
+
+class ValidateFlowForPlatformTests(TestCase):
+    """Validation rules for ``validate_flow_for_platform``."""
+
+    def setUp(self):
+        self._registry_snapshot = dict(_REGISTRY)
+        _REGISTRY.clear()
+
+    def tearDown(self):
+        _REGISTRY.clear()
+        _REGISTRY.update(self._registry_snapshot)
+
+    def test_unknown_types_pass_validation(self):
+        """Unknown ``type`` does NOT block a save (just logs a warning)."""
+        flow = {"nodes": [{"id": "n1", "type": "totally.unknown", "data": {}}]}
+        self.assertEqual(validate_flow_for_platform(flow, "WHATSAPP"), [])
+
+    def test_supported_platform_passes(self):
+        register_node_type(NodeTypeSpec(
+            type_id="v.play",
+            display_name="",
+            description="",
+            supported_platforms=frozenset(["VOICE"]),
+            required_data_fields=frozenset(),
+        ))
+        flow = {"nodes": [{"id": "n1", "type": "v.play", "data": {}}]}
+        self.assertEqual(validate_flow_for_platform(flow, "VOICE"), [])
+
+    def test_unsupported_platform_errors(self):
+        register_node_type(NodeTypeSpec(
+            type_id="v.play",
+            display_name="",
+            description="",
+            supported_platforms=frozenset(["VOICE"]),
+            required_data_fields=frozenset(),
+        ))
+        flow = {"nodes": [{"id": "n1", "type": "v.play", "data": {}}]}
+        errors = validate_flow_for_platform(flow, "WHATSAPP")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("not supported", errors[0])
+        self.assertIn("WHATSAPP", errors[0])
+
+    def test_missing_required_field_errors(self):
+        register_node_type(NodeTypeSpec(
+            type_id="v.gather",
+            display_name="",
+            description="",
+            supported_platforms=frozenset(["VOICE"]),
+            required_data_fields=frozenset(["max_digits", "timeout_seconds"]),
+        ))
+        flow = {"nodes": [{"id": "n1", "type": "v.gather", "data": {"max_digits": 4}}]}
+        errors = validate_flow_for_platform(flow, "VOICE")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("timeout_seconds", errors[0])
+
+    def test_custom_validator_errors_propagate(self):
+        register_node_type(NodeTypeSpec(
+            type_id="v.play",
+            display_name="",
+            description="",
+            supported_platforms=frozenset(["VOICE"]),
+            required_data_fields=frozenset(),
+            validator=lambda d: (
+                ["needs audio_url or tts_text"]
+                if not d.get("audio_url") and not d.get("tts_text") else []
+            ),
+        ))
+        flow = {"nodes": [{"id": "n1", "type": "v.play", "data": {}}]}
+        errors = validate_flow_for_platform(flow, "VOICE")
+        self.assertEqual(errors, ["needs audio_url or tts_text"])
+
+    def test_non_dict_flow_data_returns_empty(self):
+        """Defensive: None / non-dict flow_data must not crash."""
+        self.assertEqual(validate_flow_for_platform(None, "VOICE"), [])
+        self.assertEqual(validate_flow_for_platform([], "VOICE"), [])
+
+
+class ChatFlowPlatformValidationTests(TestCase):
+    """``ChatFlow.save()`` rejects flows whose nodes violate the registry."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="Reg Tenant")
+
+    def setUp(self):
+        self._registry_snapshot = dict(_REGISTRY)
+        _REGISTRY.clear()
+        register_node_type(NodeTypeSpec(
+            type_id="v.play",
+            display_name="Play",
+            description="",
+            supported_platforms=frozenset([PlatformChoices.VOICE]),
+            required_data_fields=frozenset(),
+        ))
+
+    def tearDown(self):
+        _REGISTRY.clear()
+        _REGISTRY.update(self._registry_snapshot)
+
+    def test_voice_node_on_voice_platform_saves(self):
+        flow = ChatFlow(
+            name="V flow",
+            tenant=self.tenant,
+            platform=PlatformChoices.VOICE,
+            flow_data={"nodes": [{"id": "n1", "type": "v.play", "data": {}}]},
+        )
+        flow.save()
+        self.assertIsNotNone(flow.pk)
+
+    def test_voice_node_on_whatsapp_platform_rejected(self):
+        from django.core.exceptions import ValidationError as DjValidationError
+
+        flow = ChatFlow(
+            name="X flow",
+            tenant=self.tenant,
+            platform=PlatformChoices.WHATSAPP,
+            flow_data={"nodes": [{"id": "n1", "type": "v.play", "data": {}}]},
+        )
+        with self.assertRaises(DjValidationError):
+            flow.save()
+
+    def test_existing_whatsapp_flows_with_empty_nodes_still_save(self):
+        """Back-compat: legacy flows with empty nodes pass new validation."""
+        flow = ChatFlow.objects.create(
+            name="Legacy",
+            tenant=self.tenant,
+            flow_data={"nodes": [], "edges": []},
+        )
+        self.assertEqual(flow.platform, PlatformChoices.WHATSAPP)
