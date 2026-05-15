@@ -8,7 +8,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("chat_flow", "0006_alter_chatflow_flow_data_and_more"),
     ]

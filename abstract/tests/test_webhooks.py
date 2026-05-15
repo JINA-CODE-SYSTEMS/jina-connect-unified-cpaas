@@ -122,7 +122,7 @@ class BaseWebhookHandlerFlowTests(TestCase):
     def test_fresh_request_runs_handler(self, redis_from_url):
         """Signature passes + key is fresh ⇒ handle_verified runs."""
         client = MagicMock()
-        client.set.return_value = True   # SETNX succeeded (key was new)
+        client.set.return_value = True  # SETNX succeeded (key was new)
         redis_from_url.return_value = client
 
         response = _PassHandler.as_view()(self.factory.post("/wh/"))
@@ -142,7 +142,7 @@ class BaseWebhookHandlerFlowTests(TestCase):
     def test_duplicate_key_returns_200_silently(self, redis_from_url):
         """Duplicate idempotency key ⇒ 200, handle_verified does NOT run."""
         client = MagicMock()
-        client.set.return_value = None   # SETNX returns None when key exists
+        client.set.return_value = None  # SETNX returns None when key exists
         redis_from_url.return_value = client
 
         response = _PassHandler.as_view()(self.factory.post("/wh/"))

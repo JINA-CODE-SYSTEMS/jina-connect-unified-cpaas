@@ -973,24 +973,28 @@ class ValidateFlowForPlatformTests(TestCase):
         self.assertEqual(validate_flow_for_platform(flow, "WHATSAPP"), [])
 
     def test_supported_platform_passes(self):
-        register_node_type(NodeTypeSpec(
-            type_id="v.play",
-            display_name="",
-            description="",
-            supported_platforms=frozenset(["VOICE"]),
-            required_data_fields=frozenset(),
-        ))
+        register_node_type(
+            NodeTypeSpec(
+                type_id="v.play",
+                display_name="",
+                description="",
+                supported_platforms=frozenset(["VOICE"]),
+                required_data_fields=frozenset(),
+            )
+        )
         flow = {"nodes": [{"id": "n1", "type": "v.play", "data": {}}]}
         self.assertEqual(validate_flow_for_platform(flow, "VOICE"), [])
 
     def test_unsupported_platform_errors(self):
-        register_node_type(NodeTypeSpec(
-            type_id="v.play",
-            display_name="",
-            description="",
-            supported_platforms=frozenset(["VOICE"]),
-            required_data_fields=frozenset(),
-        ))
+        register_node_type(
+            NodeTypeSpec(
+                type_id="v.play",
+                display_name="",
+                description="",
+                supported_platforms=frozenset(["VOICE"]),
+                required_data_fields=frozenset(),
+            )
+        )
         flow = {"nodes": [{"id": "n1", "type": "v.play", "data": {}}]}
         errors = validate_flow_for_platform(flow, "WHATSAPP")
         self.assertEqual(len(errors), 1)
@@ -998,30 +1002,33 @@ class ValidateFlowForPlatformTests(TestCase):
         self.assertIn("WHATSAPP", errors[0])
 
     def test_missing_required_field_errors(self):
-        register_node_type(NodeTypeSpec(
-            type_id="v.gather",
-            display_name="",
-            description="",
-            supported_platforms=frozenset(["VOICE"]),
-            required_data_fields=frozenset(["max_digits", "timeout_seconds"]),
-        ))
+        register_node_type(
+            NodeTypeSpec(
+                type_id="v.gather",
+                display_name="",
+                description="",
+                supported_platforms=frozenset(["VOICE"]),
+                required_data_fields=frozenset(["max_digits", "timeout_seconds"]),
+            )
+        )
         flow = {"nodes": [{"id": "n1", "type": "v.gather", "data": {"max_digits": 4}}]}
         errors = validate_flow_for_platform(flow, "VOICE")
         self.assertEqual(len(errors), 1)
         self.assertIn("timeout_seconds", errors[0])
 
     def test_custom_validator_errors_propagate(self):
-        register_node_type(NodeTypeSpec(
-            type_id="v.play",
-            display_name="",
-            description="",
-            supported_platforms=frozenset(["VOICE"]),
-            required_data_fields=frozenset(),
-            validator=lambda d: (
-                ["needs audio_url or tts_text"]
-                if not d.get("audio_url") and not d.get("tts_text") else []
-            ),
-        ))
+        register_node_type(
+            NodeTypeSpec(
+                type_id="v.play",
+                display_name="",
+                description="",
+                supported_platforms=frozenset(["VOICE"]),
+                required_data_fields=frozenset(),
+                validator=lambda d: (
+                    ["needs audio_url or tts_text"] if not d.get("audio_url") and not d.get("tts_text") else []
+                ),
+            )
+        )
         flow = {"nodes": [{"id": "n1", "type": "v.play", "data": {}}]}
         errors = validate_flow_for_platform(flow, "VOICE")
         self.assertEqual(errors, ["needs audio_url or tts_text"])
@@ -1042,13 +1049,15 @@ class ChatFlowPlatformValidationTests(TestCase):
     def setUp(self):
         self._registry_snapshot = dict(_REGISTRY)
         _REGISTRY.clear()
-        register_node_type(NodeTypeSpec(
-            type_id="v.play",
-            display_name="Play",
-            description="",
-            supported_platforms=frozenset([PlatformChoices.VOICE]),
-            required_data_fields=frozenset(),
-        ))
+        register_node_type(
+            NodeTypeSpec(
+                type_id="v.play",
+                display_name="Play",
+                description="",
+                supported_platforms=frozenset([PlatformChoices.VOICE]),
+                required_data_fields=frozenset(),
+            )
+        )
 
     def tearDown(self):
         _REGISTRY.clear()

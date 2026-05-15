@@ -182,10 +182,7 @@ class AdapterDeclarationsTests(TestCase):
                     declared = getattr(cls.capabilities, flag)
                     overridden = _method_is_overridden(cls, method_name)
                     if declared and not overridden:
-                        self.fail(
-                            f"{cls.__name__} declares {flag}=True but does not "
-                            f"override {method_name}"
-                        )
+                        self.fail(f"{cls.__name__} declares {flag}=True but does not override {method_name}")
 
     def test_get_channel_name_matches_platform(self):
         """``get_channel_name()`` returns the same string as ``platform``."""

@@ -78,10 +78,7 @@ _REGISTRY: dict[str, NodeTypeSpec] = {}
 def register_node_type(spec: NodeTypeSpec) -> None:
     """Register a node type. Raises ``ValueError`` on duplicate ``type_id``."""
     if spec.type_id in _REGISTRY:
-        raise ValueError(
-            f"Node type {spec.type_id!r} already registered "
-            f"(by {_REGISTRY[spec.type_id]!r})"
-        )
+        raise ValueError(f"Node type {spec.type_id!r} already registered (by {_REGISTRY[spec.type_id]!r})")
     _REGISTRY[spec.type_id] = spec
 
 
@@ -101,11 +98,7 @@ def list_node_types_for_platform(platform: str) -> list[NodeTypeSpec]:
     Platform-agnostic specs (empty ``supported_platforms``) are always
     included.
     """
-    return [
-        spec
-        for spec in _REGISTRY.values()
-        if not spec.supported_platforms or platform in spec.supported_platforms
-    ]
+    return [spec for spec in _REGISTRY.values() if not spec.supported_platforms or platform in spec.supported_platforms]
 
 
 def validate_flow_for_platform(flow_data: dict, platform: str) -> list[str]:
@@ -149,19 +142,13 @@ def validate_flow_for_platform(flow_data: dict, platform: str) -> list[str]:
             continue
 
         if spec.supported_platforms and platform not in spec.supported_platforms:
-            errors.append(
-                f"Node {node.get('id')!r} of type {type_id!r} is not "
-                f"supported on platform {platform!r}"
-            )
+            errors.append(f"Node {node.get('id')!r} of type {type_id!r} is not supported on platform {platform!r}")
             continue
 
         data = node.get("data") or {}
         missing = spec.required_data_fields - set(data.keys())
         if missing:
-            errors.append(
-                f"Node {node.get('id')!r} ({type_id!r}) missing required "
-                f"fields: {sorted(missing)}"
-            )
+            errors.append(f"Node {node.get('id')!r} ({type_id!r}) missing required fields: {sorted(missing)}")
 
         if spec.validator is not None:
             errors.extend(spec.validator(data))
