@@ -1,7 +1,10 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from abstract.managers import BaseTenantModelForFilterUserManager
 from abstract.models import BaseModel, BaseTenantModelForFilterUser
+from chat_flow.node_registry import validate_flow_for_platform
+from jina_connect.platform_choices import PlatformChoices
 from tenants.models import Tenant
 from wa.models import WATemplate
 
@@ -120,12 +123,42 @@ class ChatFlow(BaseTenantModelForFilterUser):
 
     is_active = models.BooleanField(default=True, help_text="Whether this flow is active and can accept new sessions")
 
+    # Which platform this flow runs on. Existing flows default to WhatsApp
+    # for back-compat; voice and future channels set their own value. Used
+    # by ``clean()`` to validate ``flow_data`` against the node-type
+    # registry (see ``chat_flow.node_registry``).
+    #
+    # Non-WhatsApp flows leave ``start_template`` null and declare their
+    # entry point via ``flow_data["entry_node_id"]``.
+    platform = models.CharField(
+        max_length=20,
+        choices=PlatformChoices.choices,
+        default=PlatformChoices.WHATSAPP,
+        help_text="Platform this flow targets. Determines which node types are valid.",
+    )
+
     class Meta:
         verbose_name = "Chat Flow"
         verbose_name_plural = "Chat Flows"
 
     def __str__(self):
         return f"{self.pk}"
+
+    def clean(self):
+        super().clean()
+        errors = validate_flow_for_platform(self.flow_data, self.platform)
+        if errors:
+            raise ValidationError({"flow_data": errors})
+
+    def save(self, *args, **kwargs):
+        # Run our custom ``clean()`` (registry validation against
+        # ``platform``) before saving. We deliberately do NOT call
+        # ``full_clean()`` here — field-level validators (e.g.
+        # ``start_template``'s ``limit_choices_to``) were not enforced at
+        # save before this PR, and several call-sites rely on that.
+        # ``flow_data`` validation is all we need for #157.
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class ChatFlowNode(BaseModel):

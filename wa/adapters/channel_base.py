@@ -13,15 +13,60 @@ Architecture:
     get_channel_adapter("WHATSAPP", tenant)
         └── BaseBSPAdapter(BaseChannelAdapter)
                 └── MetaDirectAdapter | GupshupAdapter
+
+Capability declarations:
+    Each adapter declares its ``platform`` and ``capabilities`` so callers can
+    introspect what the channel supports before invoking a method. See
+    ``Capabilities`` below.
 """
 
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Capabilities:
+    """
+    Declared capabilities of a channel adapter.
+
+    Flags are floor declarations — if a flag is True the corresponding method
+    must be implemented and functional. Defaults are conservative (most False)
+    so a new adapter only opts in to what it can actually do.
+
+    Callers (broadcast pre-flight, voice node validation, MCP) introspect
+    these flags rather than catching ``NotImplementedError``.
+    """
+
+    # ── Text-channel capabilities ────────────────────────────────────────
+    supports_text: bool = True
+    supports_media: bool = False
+    supports_keyboards: bool = False
+    supports_templates: bool = False
+    supports_template_buttons: bool = False
+    supports_reactions: bool = False
+    supports_typing_indicator: bool = False
+
+    # ── Voice capabilities ───────────────────────────────────────────────
+    supports_voice_call: bool = False
+    supports_recording: bool = False
+    supports_dtmf_gather: bool = False
+    supports_speech_gather: bool = False
+    supports_call_transfer: bool = False
+    supports_sip_refer: bool = False
+    supports_conference: bool = False
+
+    # ── Billing ──────────────────────────────────────────────────────────
+    supports_provider_cost: bool = False
+
+    # Free-form extension slot for adapter-specific flags that don't warrant
+    # a typed field yet.
+    extra: frozenset[str] = field(default_factory=frozenset)
 
 
 class BaseChannelAdapter(ABC):
@@ -31,6 +76,13 @@ class BaseChannelAdapter(ABC):
     Sub-classes are initialised with a tenant and carry the credentials
     needed to send messages on that channel.
     """
+
+    # Canonical platform identifier (a ``PlatformChoices`` value such as
+    # ``"WHATSAPP"``, ``"TELEGRAM"``, ``"VOICE"``). Subclasses set this.
+    platform: str = ""
+
+    # Declared capabilities for this adapter. Subclasses override.
+    capabilities: Capabilities = Capabilities()
 
     @abstractmethod
     def send_text(self, chat_id: str, text: str, **kwargs: Any) -> Dict[str, Any]:
@@ -91,7 +143,11 @@ class BaseChannelAdapter(ABC):
         """
         ...
 
-    @abstractmethod
     def get_channel_name(self) -> str:
-        """Return the canonical channel name (e.g. ``'WHATSAPP'``, ``'TELEGRAM'``)."""
-        ...
+        """Return the canonical channel name (e.g. ``'WHATSAPP'``, ``'TELEGRAM'``).
+
+        Default implementation returns ``self.platform``. Subclasses may
+        still override if they need different semantics, but new adapters
+        should just set ``platform`` instead.
+        """
+        return self.platform

@@ -540,6 +540,13 @@ ASGI_APPLICATION = "jina_connect.routing.application"
 
 # Channel layers configuration using Redis
 REDIS_URL = config("REDIS_URL", "redis://localhost:6379/0")
+
+# chat_flow node-type registry: log a warning when a flow contains an unknown
+# node ``type`` instead of rejecting it. Useful while existing channels have
+# not yet migrated their node types to the registry. Set False in prod once
+# the registry is fully populated.
+WARN_ON_UNKNOWN_NODE_TYPES = config("WARN_ON_UNKNOWN_NODE_TYPES", default=True, cast=bool)
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",

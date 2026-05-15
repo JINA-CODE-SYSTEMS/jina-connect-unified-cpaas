@@ -7,14 +7,18 @@ from typing import Any, Dict, Optional
 
 from django.utils import timezone
 
+from jina_connect.platform_choices import PlatformChoices
 from sms.providers import get_sms_provider
 from sms.services.rate_limiter import check_rate_limit
-from wa.adapters.channel_base import BaseChannelAdapter
+from wa.adapters.channel_base import BaseChannelAdapter, Capabilities
 
 logger = logging.getLogger(__name__)
 
 
 class SMSMessageSender(BaseChannelAdapter):
+    platform = PlatformChoices.SMS
+    capabilities = Capabilities(supports_text=True)
+
     def __init__(self, sms_app):
         self.sms_app = sms_app
         self.provider = get_sms_provider(sms_app)

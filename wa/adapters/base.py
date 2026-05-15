@@ -25,6 +25,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from jina_connect.platform_choices import PlatformChoices
 from wa.adapters.channel_base import BaseChannelAdapter
 
 if TYPE_CHECKING:
@@ -69,11 +70,16 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
     credentials (token, waba_id, bsp_credentials JSON, etc.).
     """
 
+    # Canonical channel identifier (BaseChannelAdapter attribute).
+    platform = PlatformChoices.WHATSAPP
+
     # Human-readable name shown in logs / API responses.
     PROVIDER_NAME: str = "base"
 
-    # Capabilities this adapter supports.  Sub-classes should override with
-    # a frozenset of capability strings, e.g.
+    # BSP-level capabilities (templates, subscriptions, media_upload, ...).
+    # This is distinct from ``capabilities`` (the messaging-feature dataclass
+    # inherited from BaseChannelAdapter). Sub-classes override with a
+    # frozenset of capability strings, e.g.
     #   CAPABILITIES = frozenset({"templates", "subscriptions", "media_upload"})
     # Recognised capabilities:
     #   "templates"      – submit / sync / delete message templates

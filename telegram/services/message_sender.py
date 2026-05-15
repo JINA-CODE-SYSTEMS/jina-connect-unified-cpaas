@@ -13,8 +13,9 @@ from typing import Any, Dict, Optional
 
 from django.utils import timezone
 
+from jina_connect.platform_choices import PlatformChoices
 from telegram.constants import TELEGRAM_ERROR_MAP
-from wa.adapters.channel_base import BaseChannelAdapter
+from wa.adapters.channel_base import BaseChannelAdapter, Capabilities
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,14 @@ class TelegramMessageSender(BaseChannelAdapter):
 
     Registered in the channel registry as the TELEGRAM adapter factory output.
     """
+
+    platform = PlatformChoices.TELEGRAM
+    capabilities = Capabilities(
+        supports_text=True,
+        supports_media=True,
+        supports_keyboards=True,
+        supports_reactions=True,
+    )
 
     def __init__(self, bot_app):
         from telegram.services.bot_client import TelegramBotClient
