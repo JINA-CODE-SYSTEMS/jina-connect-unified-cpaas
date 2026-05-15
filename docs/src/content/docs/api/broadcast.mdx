@@ -56,18 +56,41 @@ curl -X POST http://localhost:8000/wa/broadcast/ \
 
 ### SMS/RCS/Telegram Broadcast
 
+The message body is passed inside `placeholder_data` as the `message` key (aliases `text` and `body` are also accepted). Supports `{{first_name}}`, `{{company_name}}` and other reserved variables — these are substituted per-contact at send time.
+
 ```bash
+# SMS
 curl -X POST http://localhost:8000/sms/broadcast/ \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Flash Sale Alert",
-    "message": "Hi {{1}}, enjoy {{2}} on all items today!",
     "recipients": ["contact-uuid-1", "contact-uuid-2"],
-    "placeholder_data": {"1": "John", "2": "25% off"},
+    "placeholder_data": {
+      "message": "Hi {{first_name}}, enjoy 25% off today!"
+    },
+    "status": "QUEUED"
+  }'
+
+# Telegram (with media)
+curl -X POST http://localhost:8000/telegram/broadcast/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Flash Sale Alert",
+    "recipients": ["contact-uuid-1", "contact-uuid-2"],
+    "placeholder_data": {
+      "message": "Hi {{first_name}}, enjoy 25% off today!",
+      "media_url": "https://example.com/banner.jpg",
+      "media_type": "photo"
+    },
     "status": "QUEUED"
   }'
 ```
+
+<Aside type="caution">
+  QUEUED Telegram/SMS/RCS broadcasts **require** `placeholder_data.message` (or `text`/`body`). Submitting without it returns `400 Bad Request`.
+</Aside>
 
 ## Broadcast Lifecycle
 

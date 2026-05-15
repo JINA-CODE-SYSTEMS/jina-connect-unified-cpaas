@@ -276,6 +276,101 @@ class BroadcastRenderedContentTestCase(TestCase):
         print(f"✅ Whitespace in placeholders: {rendered}")
 
 
+class TelegramSMSRenderedContentTestCase(TestCase):
+    """Test BroadcastMessage.rendered_content for TELEGRAM, SMS, and RCS platforms."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="tg_rcuser", email="tg@example.com", mobile="+910000000001", password="pass"
+        )
+        self.tenant = Tenant.objects.create(
+            name="TG Company",
+            created_by=self.user,
+            updated_by=self.user,
+            balance=Money(0, "USD"),
+            credit_line=Money(0, "USD"),
+        )
+        self.contact = TenantContact.objects.create(
+            first_name="Alice",
+            last_name="Dev",
+            phone="+910000000002",
+            tenant=self.tenant,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+    def _make_broadcast(self, platform, placeholder_data):
+        broadcast = Broadcast.objects.create(
+            name="TG Campaign",
+            tenant=self.tenant,
+            platform=platform,
+            placeholder_data=placeholder_data,
+            created_by=self.user,
+            updated_by=self.user,
+        )
+        return BroadcastMessage.objects.create(broadcast=broadcast, contact=self.contact)
+
+    # ── TELEGRAM ────────────────────────────────────────────────────────────
+
+    def test_telegram_renders_message_key(self):
+        msg = self._make_broadcast(
+            BroadcastPlatformChoices.TELEGRAM,
+            {"message": "Hello {{first_name}}, welcome to {{company_name}}!"},
+        )
+        rendered = msg.rendered_content
+        self.assertIn("Alice", rendered)
+        self.assertIn("TG Company", rendered)
+
+    def test_telegram_renders_text_key_alias(self):
+        msg = self._make_broadcast(
+            BroadcastPlatformChoices.TELEGRAM,
+            {"text": "Hi {{first_name}}!"},
+        )
+        self.assertIn("Alice", msg.rendered_content)
+
+    def test_telegram_renders_body_key_alias(self):
+        msg = self._make_broadcast(
+            BroadcastPlatformChoices.TELEGRAM,
+            {"body": "Dear {{first_name}}."},
+        )
+        self.assertIn("Alice", msg.rendered_content)
+
+    def test_telegram_empty_placeholder_data_returns_empty_string(self):
+        msg = self._make_broadcast(BroadcastPlatformChoices.TELEGRAM, {})
+        self.assertEqual(msg.rendered_content, "")
+
+    def test_telegram_none_placeholder_data_returns_empty_string(self):
+        msg = self._make_broadcast(BroadcastPlatformChoices.TELEGRAM, {})
+        msg.broadcast.placeholder_data = None
+        self.assertEqual(msg.rendered_content, "")
+
+    # ── SMS ─────────────────────────────────────────────────────────────────
+
+    def test_sms_renders_message_key_with_reserved_vars(self):
+        msg = self._make_broadcast(
+            BroadcastPlatformChoices.SMS,
+            {"message": "Hi {{first_name}}, your code is 1234."},
+        )
+        rendered = msg.rendered_content
+        self.assertIn("Alice", rendered)
+        self.assertIn("1234", rendered)
+
+    def test_sms_empty_returns_empty_string(self):
+        msg = self._make_broadcast(BroadcastPlatformChoices.SMS, {})
+        self.assertEqual(msg.rendered_content, "")
+
+    # ── RCS ─────────────────────────────────────────────────────────────────
+
+    def test_rcs_renders_message_key(self):
+        msg = self._make_broadcast(
+            BroadcastPlatformChoices.RCS,
+            {"message": "Hello {{first_name}} from {{company_name}}."},
+        )
+        rendered = msg.rendered_content
+        self.assertIn("Alice", rendered)
+        self.assertIn("TG Company", rendered)
+
+
 def run_broadcast_tests():
     """Helper function to run broadcast rendering tests"""
     import unittest
