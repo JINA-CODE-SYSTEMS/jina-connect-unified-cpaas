@@ -55,6 +55,13 @@ class VoiceConfig(AppConfig):
             logging.getLogger(__name__).exception("Failed to import Vonage voice adapter; provider unavailable.")
 
         try:
+            import voice.adapters.http_voice.telnyx  # noqa: F401
+        except Exception:  # pragma: no cover — defensive
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to import Telnyx voice adapter; provider unavailable.")
+
+        try:
             import voice.adapters.sip  # noqa: F401
         except Exception:  # pragma: no cover — defensive
             import logging

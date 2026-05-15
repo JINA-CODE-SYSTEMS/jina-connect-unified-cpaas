@@ -16,6 +16,7 @@ from voice.webhooks.plivo import (
     PlivoCallStatusHandler,
     PlivoRecordingHandler,
 )
+from voice.webhooks.telnyx import TelnyxEventHandler
 from voice.webhooks.twilio import (
     TwilioAnswerHandler,
     TwilioCallStatusHandler,
@@ -77,5 +78,11 @@ urlpatterns = [
         "webhooks/vonage/<uuid:config_uuid>/answer/",
         VonageAnswerHandler.as_view(),
         name="vonage-answer",
+    ),
+    # ── Telnyx ─────────────────────────────────────────────────────────
+    path(
+        "webhooks/telnyx/<uuid:config_uuid>/event/",
+        TelnyxEventHandler.as_view(),
+        name="telnyx-event",
     ),
 ]
