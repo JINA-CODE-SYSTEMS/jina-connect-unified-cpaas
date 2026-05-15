@@ -9,8 +9,19 @@ arrive with PRs #164–#167.
 
 from __future__ import annotations
 
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
+from voice.views import (
+    RecordingConsentViewSet,
+    TenantVoiceAppViewSet,
+    VoiceCallEventViewSet,
+    VoiceCallViewSet,
+    VoiceProviderConfigViewSet,
+    VoiceRateCardViewSet,
+    VoiceRecordingViewSet,
+    VoiceTemplateViewSet,
+)
 from voice.webhooks.exotel import (
     ExotelPassthruHandler,
     ExotelStatusHandler,
@@ -34,7 +45,21 @@ from voice.webhooks.vonage import (
 
 app_name = "voice"
 
+router = DefaultRouter()
+router.register(r"provider-configs", VoiceProviderConfigViewSet, basename="provider-config")
+router.register(r"calls", VoiceCallViewSet, basename="call")
+router.register(r"call-events", VoiceCallEventViewSet, basename="call-event")
+router.register(r"templates", VoiceTemplateViewSet, basename="template")
+router.register(r"recordings", VoiceRecordingViewSet, basename="recording")
+router.register(r"rate-cards", VoiceRateCardViewSet, basename="rate-card")
+router.register(r"tenant-voice-app", TenantVoiceAppViewSet, basename="tenant-voice-app")
+router.register(r"recording-consents", RecordingConsentViewSet, basename="recording-consent")
+
+
 urlpatterns = [
+    # REST API surface — mounted under ``/voice/v1/`` from the project
+    # URL conf, so the effective prefix becomes ``/voice/v1/api/``.
+    path("api/", include(router.urls)),
     # ── Twilio ─────────────────────────────────────────────────────────
     path(
         "webhooks/twilio/<uuid:config_uuid>/call-status/",
