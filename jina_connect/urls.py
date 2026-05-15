@@ -143,6 +143,7 @@ urlpatterns = [
     path("telegram/", include(("telegram.urls", "telegram"), namespace="telegram")),
     path("sms/", include(("sms.urls", "sms"), namespace="sms")),
     path("rcs/", include(("rcs.urls", "rcs"), namespace="rcs")),
+    path("voice/v1/", include(("voice.urls", "voice"), namespace="voice")),
     # =========================================================================
     # MOBILE API ENDPOINTS
     # Same functionality as web APIs, separated for mobile client tracking.
