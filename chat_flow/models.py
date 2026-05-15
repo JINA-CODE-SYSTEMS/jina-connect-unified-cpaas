@@ -151,9 +151,13 @@ class ChatFlow(BaseTenantModelForFilterUser):
             raise ValidationError({"flow_data": errors})
 
     def save(self, *args, **kwargs):
-        # ``full_clean`` runs field validators + our ``clean()`` so a flow
-        # with incompatible nodes never reaches the database.
-        self.full_clean()
+        # Run our custom ``clean()`` (registry validation against
+        # ``platform``) before saving. We deliberately do NOT call
+        # ``full_clean()`` here — field-level validators (e.g.
+        # ``start_template``'s ``limit_choices_to``) were not enforced at
+        # save before this PR, and several call-sites rely on that.
+        # ``flow_data`` validation is all we need for #157.
+        self.clean()
         super().save(*args, **kwargs)
 
 
