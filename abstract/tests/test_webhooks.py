@@ -26,7 +26,6 @@ from django.test import RequestFactory, TestCase
 
 from abstract.webhooks import BaseWebhookHandler
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Concrete test handlers
 # ─────────────────────────────────────────────────────────────────────────────

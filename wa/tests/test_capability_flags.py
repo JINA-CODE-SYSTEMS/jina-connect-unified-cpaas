@@ -24,7 +24,6 @@ from django.test import TestCase
 from jina_connect.platform_choices import PlatformChoices
 from wa.adapters.channel_base import BaseChannelAdapter, Capabilities
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Map each Capabilities flag to the method name it implies.  None means the
 # flag has no single 1:1 method (e.g. supports_provider_cost — handled in

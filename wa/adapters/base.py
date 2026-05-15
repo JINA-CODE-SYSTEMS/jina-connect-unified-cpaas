@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from jina_connect.platform_choices import PlatformChoices
-from wa.adapters.channel_base import BaseChannelAdapter, Capabilities
+from wa.adapters.channel_base import BaseChannelAdapter
 
 if TYPE_CHECKING:
     from wa.models import WAApp, WASubscription, WATemplate

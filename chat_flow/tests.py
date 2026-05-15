@@ -9,8 +9,18 @@ from django.test import TestCase
 from rest_framework.test import APIClient, APIRequestFactory
 
 from chat_flow.models import ChatFlow, ChatFlowEdge, ChatFlowNode
+from chat_flow.node_registry import (
+    _REGISTRY,
+    NodeTypeSpec,
+    get_node_type,
+    list_node_types_for_platform,
+    register_node_type,
+    unregister_node_type,
+    validate_flow_for_platform,
+)
 from chat_flow.serializers import ChatFlowEdgeSerializer, ChatFlowNodeSerializer, ChatFlowSerializer
 from chat_flow.viewsets import ChatFlowEdgeViewSet, ChatFlowNodeViewSet
+from jina_connect.platform_choices import PlatformChoices
 from tenants.models import Tenant, TenantRole, TenantUser, TenantWAApp
 from wa.models import WATemplate
 
@@ -863,17 +873,6 @@ class SessionTenantFKTests(TestCase):
 # =============================================================================
 # Node-type registry tests (#157)
 # =============================================================================
-
-from chat_flow.node_registry import (
-    NodeTypeSpec,
-    _REGISTRY,
-    get_node_type,
-    list_node_types_for_platform,
-    register_node_type,
-    unregister_node_type,
-    validate_flow_for_platform,
-)
-from jina_connect.platform_choices import PlatformChoices
 
 
 class NodeRegistryTests(TestCase):
