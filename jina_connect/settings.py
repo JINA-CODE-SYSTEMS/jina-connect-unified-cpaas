@@ -517,9 +517,7 @@ CELERY_BEAT_SCHEDULE = {
         # Hard-delete expired recordings nightly at 02:30 in the
         # configured CELERY_TIMEZONE (Asia/Kolkata).
         "task": "voice.recordings.tasks.enforce_retention",
-        "schedule": __import__("celery.schedules", fromlist=["crontab"]).crontab(
-            hour=2, minute=30
-        ),
+        "schedule": __import__("celery.schedules", fromlist=["crontab"]).crontab(hour=2, minute=30),
     },
 }
 
