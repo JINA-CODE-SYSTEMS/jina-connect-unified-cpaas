@@ -86,6 +86,7 @@ class BroadcastPlatformChoices(models.TextChoices):
     TELEGRAM = "TELEGRAM", "Telegram"
     SMS = "SMS", "SMS"
     RCS = "RCS", "RCS"
+    VOICE = "VOICE", "Voice"
     # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 
@@ -123,6 +124,17 @@ class Broadcast(BaseTenantModelForFilterUser):
     )
     task_id = models.CharField(max_length=255, blank=True, null=True, editable=False)
     template_number = models.ForeignKey(TemplateNumber, on_delete=models.CASCADE, null=True, blank=True)
+    # Voice broadcasts point at a ``VoiceTemplate`` instead of a TemplateNumber.
+    # Lazy string ref so this app doesn't import ``voice`` at module load time
+    # (keeps tenant-side migrations independent of voice app readiness).
+    voice_template = models.ForeignKey(
+        "voice.VoiceTemplate",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="broadcasts",
+        help_text="Voice template for VOICE-platform broadcasts (TTS / pre-recorded audio).",
+    )
     placeholder_data = models.JSONField(default=dict, blank=True)
     media_overrides = models.JSONField(
         default=dict,
@@ -295,6 +307,8 @@ class Broadcast(BaseTenantModelForFilterUser):
             return self._get_telegram_message_price()
         elif self.platform == BroadcastPlatformChoices.RCS:
             return self._get_rcs_message_price()
+        elif self.platform == BroadcastPlatformChoices.VOICE:
+            return self._get_voice_message_price()
         else:
             return Decimal("0")
 
@@ -357,6 +371,20 @@ class Broadcast(BaseTenantModelForFilterUser):
         if not rcs_app:
             return Decimal("0")
         return Decimal(str(rcs_app.price_per_message or 0))
+
+    def _get_voice_message_price(self) -> Decimal:
+        """
+        Voice broadcasts are billed per-call after completion (via the
+        provider-cost path for Twilio/Plivo/etc., or the local
+        ``VoiceRateCard`` for SIP — see #170).
+
+        At broadcast-creation time we don't know the per-call price yet
+        (depends on destination + answered duration), so this returns
+        ``Decimal("0")`` for the upfront credit reservation. The actual
+        cost lands on ``TenantTransaction`` per-call from
+        ``voice.billing`` once each call completes.
+        """
+        return Decimal("0")
 
     def calculate_initial_cost(self):
         """

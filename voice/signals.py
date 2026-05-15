@@ -79,6 +79,58 @@ def _summarise_call(call) -> str:
 
 
 @receiver(call_completed)
+def sync_broadcast_message_status(sender, call, **kwargs) -> None:
+    """Mirror terminal ``VoiceCall.status`` onto its ``BroadcastMessage``.
+
+    Maps:
+      * COMPLETED + duration > 0 → DELIVERED
+      * COMPLETED + duration == 0 → FAILED   (no-answer / never answered)
+      * FAILED / CANCELED        → FAILED
+
+    Only fires for calls that originated from a broadcast (the
+    ``broadcast`` FK is set + ``metadata["broadcast_message_id"]`` was
+    stamped by the dispatcher).
+    """
+    if call.broadcast_id is None:
+        return
+
+    bm_id = (call.metadata or {}).get("broadcast_message_id")
+    if bm_id is None:
+        return
+
+    from broadcast.models import BroadcastMessage, MessageStatusChoices
+
+    if call.status == "COMPLETED" and (call.duration_seconds or 0) > 0:
+        target = MessageStatusChoices.DELIVERED
+    else:
+        # COMPLETED with 0s, FAILED, CANCELED all map to FAILED on the
+        # broadcast-message side.
+        target = MessageStatusChoices.FAILED
+
+    BroadcastMessage.objects.filter(pk=bm_id).update(status=target)
+
+
+@receiver(call_completed)
+def release_concurrency_semaphore(sender, call, **kwargs) -> None:
+    """Free the per-config concurrency slot once a call terminates.
+
+    Acquired by ``broadcast.tasks.handle_voice_message`` when the call
+    was dispatched. Calls outside a broadcast still consume / release
+    a slot if the dispatcher used the semaphore — the operation is
+    idempotent so a release with no prior acquire is harmless.
+    """
+    from voice.concurrency import release
+
+    try:
+        release(call.tenant_id, call.provider_config_id)
+    except Exception:  # noqa: BLE001 — Redis hiccups must not block billing
+        logger.exception(
+            "[voice.signals.release_concurrency_semaphore] failed for call %s",
+            call.id,
+        )
+
+
+@receiver(call_completed)
 def trigger_provider_cost_billing(sender, call, **kwargs) -> None:
     """For adapters with ``supports_provider_cost``, schedule a delayed
     follow-up to fetch the provider's billed cost.
