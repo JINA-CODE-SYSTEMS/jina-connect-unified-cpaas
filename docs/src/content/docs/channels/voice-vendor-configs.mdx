@@ -1,0 +1,197 @@
+---
+title: Voice — Vendor Credentials Reference
+description: Per-vendor credential payloads for HTTP voice providers and SIP trunk profiles.
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+Reference payloads for the `credentials` field on
+`VoiceProviderConfig`. The field is encrypted at rest and write-only
+— callers see `credentials_set: true` rather than the secret value.
+
+## HTTP voice providers
+
+Five adapters in this category. The `provider` field on the config
+selects which schema is validated; the credential shape is per-vendor.
+
+<Tabs>
+  <TabItem label="Twilio">
+    ```json
+    {
+      "name": "Twilio Production",
+      "provider": "twilio",
+      "from_numbers": ["+14155550100"],
+      "credentials": {
+        "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "auth_token": "your-auth-token",
+        "region": null,
+        "edge": null
+      }
+    }
+    ```
+
+    **Auth.** `account_sid` is in the URL path; `auth_token` is the
+    Basic password and the HMAC-SHA1 webhook signing key.
+    **Gotchas.** Twilio appends a *negative* price in the call resource
+    (cost to the account) — the billing fetcher stores it as a
+    positive `cost_amount`. Recording auth uses the same basic-auth
+    pair as the API call.
+  </TabItem>
+
+  <TabItem label="Plivo">
+    ```json
+    {
+      "name": "Plivo Mumbai",
+      "provider": "plivo",
+      "from_numbers": ["+919999000111"],
+      "credentials": {
+        "auth_id": "MAxxxxxxxxxxxxxxxxxxxx",
+        "auth_token": "your-auth-token"
+      }
+    }
+    ```
+
+    **Auth.** Plivo V3 webhook signing is HMAC-SHA256 over
+    `nonce + url + sorted_post_params`. The adapter handles it.
+    **Gotchas.** Plivo uses `CallUUID` (not `CallSid`) as the provider
+    call id — normalisation happens in `parse_webhook`.
+  </TabItem>
+
+  <TabItem label="Vonage">
+    ```json
+    {
+      "name": "Vonage Voice",
+      "provider": "vonage",
+      "from_numbers": ["+447400000000"],
+      "credentials": {
+        "api_key": "1a2b3c4d",
+        "api_secret": "abcdefghijklmnop",
+        "application_id": "11111111-2222-3333-4444-555555555555",
+        "private_key_pem": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
+        "signature_secret": "your-signature-secret"
+      }
+    }
+    ```
+
+    **Auth.** Outbound API calls sign an RS256 JWT against the Vonage
+    application's `private_key_pem` (5-minute TTL, refreshed
+    per-request). Webhook auth is HS256 over the request body using
+    `signature_secret`.
+    **Gotchas.** NCCO instructions are JSON, not XML — the
+    `voice.ivr.dialects.ncco` module emits the action shapes.
+  </TabItem>
+
+  <TabItem label="Telnyx">
+    ```json
+    {
+      "name": "Telnyx Call Control",
+      "provider": "telnyx",
+      "from_numbers": ["+15551234567"],
+      "credentials": {
+        "api_key": "KEY01HABCDE...",
+        "connection_id": "1234567890",
+        "outbound_voice_profile_id": "abcd1234",
+        "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----"
+      }
+    }
+    ```
+
+    **Auth.** Bearer token (`Authorization: Bearer <api_key>`) for the
+    REST surface; Ed25519 signature on the webhook (signed payload is
+    `<timestamp>|<raw body>`, 5-minute skew window).
+    **Gotchas.** Hangup causes come back as Q.850 numerics — the
+    adapter maps them to the canonical `HangupCause` enum.
+  </TabItem>
+
+  <TabItem label="Exotel">
+    ```json
+    {
+      "name": "Exotel India",
+      "provider": "exotel",
+      "from_numbers": ["+919999000222"],
+      "credentials": {
+        "sid": "exotel-sid",
+        "api_key": "exotel-api-key",
+        "api_token": "exotel-api-token",
+        "subdomain": "api.exotel.com"
+      },
+      "inbound_webhook_token": "shared-secret"
+    }
+    ```
+
+    **Auth.** Exotel doesn't sign webhooks — verification is a path
+    token (`inbound_webhook_token` on the config), checked by the
+    adapter's `verify_webhook`. Configure the same token on the Exotel
+    side as part of the webhook URL.
+    **Gotchas.** From / CallerId are reversed from the rest of the
+    industry. ExoML is declarative only — `hangup` / `transfer` are
+    not callable mid-call; the adapter raises `NotImplementedError`
+    on attempts.
+  </TabItem>
+</Tabs>
+
+## SIP trunks (Asterisk + PJSIP)
+
+Twelve carrier profiles ship in `voice/sip_config/profiles/`. The
+`provider` field is always `sip`; `credentials.vendor_profile`
+selects the YAML.
+
+The common shape:
+
+```json
+{
+  "name": "SIP carrier",
+  "provider": "sip",
+  "from_numbers": ["+91..."],
+  "credentials": {
+    "sip_username": "your-username",
+    "sip_password": "your-password",
+    "sip_realm": "sip.example.com",
+    "sip_proxy": "sip.example.com",
+    "sip_transport": "udp",
+    "registration_required": true,
+    "codecs": ["alaw", "ulaw"],
+    "dtmf_mode": "rfc2833",
+    "vendor_profile": "dialogic"
+  }
+}
+```
+
+When the config is saved, `voice.signals._on_provider_config_saved`
+renders the PJSIP fragment from the chosen vendor template and writes
+it under `ASTERISK_PJSIP_DROP_DIR`. Asterisk picks it up via
+`pjsip reload`.
+
+### Vendor profiles
+
+| `vendor_profile`         | Carrier                                | Notes                                                                                          |
+|--------------------------|----------------------------------------|------------------------------------------------------------------------------------------------|
+| `dialogic`               | Dialogic India                          | Registration required. Default codecs alaw/ulaw; g729 available on some accounts.              |
+| `telnyx_sip`             | Telnyx SIP Connection                   | Outbound IP auth supported; this profile assumes registration auth.                            |
+| `twilio_elastic_sip`     | Twilio Elastic SIP Trunking             | DIDs are E.164; uses `outbound-authorize` ACLs on Twilio side.                                 |
+| `plivo_sip`              | Plivo SIP                               | Match Plivo's "Endpoint" application; codec list usually ulaw + opus.                          |
+| `vonage_sip`             | Vonage SIP                              | DNS SRV common — set `sip_proxy` to the SRV name.                                              |
+| `exotel_sip`             | Exotel SIP / Wholesale Voice            | India only. Confirm DNC list adherence with the carrier.                                       |
+| `knowlarity`             | Knowlarity SuperReceptionist            | India; DLT-style number registration expected.                                                 |
+| `servetel`               | Servetel                                | India; supports both registration + IP-based auth.                                             |
+| `myoperator`             | MyOperator                              | India; ask MyOperator for the correct `sip_realm` per account.                                 |
+| `tata_tele`              | Tata Tele Business Services             | India enterprise; static IPs expected on the carrier side.                                     |
+| `airtel`                 | Airtel Business / Airtel SBC            | India enterprise; SRV record common.                                                           |
+| `generic`                | Any other carrier                       | Vanilla PJSIP `endpoint` / `auth` / `aor` with no carrier-specific tweaks.                     |
+
+### Adding your own profile
+
+Drop a new YAML file in `voice/sip_config/profiles/`. The four
+templates that load — `endpoint_template`, `auth_template`,
+`aor_template`, `registration_template` — accept `{sip_username}`,
+`{sip_password}`, `{sip_realm}`, `{sip_proxy}`, plus the per-config
+ids (`endpoint_id`, `auth_id`, `aor_id`, `reg_id`).
+
+See [CONTRIBUTING.md](https://github.com/anthropics/jina-connect-unified-cpaas/blob/main/CONTRIBUTING.md)
+for the testing requirements.
+
+<Aside type="note">
+  All HTTP voice credentials are encrypted by ``django-encrypted-model-fields``
+  using the project ``FIELD_ENCRYPTION_KEY``. Rotating the key requires a
+  re-save of every config; see the project deployment guide.
+</Aside>

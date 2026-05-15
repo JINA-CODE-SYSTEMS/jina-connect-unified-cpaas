@@ -14,7 +14,7 @@
 
 Jina Connect is a complete, self-hostable CPaaS platform — the communication infrastructure your business, agency, or AI product runs on. One stack, every customer channel: **WhatsApp**, **Telegram**, **SMS**, **RCS**, and **Voice**. Broadcasts, automated flows, templates, contacts, team inbox, billing, and AI-agent access through MCP — all in one self-hostable project.
 
-**WhatsApp, Telegram, SMS, and RCS ship production-ready today.** Voice is on the roadmap, built on the same unified channel abstraction. Pick a channel, write once, and the same primitives (send, broadcast, flow, inbox, analytics) work everywhere.
+**WhatsApp, Telegram, SMS, RCS, and Voice all ship production-ready today.** Pick a channel, write once, and the same primitives (send, broadcast, flow, inbox, analytics) work everywhere. Voice adds five HTTP provider adapters (Twilio, Plivo, Vonage, Telnyx, Exotel) plus a SIP path that drops twelve carrier YAML profiles in front of Asterisk — same channel abstraction, same broadcast / inbox / flow primitives.
 
 It also ships the first and only **multi-provider MCP server for business messaging**, letting AI agents (Claude, ChatGPT, Cursor, custom LLM apps) operate your communication channels natively through 13 tool-callable functions.
 
@@ -28,7 +28,7 @@ Every commercial CPaaS tool on the market is closed SaaS. Switching channels or 
 
 We're building the open-source alternative that solves all of this at once:
 
-- **Every customer channel, one stack.** WhatsApp today, Telegram + SMS + RCS + Voice coming. The same primitives across all of them.
+- **Every customer channel, one stack.** WhatsApp, Telegram, SMS, RCS, and Voice all ship today on the same primitives — send, broadcast, flow, inbox, analytics, MCP — so once you wire one channel the rest are configuration, not code.
 - **Multi-provider by design.** For each channel, swap providers without rewriting code. WhatsApp already routes across Meta Cloud API and Gupshup; more channels and providers land the same way.
 - **AI-native from day one.** The MCP server lets any AI agent operate your channels the way a human would — create templates, send campaigns, query analytics — without glue code.
 - **Self-hostable.** `docker-compose up` and you have a full Jina Connect instance. Keep it on your own infrastructure, forever.
@@ -60,7 +60,7 @@ Everything below is open-source, shipped in this repo, and works out of the box.
 
 ### Channels
 
-**Unified channel engine** — The core abstraction that lets every other app (broadcast, flows, inbox, analytics) work across any communication channel. The same "send" primitive handles WhatsApp, Telegram, SMS, and RCS today. Voice as they ship.
+**Unified channel engine** — The core abstraction that lets every other app (broadcast, flows, inbox, analytics) work across any communication channel. The same "send" primitive handles WhatsApp, Telegram, SMS, RCS, and Voice today.
 
 | Channel | Status | Providers supported |
 |---|---|---|
@@ -68,7 +68,7 @@ Everything below is open-source, shipped in this repo, and works out of the box.
 | **Telegram Bot API** | ✅ Native Bot API | Bot commands, inline keyboards, file handling |
 | **SMS** | ✅ Multi-BSP adapter (Twilio, MSG91, Fast2SMS) | Twilio, MSG91, Fast2SMS |
 | **RCS Business Messaging** | ✅ Google RBM + Meta RCS (iOS-safe rich cards, SMS fallback) | Google RBM, Meta RCS |
-| **Voice (calls, IVR)** | 🚧 Coming soon | SIP trunking, Twilio Voice |
+| **Voice (calls, IVR)** | ✅ Adapters for 5 HTTP APIs + 12 SIP trunks; IVR compiler; recording + transcription | Twilio, Plivo, Vonage, Telnyx, Exotel + SIP (Dialogic, Twilio Elastic, Plivo SIP, Vonage SIP, Telnyx SIP, Exotel SIP, Knowlarity, Servetel, MyOperator, Tata Tele, Airtel, generic) |
 
 Each channel plugs into the same unified abstraction, so features you use today (campaigns, flows, inbox, analytics) work on new channels the moment the adapter lands.
 
@@ -84,7 +84,7 @@ Each channel plugs into the same unified abstraction, so features you use today 
 
 **Team inbox (`team_inbox`)** — Real-time unified inbox across channels. WebSocket-based message delivery, activity event stream, sequential ordering across multiple agents. One conversation view no matter which channel the customer reached you on. Supports ad-hoc messaging (Telegram, SMS, RCS), message revocation (RCS), and agent mention/assignment notifications.
 
-**Contacts (`contacts`)** — Contact management at scale. Multi-source ingestion (CSV/XLSX bulk import, API, webhook), lead scoring, tagging, segmentation. Channel-neutral: the same contact can be reached via WhatsApp today, SMS tomorrow, or Voice next month, all from the same record.
+**Contacts (`contacts`)** — Contact management at scale. Multi-source ingestion (CSV/XLSX bulk import, API, webhook), lead scoring, tagging, segmentation. Channel-neutral: the same contact record reaches every channel — WhatsApp, Telegram, SMS, RCS, or Voice — without per-channel duplication.
 
 ### Platform
 
@@ -110,7 +110,7 @@ Each channel plugs into the same unified abstraction, so features you use today 
 | Campaigns | trigger broadcast, check campaign status |
 | Analytics | query delivery/read stats |
 
-Today the MCP server supports WhatsApp, Telegram, and SMS routing in core messaging and campaign tools. As RCS and Voice adapters ship, the same tools expand across those channels too.
+Today the MCP server supports WhatsApp, Telegram, SMS, RCS, and Voice across the messaging, campaign, and (for Voice) call-management tools — `voice_initiate_call`, `voice_get_call_status`, `voice_list_calls`, `voice_get_recording`, `voice_get_transcription`, `voice_hangup_call`, `voice_trigger_broadcast`.
 
 Works with Claude Desktop, Claude.ai, ChatGPT, Cursor, VS Code Copilot, Windsurf, and any MCP-compatible client. Two transports today: `stdio` and streamable HTTP. SSE transport coming soon. Authentication via tenant API keys — one MCP server can safely serve multiple tenants.
 
@@ -124,7 +124,7 @@ Works with Claude Desktop, Claude.ai, ChatGPT, Cursor, VS Code Copilot, Windsurf
 
 **Marketing agencies** managing customer communication for multiple clients across multiple providers and channels. One dashboard. One bill. Consistent features across channels. Client portability if you ever leave us — the code is yours.
 
-**AI-native builders** putting agents into production. Give Claude, ChatGPT, or your custom LLM direct access to business messaging through the MCP server. Start with WhatsApp, expand to SMS and Voice as those land. No glue code. No provider lock-in.
+**AI-native builders** putting agents into production. Give Claude, ChatGPT, or your custom LLM direct access to business messaging through the MCP server — WhatsApp, Telegram, SMS, RCS, and Voice all available today, every channel surfaced through the same tool API. No glue code. No provider lock-in.
 
 **D2C and e-commerce teams** who want proper team collaboration, rich automation, and audit trails across every channel their customers actually use — without paying enterprise SaaS prices.
 
@@ -142,7 +142,7 @@ The roadmap below is organized by CPaaS capability. Each capability has a curren
 | **Telegram Bot API** | ✅ Native Bot API adapter, inline keyboards, file handling | Telegram Mini Apps, payments | — |
 | **SMS** | ✅ Twilio, MSG91, Fast2SMS adapters | Region-specific carriers, short-code support | — |
 | **RCS Business Messaging** | ✅ Google RBM, Meta RCS adapters | Rich cards, suggested replies, verified sender | — |
-| **Voice (calls, IVR)** | — | SIP trunking, basic IVR flows, Twilio Voice adapter | Advanced call routing, recording, transcription, agent handoff |
+| **Voice (calls, IVR)** | ✅ 5 HTTP adapters (Twilio, Plivo, Vonage, Telnyx, Exotel) + 12 SIP trunk profiles via Asterisk ARI; IVR compiler with DTMF/speech gather, transfer, record; S3-backed recordings with retention sweep; pluggable transcription (Deepgram / Whisper / provider-native); local rate-card + CDR billing; TCPA-style time-of-day windows; cross-channel SMS fallback | Inbound flow builder UX, voicemail drop, agent live-listen | Predictive dialer, AI voice agents (LLM-driven IVR) |
 
 ### 📤 Outbound Campaigns
 
@@ -151,7 +151,7 @@ The roadmap below is organized by CPaaS capability. Each capability has a curren
 | **Broadcast campaigns (WhatsApp)** | Draft → schedule → send, batch processing, URL tracking, cost estimation | Advanced segmentation, A/B testing, drip sequences | Multi-channel orchestration (WhatsApp + SMS + email in one campaign) |
 | **Quality score management** | Rate limiting per provider | Automated quality score alerts, auto-throttling | Predictive sending windows based on recipient behavior |
 | **Click-to-WhatsApp (CTWA) optimization** | — *(coming soon)* | CTWA routing optimization, Meta ads integration | CTWA attribution, cost-per-conversation analytics |
-| **Voice campaigns** | — *(coming soon)* | Bulk outbound calling with IVR menus, call recording | Predictive dialing, agent-assisted campaigns |
+| **Voice campaigns** | ✅ Bulk outbound calling with IVR menus, S3-backed recording + pluggable transcription, TCPA-style time-of-day gating, automatic SMS fallback on no-answer | Voicemail drop, live-listen for supervisors, predictive sending windows | Predictive dialing, AI voice agents (LLM-driven IVR), agent-assisted campaigns |
 
 ### 🤖 Automation and Flows
 
