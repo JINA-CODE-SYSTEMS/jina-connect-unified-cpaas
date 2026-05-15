@@ -212,3 +212,16 @@ class VoiceAdapter(BaseChannelAdapter):
     def parse_webhook(self, request) -> NormalizedCallEvent:
         """Parse an incoming provider webhook into a normalised event."""
         ...
+
+    def get_dialect(self):
+        """Return the dialect module for this adapter.
+
+        Subclasses override to point at ``voice.ivr.dialects.twiml`` /
+        ``plivo_xml`` / ``ncco`` / ``telnyx_cc`` / ``exotel_xml`` /
+        ``ari_commands``. The IVR compiler (#168) walks the flow and
+        calls ``dialect.get_handler(type_id)`` for each node.
+
+        Default raises ``NotImplementedError`` so a half-built adapter
+        produces a clear error rather than a silent empty NCCO.
+        """
+        raise NotImplementedError(f"{type(self).__name__} has no dialect; IVR flows won't compile.")

@@ -220,6 +220,11 @@ class SIPVoiceAdapter(VoiceAdapter):
         """
         pjsip_writer.ensure_endpoint(self.provider_config)
 
+    def get_dialect(self):
+        from voice.ivr.dialects import ari_commands as _ari_module
+
+        return _ari_module
+
 
 # Self-register at import time.
 register_voice_adapter(VoiceProvider.SIP.value, SIPVoiceAdapter)

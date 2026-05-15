@@ -265,5 +265,10 @@ class ExotelVoiceAdapter(HttpVoiceAdapter):
             payload=params,
         )
 
+    def get_dialect(self):
+        from voice.ivr.dialects import exotel_xml as _exotel_module
+
+        return _exotel_module
+
 
 register_voice_adapter(VoiceProvider.EXOTEL.value, ExotelVoiceAdapter)

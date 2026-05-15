@@ -312,6 +312,11 @@ class PlivoVoiceAdapter(HttpVoiceAdapter):
             payload=dict(post.items()),
         )
 
+    def get_dialect(self):
+        from voice.ivr.dialects import plivo_xml as _plivo_module
+
+        return _plivo_module
+
 
 # Self-register at import time.
 register_voice_adapter(VoiceProvider.PLIVO.value, PlivoVoiceAdapter)

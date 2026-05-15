@@ -350,5 +350,10 @@ class VonageVoiceAdapter(HttpVoiceAdapter):
             payload=payload,
         )
 
+    def get_dialect(self):
+        from voice.ivr.dialects import ncco as _ncco_module
+
+        return _ncco_module
+
 
 register_voice_adapter(VoiceProvider.VONAGE.value, VonageVoiceAdapter)

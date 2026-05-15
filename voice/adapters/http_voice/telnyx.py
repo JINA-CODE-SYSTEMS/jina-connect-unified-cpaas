@@ -307,5 +307,10 @@ class TelnyxVoiceAdapter(HttpVoiceAdapter):
         result = self.EVENT_TYPE_MAP.get(provider_status)
         return result[0] if result else None
 
+    def get_dialect(self):
+        from voice.ivr.dialects import telnyx_cc as _telnyx_module
+
+        return _telnyx_module
+
 
 register_voice_adapter(VoiceProvider.TELNYX.value, TelnyxVoiceAdapter)

@@ -75,6 +75,20 @@ class VoiceConfig(AppConfig):
 
             logging.getLogger(__name__).exception("Failed to import SIP voice adapter; provider unavailable.")
 
+        # Register the six voice node types so flow-save validation
+        # rejects voice nodes on text platforms (and vice versa) and
+        # the IVR compiler can look them up.
+        try:
+            from voice.ivr.node_specs import register_voice_node_types
+
+            register_voice_node_types()
+        except Exception:  # pragma: no cover — defensive
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Failed to register voice IVR node types; voice flows won't validate."
+            )
+
         # Hook the post-save signal that mirrors call lifecycle into
         # team_inbox + billing pipelines. Importing voice.signals also
         # wires the SIP provisioning hook below.

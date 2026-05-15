@@ -303,6 +303,12 @@ class TwilioVoiceAdapter(HttpVoiceAdapter):
             payload=dict(post.items()),
         )
 
+    def get_dialect(self):
+        """TwiML dialect — TwiML XML response on the answer webhook."""
+        from voice.ivr.dialects import twiml as _twiml_module
+
+        return _twiml_module
+
 
 # Self-register at import time. ``voice/apps.py:VoiceConfig.ready`` triggers
 # this via ``register_channel`` setting up the chain — but the safer pattern
