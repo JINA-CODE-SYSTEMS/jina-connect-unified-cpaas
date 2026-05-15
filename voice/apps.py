@@ -93,3 +93,13 @@ class VoiceConfig(AppConfig):
         # team_inbox + billing pipelines. Importing voice.signals also
         # wires the SIP provisioning hook below.
         import voice.signals  # noqa: F401
+
+        # Import the transcription package so backends self-register and
+        # ``recording_created`` is connected to ``transcribe_recording``.
+        try:
+            import voice.transcription  # noqa: F401
+            import voice.transcription.tasks  # noqa: F401
+        except Exception:  # pragma: no cover — defensive
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to import voice.transcription; transcription disabled.")

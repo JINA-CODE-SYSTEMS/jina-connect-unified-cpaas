@@ -530,6 +530,13 @@ CELERY_BEAT_SCHEDULE = {
 VOICE_RECORDING_STORAGE_BUCKET = config("VOICE_RECORDING_STORAGE_BUCKET", "")
 VOICE_MAX_CALL_DURATION_SECONDS = config("VOICE_MAX_CALL_DURATION_SECONDS", 3600, cast=int)
 
+# Transcription backend selection (#169). Set to "" to disable
+# transcription entirely; "deepgram" / "whisper" / "provider_native"
+# pick the corresponding backend in ``voice.transcription``.
+VOICE_TRANSCRIPTION_PROVIDER = config("VOICE_TRANSCRIPTION_PROVIDER", "")
+DEEPGRAM_API_KEY = config("DEEPGRAM_API_KEY", "")
+OPENAI_API_KEY = config("OPENAI_API_KEY", "")
+
 # Asterisk (only needed for SIP voice — HTTP voice providers don't touch this).
 ASTERISK_ARI_URL = config("ASTERISK_ARI_URL", "")
 ASTERISK_ARI_USER = config("ASTERISK_ARI_USER", "")

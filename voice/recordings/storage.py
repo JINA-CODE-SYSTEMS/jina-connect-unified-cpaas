@@ -96,6 +96,20 @@ def upload(storage_key: str, audio_bytes: bytes, content_type: str) -> str:
     return storage_key
 
 
+def fetch(storage_key: str) -> bytes:
+    """Download a recording from the bucket and return its bytes.
+
+    Used by the transcription task layer (#169). Lets transcription
+    backends stay storage-agnostic — they only see audio bytes.
+    """
+    client = _client()
+    obj = client.get_object(Bucket=_bucket(), Key=storage_key)
+    body = obj.get("Body")
+    if body is None:
+        return b""
+    return body.read()
+
+
 def signed_url(storage_key: str, expires_seconds: int | None = None) -> str:
     """Return a presigned GET URL for an existing recording.
 
