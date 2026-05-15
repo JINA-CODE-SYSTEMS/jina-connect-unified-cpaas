@@ -61,7 +61,6 @@ class GupshupAdapter(BaseBSPAdapter):
     """
 
     PROVIDER_NAME = "gupshup"
-    CAPABILITIES = frozenset({"templates", "subscriptions", "media_upload"})
     capabilities = Capabilities(
         supports_text=True,
         supports_media=True,
@@ -70,6 +69,7 @@ class GupshupAdapter(BaseBSPAdapter):
         supports_template_buttons=True,
         supports_reactions=True,
         supports_typing_indicator=True,
+        extra=frozenset({"templates", "subscriptions", "media_upload"}),
     )
 
     # ── credential helpers ────────────────────────────────────────────────

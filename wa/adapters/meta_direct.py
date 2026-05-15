@@ -56,7 +56,6 @@ class MetaDirectAdapter(BaseBSPAdapter):
     """
 
     PROVIDER_NAME = "meta_direct"
-    CAPABILITIES = frozenset({"templates", "subscriptions"})
     capabilities = Capabilities(
         supports_text=True,
         supports_media=True,
@@ -65,6 +64,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         supports_template_buttons=True,
         supports_reactions=True,
         supports_typing_indicator=True,
+        extra=frozenset({"templates", "subscriptions"}),
     )
 
     # ── credential helpers ────────────────────────────────────────────────

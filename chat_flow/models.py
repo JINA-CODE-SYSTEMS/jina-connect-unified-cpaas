@@ -146,6 +146,14 @@ class ChatFlow(BaseTenantModelForFilterUser):
 
     def clean(self):
         super().clean()
+        # Validate ``platform`` is a known choice. ``full_clean`` would do
+        # this via ``clean_fields``, but we deliberately skip ``full_clean``
+        # in ``save`` (see below), so enforce it explicitly here.
+        valid_platforms = set(PlatformChoices.values)
+        if self.platform not in valid_platforms:
+            raise ValidationError(
+                {"platform": (f"Invalid platform {self.platform!r}; must be one of {sorted(valid_platforms)}")}
+            )
         errors = validate_flow_for_platform(self.flow_data, self.platform)
         if errors:
             raise ValidationError({"flow_data": errors})

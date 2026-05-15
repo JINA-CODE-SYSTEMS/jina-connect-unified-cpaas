@@ -897,7 +897,8 @@ class NodeRegistryTests(TestCase):
         register_node_type(spec)
         self.assertIs(get_node_type("t.foo"), spec)
 
-    def test_register_duplicate_raises(self):
+    def test_register_same_spec_is_idempotent(self):
+        """Re-registering an identical spec is a no-op (autoreload-safe)."""
         spec = NodeTypeSpec(
             type_id="t.dup",
             display_name="Dup",
@@ -906,8 +907,28 @@ class NodeRegistryTests(TestCase):
             required_data_fields=frozenset(),
         )
         register_node_type(spec)
+        register_node_type(spec)  # must not raise
+        self.assertIs(get_node_type("t.dup"), spec)
+
+    def test_register_differing_spec_raises(self):
+        """Same type_id but a different spec is a real bug — raise loudly."""
+        spec_a = NodeTypeSpec(
+            type_id="t.diff",
+            display_name="A",
+            description="",
+            supported_platforms=frozenset(),
+            required_data_fields=frozenset(),
+        )
+        spec_b = NodeTypeSpec(
+            type_id="t.diff",
+            display_name="B",
+            description="",
+            supported_platforms=frozenset(),
+            required_data_fields=frozenset(),
+        )
+        register_node_type(spec_a)
         with self.assertRaises(ValueError):
-            register_node_type(spec)
+            register_node_type(spec_b)
 
     def test_unknown_type_returns_none(self):
         self.assertIsNone(get_node_type("does.not.exist"))
@@ -1093,3 +1114,18 @@ class ChatFlowPlatformValidationTests(TestCase):
             flow_data={"nodes": [], "edges": []},
         )
         self.assertEqual(flow.platform, PlatformChoices.WHATSAPP)
+
+    def test_invalid_platform_rejected_in_clean(self):
+        """clean() enforces ``platform`` is a known choice even when
+        ``full_clean`` is skipped at save."""
+        from django.core.exceptions import ValidationError as DjValidationError
+
+        flow = ChatFlow(
+            name="Bad",
+            tenant=self.tenant,
+            platform="MADE_UP",
+            flow_data={"nodes": [], "edges": []},
+        )
+        with self.assertRaises(DjValidationError) as ctx:
+            flow.save()
+        self.assertIn("platform", ctx.exception.message_dict)

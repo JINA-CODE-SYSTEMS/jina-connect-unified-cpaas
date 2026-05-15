@@ -76,9 +76,22 @@ _REGISTRY: dict[str, NodeTypeSpec] = {}
 
 
 def register_node_type(spec: NodeTypeSpec) -> None:
-    """Register a node type. Raises ``ValueError`` on duplicate ``type_id``."""
-    if spec.type_id in _REGISTRY:
-        raise ValueError(f"Node type {spec.type_id!r} already registered (by {_REGISTRY[spec.type_id]!r})")
+    """Register a node type.
+
+    Idempotent: re-registering an *identical* spec is a no-op. Django
+    autoreload, Celery worker forks, and test re-imports may all re-execute
+    registration modules, and forcing them to all raise would be brittle.
+
+    Raises ``ValueError`` only when the same ``type_id`` is registered with
+    a *different* spec — that's a real bug worth flagging loudly.
+    """
+    existing = _REGISTRY.get(spec.type_id)
+    if existing is not None:
+        if existing == spec:
+            return
+        raise ValueError(
+            f"Node type {spec.type_id!r} already registered with a different spec (existing={existing!r}, new={spec!r})"
+        )
     _REGISTRY[spec.type_id] = spec
 
 

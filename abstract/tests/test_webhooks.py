@@ -109,21 +109,21 @@ class BaseWebhookHandlerFlowTests(TestCase):
         _FailHandler.handle_verified_was_called = False
         _NoKeyHandler.times_handled = 0
 
-    @patch("abstract.webhooks.redis.from_url")
-    def test_bad_signature_returns_403_and_skips_handler(self, redis_from_url):
+    @patch("abstract.webhooks._get_redis_client")
+    def test_bad_signature_returns_403_and_skips_handler(self, get_client):
         """Bad signature short-circuits with 403 and never claims a key."""
         response = _FailHandler.as_view()(self.factory.post("/wh/"))
         self.assertEqual(response.status_code, 403)
         self.assertFalse(_FailHandler.handle_verified_was_called)
         # No Redis call should have happened.
-        redis_from_url.assert_not_called()
+        get_client.assert_not_called()
 
-    @patch("abstract.webhooks.redis.from_url")
-    def test_fresh_request_runs_handler(self, redis_from_url):
+    @patch("abstract.webhooks._get_redis_client")
+    def test_fresh_request_runs_handler(self, get_client):
         """Signature passes + key is fresh ⇒ handle_verified runs."""
         client = MagicMock()
         client.set.return_value = True  # SETNX succeeded (key was new)
-        redis_from_url.return_value = client
+        get_client.return_value = client
 
         response = _PassHandler.as_view()(self.factory.post("/wh/"))
 
@@ -138,12 +138,12 @@ class BaseWebhookHandlerFlowTests(TestCase):
         self.assertEqual(kwargs.get("ex"), 86400)
         self.assertTrue(kwargs.get("nx"))
 
-    @patch("abstract.webhooks.redis.from_url")
-    def test_duplicate_key_returns_200_silently(self, redis_from_url):
+    @patch("abstract.webhooks._get_redis_client")
+    def test_duplicate_key_returns_200_silently(self, get_client):
         """Duplicate idempotency key ⇒ 200, handle_verified does NOT run."""
         client = MagicMock()
         client.set.return_value = None  # SETNX returns None when key exists
-        redis_from_url.return_value = client
+        get_client.return_value = client
 
         response = _PassHandler.as_view()(self.factory.post("/wh/"))
 
@@ -152,21 +152,21 @@ class BaseWebhookHandlerFlowTests(TestCase):
         self.assertEqual(response.content, b"")
         self.assertFalse(_PassHandler.handled)
 
-    @patch("abstract.webhooks.redis.from_url")
-    def test_none_idempotency_key_skips_redis(self, redis_from_url):
+    @patch("abstract.webhooks._get_redis_client")
+    def test_none_idempotency_key_skips_redis(self, get_client):
         """Returning None from get_idempotency_key bypasses the Redis claim."""
         response = _NoKeyHandler.as_view()(self.factory.post("/wh/"))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(_NoKeyHandler.times_handled, 1)
-        redis_from_url.assert_not_called()
+        get_client.assert_not_called()
 
-    @patch("abstract.webhooks.redis.from_url")
-    def test_subclass_overrides_ttl_and_prefix(self, redis_from_url):
+    @patch("abstract.webhooks._get_redis_client")
+    def test_subclass_overrides_ttl_and_prefix(self, get_client):
         """Subclass-level overrides flow through to the Redis call."""
         client = MagicMock()
         client.set.return_value = True
-        redis_from_url.return_value = client
+        get_client.return_value = client
 
         _CustomTTLHandler.as_view()(self.factory.post("/wh/"))
 

@@ -76,25 +76,25 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
     # Human-readable name shown in logs / API responses.
     PROVIDER_NAME: str = "base"
 
-    # BSP-level capabilities (templates, subscriptions, media_upload, ...).
-    # This is distinct from ``capabilities`` (the messaging-feature dataclass
-    # inherited from BaseChannelAdapter). Sub-classes override with a
-    # frozenset of capability strings, e.g.
-    #   CAPABILITIES = frozenset({"templates", "subscriptions", "media_upload"})
-    # Recognised capabilities:
-    #   "templates"      – submit / sync / delete message templates
-    #   "subscriptions"  – register / unregister / list BSP-level webhooks
-    #   "media_upload"   – upload media and obtain a handle / URL
-    CAPABILITIES: frozenset = frozenset()
+    # BSP-level capability strings (``"templates"``, ``"subscriptions"``,
+    # ``"media_upload"``) live in ``capabilities.extra`` — the free-form slot
+    # on the ``Capabilities`` dataclass inherited from ``BaseChannelAdapter``.
+    # ``CAPABILITIES`` and ``supports()`` below are back-compat shims; new
+    # code should read ``adapter.capabilities.extra`` directly.
 
     def __init__(self, wa_app: "WAApp") -> None:
         self.wa_app = wa_app
 
     # ── Capability introspection ──────────────────────────────────────────
 
+    @property
+    def CAPABILITIES(self) -> frozenset[str]:
+        """Back-compat: BSP-level features stored in ``capabilities.extra``."""
+        return self.capabilities.extra
+
     def supports(self, capability: str) -> bool:
-        """Return *True* if this adapter supports the given capability."""
-        return capability in self.CAPABILITIES
+        """Return ``True`` if this adapter supports the given BSP capability."""
+        return capability in self.capabilities.extra
 
     # ── Template operations ───────────────────────────────────────────────
 
