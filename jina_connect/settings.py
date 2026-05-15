@@ -511,6 +511,27 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
+# Celery beat — periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    "voice-enforce-recording-retention": {
+        # Hard-delete expired recordings nightly at 02:30 in the
+        # configured CELERY_TIMEZONE (Asia/Kolkata).
+        "task": "voice.recordings.tasks.enforce_retention",
+        "schedule": __import__("celery.schedules", fromlist=["crontab"]).crontab(
+            hour=2, minute=30
+        ),
+    },
+}
+
+
+# ── Voice channel ──────────────────────────────────────────────────────
+# Recordings live in their own S3 bucket so retention rules / lifecycle
+# policies can be applied independently of the main media bucket.
+VOICE_RECORDING_STORAGE_BUCKET = config("VOICE_RECORDING_STORAGE_BUCKET", "")
+VOICE_MAX_CALL_DURATION_SECONDS = config(
+    "VOICE_MAX_CALL_DURATION_SECONDS", 3600, cast=int
+)
+
 
 GUPSHUP_BASE_URL = config("GUPSHUP_BASE_URL", "")
 

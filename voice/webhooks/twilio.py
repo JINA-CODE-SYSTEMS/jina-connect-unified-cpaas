@@ -171,9 +171,31 @@ class TwilioRecordingStatusHandler(_TwilioHandlerBase):
         return f"recording:{recording_sid}:{status}"
 
     def handle_verified(self, request):
-        logger.info(
-            "[TwilioRecordingStatusHandler] recording %s status=%s — download task lands with #161",
-            request.POST.get("RecordingSid"),
-            request.POST.get("RecordingStatus"),
-        )
+        recording_sid = request.POST.get("RecordingSid", "")
+        status = request.POST.get("RecordingStatus", "")
+        call_sid = request.POST.get("CallSid", "")
+
+        if status != "completed":
+            logger.info(
+                "[TwilioRecordingStatusHandler] %s status=%s (ack)",
+                recording_sid,
+                status,
+            )
+            return HttpResponse(status=200)
+
+        # Resolve the VoiceCall row from the Twilio CallSid so the task
+        # has both ids it needs.
+        from voice.models import VoiceCall
+
+        call = VoiceCall.objects.filter(provider_call_id=call_sid).first()
+        if call is None:
+            logger.warning(
+                "[TwilioRecordingStatusHandler] no VoiceCall for CallSid=%s",
+                call_sid,
+            )
+            return HttpResponse(status=200)
+
+        from voice.recordings.tasks import download_recording
+
+        download_recording.delay(str(call.id), recording_sid)
         return HttpResponse(status=200)
