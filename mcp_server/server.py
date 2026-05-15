@@ -45,4 +45,4 @@ mcp = FastMCP(
 # Import tool modules — each registers tools via @mcp.tool()
 # ---------------------------------------------------------------------------
 from mcp_server.auth import resolve_tenant  # noqa: E402, F401
-from mcp_server.tools import campaigns, contacts, messaging, providers  # noqa: E402, F401
+from mcp_server.tools import campaigns, contacts, messaging, providers, voice  # noqa: E402, F401
