@@ -1,0 +1,44 @@
+name: generic
+display_name: "Generic SIP trunk"
+notes: |
+  Permissive defaults. Override sip_realm, sip_proxy, codecs, and dtmf_mode
+  to match your vendor's onboarding doc. If you get a trunk working, please
+  contribute a vendor-specific profile back.
+
+endpoint_template: |
+  [{endpoint_id}]
+  type=endpoint
+  context=jina-voice-inbound
+  disallow=all
+  allow=ulaw
+  allow=alaw
+  auth={auth_id}
+  aors={aor_id}
+  from_user={sip_username}
+  from_domain={sip_realm}
+  dtmf_mode=rfc4733
+  rtp_symmetric=yes
+  force_rport=yes
+  rewrite_contact=yes
+
+auth_template: |
+  [{auth_id}]
+  type=auth
+  auth_type=userpass
+  username={sip_username}
+  password={sip_password}
+  realm={sip_realm}
+
+aor_template: |
+  [{aor_id}]
+  type=aor
+  contact=sip:{sip_proxy}
+  qualify_frequency=60
+
+registration_template: |
+  [{reg_id}]
+  type=registration
+  outbound_auth={auth_id}
+  server_uri=sip:{sip_proxy}
+  client_uri=sip:{sip_username}@{sip_realm}
+  retry_interval=60

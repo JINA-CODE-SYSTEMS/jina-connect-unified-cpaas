@@ -1,0 +1,39 @@
+name: telnyx_sip
+display_name: "Telnyx Elastic SIP"
+notes: |
+  Telnyx supports both userpass auth (this profile) and IP auth — for
+  IP auth leave sip_username / sip_password empty and allowlist Telnyx
+  IPs at your edge firewall. Defaults assume TLS transport on opus/ulaw.
+
+endpoint_template: |
+  [{endpoint_id}]
+  type=endpoint
+  context=jina-voice-inbound
+  disallow=all
+  allow=opus
+  allow=ulaw
+  auth={auth_id}
+  aors={aor_id}
+  from_user={sip_username}
+  from_domain={sip_realm}
+  dtmf_mode=rfc4733
+  transport=transport-tls
+  rtp_symmetric=yes
+  force_rport=yes
+  rewrite_contact=yes
+
+auth_template: |
+  [{auth_id}]
+  type=auth
+  auth_type=userpass
+  username={sip_username}
+  password={sip_password}
+  realm={sip_realm}
+
+aor_template: |
+  [{aor_id}]
+  type=aor
+  contact=sip:{sip_proxy};transport=tls
+  qualify_frequency=60
+
+registration_template: ""

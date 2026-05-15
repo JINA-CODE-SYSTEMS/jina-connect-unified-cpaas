@@ -528,9 +528,16 @@ CELERY_BEAT_SCHEDULE = {
 # Recordings live in their own S3 bucket so retention rules / lifecycle
 # policies can be applied independently of the main media bucket.
 VOICE_RECORDING_STORAGE_BUCKET = config("VOICE_RECORDING_STORAGE_BUCKET", "")
-VOICE_MAX_CALL_DURATION_SECONDS = config(
-    "VOICE_MAX_CALL_DURATION_SECONDS", 3600, cast=int
-)
+VOICE_MAX_CALL_DURATION_SECONDS = config("VOICE_MAX_CALL_DURATION_SECONDS", 3600, cast=int)
+
+# Asterisk (only needed for SIP voice — HTTP voice providers don't touch this).
+ASTERISK_ARI_URL = config("ASTERISK_ARI_URL", "")
+ASTERISK_ARI_USER = config("ASTERISK_ARI_USER", "")
+ASTERISK_ARI_PASSWORD = config("ASTERISK_ARI_PASSWORD", "")
+ASTERISK_ARI_APP_NAME = config("ASTERISK_ARI_APP_NAME", "jina-voice")
+# Directory where rendered PJSIP fragments are dropped for Asterisk
+# to ``pjsip reload``. Empty → falls back to ``<project>/asterisk-config/pjsip.d``.
+ASTERISK_PJSIP_DROP_DIR = config("ASTERISK_PJSIP_DROP_DIR", "")
 
 
 GUPSHUP_BASE_URL = config("GUPSHUP_BASE_URL", "")

@@ -40,6 +40,14 @@ class VoiceConfig(AppConfig):
 
             logging.getLogger(__name__).exception("Failed to import Twilio voice adapter; provider unavailable.")
 
+        try:
+            import voice.adapters.sip  # noqa: F401
+        except Exception:  # pragma: no cover — defensive
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to import SIP voice adapter; provider unavailable.")
+
         # Hook the post-save signal that mirrors call lifecycle into
-        # team_inbox + billing pipelines.
+        # team_inbox + billing pipelines. Importing voice.signals also
+        # wires the SIP provisioning hook below.
         import voice.signals  # noqa: F401

@@ -39,6 +39,8 @@ google-cloud-storage==2.18.0
 google-auth>=2.0.0
 django-silk
 django-encrypted-model-fields==0.6.5
+PyYAML>=6.0
+websocket-client>=1.7.0  # ARI events consumer (voice/sip_config/ari_consumer.py)
 reportlab>=4.0
 openpyxl>=3.1.0
 langgraph>=0.2.0

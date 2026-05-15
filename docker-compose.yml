@@ -77,5 +77,43 @@ services:
       redis:
         condition: service_healthy
 
+  # ── Voice SIP stack ──────────────────────────────────────────────────
+  # Asterisk is only required when the voice channel uses the SIP adapter
+  # (HTTP voice providers — Twilio / Plivo / Vonage / Telnyx / Exotel —
+  # don't touch this). Gated behind the ``sip`` compose profile so a
+  # plain ``docker-compose up`` doesn't spin it up.
+  asterisk:
+    image: andrius/asterisk:20.6-alpine
+    profiles: ["sip"]
+    ports:
+      - "8088:8088"      # ARI HTTP + WebSocket
+      - "5060:5060/udp"  # SIP signalling
+      - "10000-10100:10000-10100/udp"  # RTP media (narrow range for dev)
+    volumes:
+      - ./asterisk-config:/etc/asterisk
+    environment:
+      - ASTERISK_ARI_USER=${ASTERISK_ARI_USER:-jina}
+      - ASTERISK_ARI_PASSWORD=${ASTERISK_ARI_PASSWORD:-changeme}
+
+  voice-ari-consumer:
+    build: .
+    command: python manage.py voice_ari_consumer
+    profiles: ["sip"]
+    volumes:
+      - .:/app
+    env_file: .env
+    environment:
+      - DB_HOST=db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/0
+      - ASTERISK_ARI_URL=http://asterisk:8088
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      asterisk:
+        condition: service_started
+
 volumes:
   pgdata:

@@ -130,6 +130,70 @@ def release_concurrency_semaphore(sender, call, **kwargs) -> None:
         )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SIP provisioning — render PJSIP config when a SIP VoiceProviderConfig
+# is saved / deleted so Asterisk has the trunk loaded before the first
+# call lands.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _is_sip(provider_config) -> bool:
+    return getattr(provider_config, "provider", "") == "sip"
+
+
+def _on_provider_config_saved(sender, instance, **kwargs) -> None:
+    if not _is_sip(instance):
+        return
+    try:
+        from voice.sip_config.pjsip_writer import ensure_endpoint
+
+        ensure_endpoint(instance)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "[voice.signals] failed to provision PJSIP for config %s",
+            instance.pk,
+        )
+
+
+def _on_provider_config_deleted(sender, instance, **kwargs) -> None:
+    if not _is_sip(instance):
+        return
+    try:
+        from voice.sip_config.pjsip_writer import remove_endpoint
+
+        remove_endpoint(instance)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "[voice.signals] failed to remove PJSIP config for %s",
+            instance.pk,
+        )
+
+
+def _connect_provisioning_signals() -> None:
+    """Wire ``post_save`` / ``post_delete`` on VoiceProviderConfig.
+
+    Called lazily from the module body so the import doesn't fail when
+    Django apps aren't ready yet.
+    """
+    from django.db.models.signals import post_delete, post_save
+
+    from voice.models import VoiceProviderConfig
+
+    post_save.connect(
+        _on_provider_config_saved,
+        sender=VoiceProviderConfig,
+        dispatch_uid="voice.sip.ensure_endpoint",
+    )
+    post_delete.connect(
+        _on_provider_config_deleted,
+        sender=VoiceProviderConfig,
+        dispatch_uid="voice.sip.remove_endpoint",
+    )
+
+
+_connect_provisioning_signals()
+
+
 @receiver(call_completed)
 def trigger_provider_cost_billing(sender, call, **kwargs) -> None:
     """For adapters with ``supports_provider_cost``, schedule a delayed
