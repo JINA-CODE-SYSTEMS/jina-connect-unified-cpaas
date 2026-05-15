@@ -196,12 +196,17 @@ _connect_provisioning_signals()
 
 @receiver(call_completed)
 def trigger_provider_cost_billing(sender, call, **kwargs) -> None:
-    """For adapters with ``supports_provider_cost``, schedule a delayed
-    follow-up to fetch the provider's billed cost.
+    """Route the completed call into the right billing pipeline.
 
-    Twilio publishes the call price ~30s after completion via a
-    separate API endpoint. We defer the billing write until then so we
-    record the authoritative number, not a local estimate.
+    Adapters with ``Capabilities.supports_provider_cost = True``
+    (Twilio, Plivo, Vonage, Telnyx, Exotel) get the delayed-fetch path
+    — Twilio publishes price ~30s after completion via a separate API
+    endpoint, so we defer the billing write until then to record the
+    authoritative number rather than a local estimate.
+
+    Everything else (SIP, plus future providers without a cost
+    callback) gets the local rate-card path which prices the call from
+    ``VoiceRateCard`` rows on the provider config (#170).
     """
     from voice.adapters.registry import get_voice_adapter_cls
 
@@ -210,11 +215,14 @@ def trigger_provider_cost_billing(sender, call, **kwargs) -> None:
     except NotImplementedError:
         return
 
-    if not adapter_cls.capabilities.supports_provider_cost:
+    if adapter_cls.capabilities.supports_provider_cost:
+        from voice.billing.tasks import fetch_provider_cost
+
+        fetch_provider_cost.apply_async(args=[str(call.id)], countdown=30)
         return
 
-    # Lazy import — billing module ships in #170 will extend this. For
-    # #160 we have a thin provider-cost implementation in voice.billing.
-    from voice.billing.tasks import fetch_provider_cost
+    # Local rate-card path — SIP and any HTTP provider that doesn't
+    # publish per-call cost.
+    from voice.billing.tasks import rate_call_locally
 
-    fetch_provider_cost.apply_async(args=[str(call.id)], countdown=30)
+    rate_call_locally.delay(str(call.id))

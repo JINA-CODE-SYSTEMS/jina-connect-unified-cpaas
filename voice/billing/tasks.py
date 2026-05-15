@@ -21,6 +21,26 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
+@shared_task
+def rate_call_locally(call_id: str) -> None:
+    """Run the local rate card against ``call_id`` and persist the cost.
+
+    Queued from ``voice.signals`` when the originating adapter does not
+    support a provider cost callback. Idempotent: re-running on an
+    already-billed call is a no-op via
+    ``voice.billing.rater.rate_call_and_record``.
+    """
+    from voice.billing.rater import rate_call_and_record
+    from voice.models import VoiceCall
+
+    try:
+        call = VoiceCall.objects.select_related("provider_config", "tenant").get(pk=UUID(call_id))
+    except VoiceCall.DoesNotExist:
+        logger.warning("[voice.billing.rate_call_locally] VoiceCall %s not found", call_id)
+        return
+    rate_call_and_record(call)
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def fetch_provider_cost(self, call_id: str) -> None:
     """Re-fetch the call from the provider, extract the cost, write a
