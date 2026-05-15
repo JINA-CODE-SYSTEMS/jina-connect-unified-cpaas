@@ -11,6 +11,10 @@ from __future__ import annotations
 
 from django.urls import path
 
+from voice.webhooks.exotel import (
+    ExotelPassthruHandler,
+    ExotelStatusHandler,
+)
 from voice.webhooks.plivo import (
     PlivoAnswerHandler,
     PlivoCallStatusHandler,
@@ -84,5 +88,16 @@ urlpatterns = [
         "webhooks/telnyx/<uuid:config_uuid>/event/",
         TelnyxEventHandler.as_view(),
         name="telnyx-event",
+    ),
+    # ── Exotel ─────────────────────────────────────────────────────────
+    path(
+        "webhooks/exotel/<uuid:config_uuid>/status/",
+        ExotelStatusHandler.as_view(),
+        name="exotel-status",
+    ),
+    path(
+        "webhooks/exotel/<uuid:config_uuid>/passthru/",
+        ExotelPassthruHandler.as_view(),
+        name="exotel-passthru",
     ),
 ]
