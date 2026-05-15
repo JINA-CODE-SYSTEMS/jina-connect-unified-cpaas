@@ -1,0 +1,158 @@
+---
+title: Voice — E2E Testing
+description: Running the voice end-to-end suite against real provider sandboxes, including the GitHub Actions workflow and required secrets.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+The voice E2E suite (`voice/tests/test_e2e.py`) hits real provider
+sandboxes — actual outbound calls to Twilio / Plivo / Vonage / Telnyx
+/ Exotel test numbers, and optionally a SIP trunk via Asterisk. It is
+gated by `VOICE_E2E_TESTS=1` so it never runs on a regular PR by
+accident, and uses sandbox credentials to keep cost negligible.
+
+## When it runs
+
+The `voice-e2e.yml` workflow runs in three situations:
+
+  1. **Weekly schedule** — Sundays 03:00 UTC. Catches silent
+     breakages in any sandbox before a release.
+  2. **Manual `workflow_dispatch`** — kick off a run from the GitHub
+     Actions tab, optionally toggling the SIP sub-suite.
+  3. **`e2e:voice` label on a PR** — maintainers add the label when
+     they want a PR to exercise the real providers before merging.
+
+Regular PR CI never triggers it, so the main pipeline stays fast.
+
+## Required GitHub Secrets
+
+Each provider's tests skip if any of its required env vars is missing.
+Set whichever you want covered.
+
+<Aside type="note">
+  All values here are stored as GitHub repository secrets (Settings →
+  Secrets and variables → Actions). The workflow reads them via
+  ``${{ secrets.X }}``; nothing is logged.
+</Aside>
+
+### Twilio
+
+| Secret                       | Notes                                                            |
+|------------------------------|------------------------------------------------------------------|
+| `VOICE_E2E_TWILIO_SID`       | Account SID (starts with `AC...`).                               |
+| `VOICE_E2E_TWILIO_TOKEN`     | Auth token. Use the test credentials, not production.            |
+| `VOICE_E2E_TWILIO_FROM`      | E.164 outbound number bought on the sandbox account.             |
+| `VOICE_E2E_TWILIO_TO`        | Twilio test-recipient (`+15005550006`) or your own verified DID. |
+
+### Plivo
+
+| Secret                       | Notes                                                  |
+|------------------------------|--------------------------------------------------------|
+| `VOICE_E2E_PLIVO_ID`         | Auth ID (`MA...`).                                     |
+| `VOICE_E2E_PLIVO_TOKEN`      | Auth token (test mode).                                |
+| `VOICE_E2E_PLIVO_FROM`       | Outbound DID.                                          |
+| `VOICE_E2E_PLIVO_TO`         | Plivo "test mode" number or your verified DID.         |
+
+### Vonage
+
+| Secret                              | Notes                                                                  |
+|-------------------------------------|------------------------------------------------------------------------|
+| `VOICE_E2E_VONAGE_KEY`              | API key.                                                               |
+| `VOICE_E2E_VONAGE_SECRET`           | API secret.                                                            |
+| `VOICE_E2E_VONAGE_APP_ID`           | Application UUID.                                                      |
+| `VOICE_E2E_VONAGE_PRIVATE_KEY`      | RS256 private key PEM (full multi-line value).                         |
+| `VOICE_E2E_VONAGE_SIG_SECRET`       | Webhook signature secret (optional).                                   |
+| `VOICE_E2E_VONAGE_FROM`             | Outbound number registered to the application.                         |
+| `VOICE_E2E_VONAGE_TO`               | Recipient — your own DID for the sandbox.                              |
+
+### Telnyx
+
+| Secret                                  | Notes                                              |
+|-----------------------------------------|----------------------------------------------------|
+| `VOICE_E2E_TELNYX_API_KEY`              | API key (`KEY01...`).                              |
+| `VOICE_E2E_TELNYX_CONNECTION_ID`        | Call Control connection id.                        |
+| `VOICE_E2E_TELNYX_PROFILE_ID`           | Outbound voice profile id (optional).              |
+| `VOICE_E2E_TELNYX_PUBLIC_KEY`           | Ed25519 public key (PEM) for webhook verification. |
+| `VOICE_E2E_TELNYX_FROM`                 | Telnyx-owned DID.                                  |
+| `VOICE_E2E_TELNYX_TO`                   | Verified test DID.                                 |
+
+### Exotel
+
+| Secret                                | Notes                                                  |
+|---------------------------------------|--------------------------------------------------------|
+| `VOICE_E2E_EXOTEL_SID`                | Account SID.                                           |
+| `VOICE_E2E_EXOTEL_KEY`                | API key.                                               |
+| `VOICE_E2E_EXOTEL_TOKEN`              | API token.                                             |
+| `VOICE_E2E_EXOTEL_SUBDOMAIN`          | API subdomain (default `api.exotel.com`).              |
+| `VOICE_E2E_EXOTEL_FROM`               | ExoPhone (Exotel-rented DID).                          |
+| `VOICE_E2E_EXOTEL_TO`                 | Verified test number.                                  |
+| `VOICE_E2E_EXOTEL_WEBHOOK_TOKEN`      | Path-token used to verify inbound webhooks.            |
+
+### SIP (optional)
+
+Only consulted when the workflow input `run_sip = true`.
+
+| Secret                          | Notes                                              |
+|---------------------------------|----------------------------------------------------|
+| `VOICE_E2E_SIP_USERNAME`        | SIP auth username.                                 |
+| `VOICE_E2E_SIP_PASSWORD`        | SIP auth password.                                 |
+| `VOICE_E2E_SIP_REALM`           | SIP realm.                                         |
+| `VOICE_E2E_SIP_PROXY`           | Proxy / SBC host.                                  |
+| `VOICE_E2E_SIP_FROM`            | Caller number (E.164).                             |
+| `VOICE_E2E_SIP_TO`              | Test recipient.                                    |
+| `VOICE_E2E_SIP_PROFILE`         | Carrier YAML profile name (e.g. `dialogic`).       |
+
+### Recording + transcription
+
+| Secret                                      | Notes                                          |
+|---------------------------------------------|------------------------------------------------|
+| `VOICE_E2E_RECORDING_BUCKET`                | S3-compatible bucket for the recording test.   |
+| `VOICE_E2E_AWS_ACCESS_KEY_ID`               | IAM key with put/get/delete on the bucket.     |
+| `VOICE_E2E_AWS_SECRET_ACCESS_KEY`           | Matching secret.                               |
+| `VOICE_E2E_AWS_S3_REGION`                   | Region (e.g. `us-east-1`).                     |
+| `VOICE_E2E_TRANSCRIPTION_PROVIDER`          | `deepgram` / `whisper` / `provider_native`.    |
+| `VOICE_E2E_DEEPGRAM_API_KEY`                | Required if transcription provider is Deepgram. |
+| `VOICE_E2E_OPENAI_API_KEY`                  | Required if transcription provider is Whisper. |
+
+## Running locally
+
+```bash
+export VOICE_E2E_TESTS=1
+# Set as many of the per-provider env vars as you want to cover —
+# tests skip individually if their creds are missing.
+export VOICE_E2E_TWILIO_SID=ACxxxx
+export VOICE_E2E_TWILIO_TOKEN=...
+export VOICE_E2E_TWILIO_FROM=+15005550006
+export VOICE_E2E_TWILIO_TO=+15005550006
+
+pytest voice/tests/test_e2e.py -v
+```
+
+The suite uses `TransactionTestCase` so each test's DB writes are
+visible to the Celery worker handling provider webhooks (the regular
+`TestCase` would roll the txn back and hide them).
+
+## What each test asserts
+
+| Test                                            | Asserts                                                                                                  |
+|-------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| `test_outbound_call_lifecycle`                  | Adapter replaces the placeholder `provider_call_id`, call reaches a terminal state inside 90s, `VoiceCallEvent` rows are present in monotonic sequence order. |
+| `test_recording`                                | `VoiceRecording` row lands with a `storage_url`, `storage.signed_url(...)` returns an `http(s)://` URL.  |
+| `test_transcription`                            | After recording, polls `VoiceRecording.transcription` for up to 90s and asserts a non-empty string.       |
+| `TestInboundE2E.test_inbound_call_creates_...`  | A `VoiceCall(direction=inbound)` row appears for the configured provider within 90s, plus a `team_inbox.Messages` row from the post-call signal. |
+| `TestSIPE2E.test_sip_outbound_call_reaches_...` | Same as the HTTP outbound lifecycle but routed through Asterisk.                                          |
+
+## Diagnosing a red run
+
+The workflow uploads `voice-e2e.log` as an artifact (`voice-e2e-log`),
+retained for 14 days. The pytest output captures each test's poll
+loop, the last observed `VoiceCall.status`, and the provider's most
+recent webhook payload (via `voice.tasks.process_call_status` info
+logs).
+
+When debugging locally, run with `-s` to stream logs without buffering
+and tail `voice-e2e.log` as the test runs:
+
+```bash
+pytest voice/tests/test_e2e.py::TestTwilioE2E -v -s
+```

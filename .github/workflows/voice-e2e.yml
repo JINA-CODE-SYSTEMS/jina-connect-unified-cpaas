@@ -1,0 +1,158 @@
+name: Voice E2E
+
+on:
+  # Manual trigger from the Actions tab — pick which providers to
+  # exercise via the `providers` input (empty = whatever creds are set).
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: "Comma-separated provider list (twilio,plivo,vonage,telnyx,exotel). Empty = all configured."
+        required: false
+        default: ""
+      run_sip:
+        description: "Run SIP E2E (requires Asterisk reachable from the runner)."
+        required: false
+        type: boolean
+        default: false
+  # Weekly run so a silent breakage in any sandbox surfaces before a
+  # release. Cron is Sunday 03:00 UTC.
+  schedule:
+    - cron: "0 3 * * 0"
+  # On PRs only when the maintainer adds the ``e2e:voice`` label —
+  # avoids burning sandbox credits on every push.
+  pull_request:
+    types: [labeled]
+
+concurrency:
+  group: voice-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  DJANGO_SETTINGS_MODULE: jina_connect.settings
+
+jobs:
+  voice-e2e:
+    name: Voice E2E
+    runs-on: ubuntu-latest
+    # Skip the labeled-PR trigger unless the label is exactly e2e:voice.
+    if: |
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'e2e:voice')
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: jina_connect_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install deps
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-django
+
+      - name: Run voice E2E suite
+        env:
+          # Master gate for the suite.
+          VOICE_E2E_TESTS: "1"
+          VOICE_E2E_SIP_TESTS: ${{ inputs.run_sip == true && '1' || '0' }}
+
+          # DB / Redis pointers (services block above).
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/jina_connect_test
+          REDIS_URL: redis://localhost:6379/0
+          CELERY_BROKER_URL: redis://localhost:6379/0
+
+          # Per-provider sandbox secrets. Each test skips if any of its
+          # required vars is unset, so a partial credentials set still
+          # produces a green run for whatever is configured.
+          VOICE_E2E_TWILIO_SID: ${{ secrets.VOICE_E2E_TWILIO_SID }}
+          VOICE_E2E_TWILIO_TOKEN: ${{ secrets.VOICE_E2E_TWILIO_TOKEN }}
+          VOICE_E2E_TWILIO_FROM: ${{ secrets.VOICE_E2E_TWILIO_FROM }}
+          VOICE_E2E_TWILIO_TO: ${{ secrets.VOICE_E2E_TWILIO_TO }}
+
+          VOICE_E2E_PLIVO_ID: ${{ secrets.VOICE_E2E_PLIVO_ID }}
+          VOICE_E2E_PLIVO_TOKEN: ${{ secrets.VOICE_E2E_PLIVO_TOKEN }}
+          VOICE_E2E_PLIVO_FROM: ${{ secrets.VOICE_E2E_PLIVO_FROM }}
+          VOICE_E2E_PLIVO_TO: ${{ secrets.VOICE_E2E_PLIVO_TO }}
+
+          VOICE_E2E_VONAGE_KEY: ${{ secrets.VOICE_E2E_VONAGE_KEY }}
+          VOICE_E2E_VONAGE_SECRET: ${{ secrets.VOICE_E2E_VONAGE_SECRET }}
+          VOICE_E2E_VONAGE_APP_ID: ${{ secrets.VOICE_E2E_VONAGE_APP_ID }}
+          VOICE_E2E_VONAGE_PRIVATE_KEY: ${{ secrets.VOICE_E2E_VONAGE_PRIVATE_KEY }}
+          VOICE_E2E_VONAGE_SIG_SECRET: ${{ secrets.VOICE_E2E_VONAGE_SIG_SECRET }}
+          VOICE_E2E_VONAGE_FROM: ${{ secrets.VOICE_E2E_VONAGE_FROM }}
+          VOICE_E2E_VONAGE_TO: ${{ secrets.VOICE_E2E_VONAGE_TO }}
+
+          VOICE_E2E_TELNYX_API_KEY: ${{ secrets.VOICE_E2E_TELNYX_API_KEY }}
+          VOICE_E2E_TELNYX_CONNECTION_ID: ${{ secrets.VOICE_E2E_TELNYX_CONNECTION_ID }}
+          VOICE_E2E_TELNYX_PROFILE_ID: ${{ secrets.VOICE_E2E_TELNYX_PROFILE_ID }}
+          VOICE_E2E_TELNYX_PUBLIC_KEY: ${{ secrets.VOICE_E2E_TELNYX_PUBLIC_KEY }}
+          VOICE_E2E_TELNYX_FROM: ${{ secrets.VOICE_E2E_TELNYX_FROM }}
+          VOICE_E2E_TELNYX_TO: ${{ secrets.VOICE_E2E_TELNYX_TO }}
+
+          VOICE_E2E_EXOTEL_SID: ${{ secrets.VOICE_E2E_EXOTEL_SID }}
+          VOICE_E2E_EXOTEL_KEY: ${{ secrets.VOICE_E2E_EXOTEL_KEY }}
+          VOICE_E2E_EXOTEL_TOKEN: ${{ secrets.VOICE_E2E_EXOTEL_TOKEN }}
+          VOICE_E2E_EXOTEL_SUBDOMAIN: ${{ secrets.VOICE_E2E_EXOTEL_SUBDOMAIN }}
+          VOICE_E2E_EXOTEL_FROM: ${{ secrets.VOICE_E2E_EXOTEL_FROM }}
+          VOICE_E2E_EXOTEL_TO: ${{ secrets.VOICE_E2E_EXOTEL_TO }}
+          VOICE_E2E_EXOTEL_WEBHOOK_TOKEN: ${{ secrets.VOICE_E2E_EXOTEL_WEBHOOK_TOKEN }}
+
+          # SIP sandbox — only used when ``run_sip`` is true.
+          VOICE_E2E_SIP_USERNAME: ${{ secrets.VOICE_E2E_SIP_USERNAME }}
+          VOICE_E2E_SIP_PASSWORD: ${{ secrets.VOICE_E2E_SIP_PASSWORD }}
+          VOICE_E2E_SIP_REALM: ${{ secrets.VOICE_E2E_SIP_REALM }}
+          VOICE_E2E_SIP_PROXY: ${{ secrets.VOICE_E2E_SIP_PROXY }}
+          VOICE_E2E_SIP_FROM: ${{ secrets.VOICE_E2E_SIP_FROM }}
+          VOICE_E2E_SIP_TO: ${{ secrets.VOICE_E2E_SIP_TO }}
+          VOICE_E2E_SIP_PROFILE: ${{ secrets.VOICE_E2E_SIP_PROFILE }}
+
+          # Transcription provider (optional — the transcription test
+          # skips when unset).
+          VOICE_TRANSCRIPTION_PROVIDER: ${{ secrets.VOICE_E2E_TRANSCRIPTION_PROVIDER }}
+          DEEPGRAM_API_KEY: ${{ secrets.VOICE_E2E_DEEPGRAM_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.VOICE_E2E_OPENAI_API_KEY }}
+
+          # Voice recording bucket (S3-compatible) — required for the
+          # recording test to land bytes.
+          VOICE_RECORDING_STORAGE_BUCKET: ${{ secrets.VOICE_E2E_RECORDING_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.VOICE_E2E_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.VOICE_E2E_AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_REGION_NAME: ${{ secrets.VOICE_E2E_AWS_S3_REGION }}
+        run: |
+          set -o pipefail
+          pytest voice/tests/test_e2e.py -v --maxfail=5 --tb=short 2>&1 | tee voice-e2e.log
+
+      - name: Upload provider response log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-e2e-log
+          path: voice-e2e.log
+          if-no-files-found: ignore
+          retention-days: 14
