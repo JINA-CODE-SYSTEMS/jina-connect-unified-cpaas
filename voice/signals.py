@@ -195,6 +195,22 @@ _connect_provisioning_signals()
 
 
 @receiver(call_completed)
+def trigger_sms_fallback(sender, call, **kwargs) -> None:
+    """Dispatch the SMS fallback when the call ended without engagement.
+
+    All decisions / errors stay inside ``maybe_send_sms_fallback`` — it
+    is fully fault-tolerant so a downed SMS provider doesn't crash the
+    voice signal chain.
+    """
+    try:
+        from voice.fallback import maybe_send_sms_fallback
+
+        maybe_send_sms_fallback(call)
+    except Exception:  # noqa: BLE001 — defence in depth around the swallow
+        logger.exception("[voice.signals.trigger_sms_fallback] failed for call %s", call.id)
+
+
+@receiver(call_completed)
 def trigger_provider_cost_billing(sender, call, **kwargs) -> None:
     """Route the completed call into the right billing pipeline.
 

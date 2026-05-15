@@ -106,6 +106,30 @@ class VoiceProviderConfig(BaseTenantModelForFilterUser):
     recording_enabled = models.BooleanField(default=False)
     enabled = models.BooleanField(default=True)
 
+    # Cross-channel SMS fallback (#172). When the voice call ends in
+    # one of ``fallback_on_causes`` (default NO_ANSWER / USER_BUSY /
+    # CALL_REJECTED) and ``fallback_sms_enabled`` is True, the post-call
+    # signal dispatches an SMS via ``fallback_sms_config`` rendering
+    # ``fallback_sms_template`` against the call context.
+    fallback_sms_enabled = models.BooleanField(default=False)
+    fallback_sms_config = models.ForeignKey(
+        "sms.SMSApp",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="voice_fallback_configs",
+        help_text="SMS app used to send the fallback message.",
+    )
+    fallback_sms_template = models.TextField(
+        blank=True,
+        help_text='Jinja-style "{{var}}" placeholders allowed (first_name, from_number, to_number).',
+    )
+    fallback_on_causes = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=("List of HangupCause values that trigger the SMS fallback. Empty list disables the cause filter."),
+    )
+
     class Meta:
         verbose_name = "Voice provider config"
         verbose_name_plural = "Voice provider configs"

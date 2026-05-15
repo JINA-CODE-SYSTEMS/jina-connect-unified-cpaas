@@ -162,6 +162,18 @@ class Broadcast(BaseTenantModelForFilterUser):
         ),
     )
 
+    # Per-broadcast SMS-fallback override. ``True`` / ``False`` overrides
+    # ``VoiceProviderConfig.fallback_sms_enabled``; ``None`` inherits
+    # the config-level default. Voice-only. (#172)
+    fallback_sms_enabled = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Override VoiceProviderConfig.fallback_sms_enabled for this "
+            "broadcast. None = inherit; True/False forces the policy."
+        ),
+    )
+
     # Credit management fields
     credit_deducted = models.BooleanField(
         default=False, help_text="Whether credits have been deducted for this broadcast"
