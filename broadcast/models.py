@@ -147,6 +147,21 @@ class Broadcast(BaseTenantModelForFilterUser):
     )
     reason_for_cancellation = models.TextField(blank=True, null=True)
 
+    # Voice compliance: per-broadcast time-of-day window, evaluated in
+    # the recipient's local timezone. Out-of-window dispatches are
+    # rescheduled (see ``voice.compliance.time_of_day``) rather than
+    # dropped. Shape: ``{"start": "09:00", "end": "21:00"}`` (24-hour).
+    # Voice-only — text-channel handlers ignore this field. (#171)
+    allowed_hours_local = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Voice-only time-of-day window in the recipient's local TZ; "
+            'e.g. ``{"start": "09:00", "end": "21:00"}``. Out-of-window '
+            "dispatches are deferred to the next allowed time."
+        ),
+    )
+
     # Credit management fields
     credit_deducted = models.BooleanField(
         default=False, help_text="Whether credits have been deducted for this broadcast"

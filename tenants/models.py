@@ -287,6 +287,14 @@ class TenantVoiceApp(BaseTenantModelForFilterUser):
         default=90,
         help_text="Days a recording is kept before retention sweep deletes it.",
     )
+    recording_requires_consent = models.BooleanField(
+        default=False,
+        help_text=(
+            "When set, adapters refuse to record a call unless a "
+            "``RecordingConsent`` row with ``consent_given=True`` exists "
+            "for the contact (#171)."
+        ),
+    )
 
     class Meta:
         verbose_name = "Tenant voice app"

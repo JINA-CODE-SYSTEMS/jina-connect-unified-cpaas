@@ -1098,6 +1098,38 @@ def handle_voice_message(message):
                 "error": f"VoiceProviderConfig {config.id} has no from_numbers configured",
             }
 
+        # Time-of-day compliance gate (#171). When the broadcast carries
+        # an ``allowed_hours_local`` window we check the recipient's local
+        # time. Out-of-window dispatches re-queue themselves for
+        # ``next_allowed_time`` instead of being dropped.
+        to_number_e164 = str(message.contact.phone)
+        if broadcast.allowed_hours_local:
+            from voice.compliance.time_of_day import (
+                is_within_allowed_hours,
+                next_allowed_time,
+                resolve_recipient_timezone,
+            )
+
+            recipient_tz = resolve_recipient_timezone(to_number_e164)
+            if not is_within_allowed_hours(broadcast.allowed_hours_local, recipient_tz):
+                eta = next_allowed_time(broadcast.allowed_hours_local, recipient_tz)
+                # Re-enter the routing batch task at the allowed time —
+                # that's the same path the scheduler uses, so the message
+                # transitions back through SENDING → routed handler
+                # without bypassing status accounting.
+                process_broadcast_messages_batch.apply_async(args=[[message.id]], eta=eta)
+                logger.info(
+                    "[broadcast.handle_voice_message] %s out of allowed_hours_local; rescheduled for %s (%s)",
+                    message.id,
+                    eta.isoformat(),
+                    recipient_tz,
+                )
+                return {
+                    "success": True,
+                    "message_id": str(message.id),
+                    "response": {"rescheduled_for": eta.isoformat()},
+                }
+
         # Render TTS / audio URL from the voice template + placeholder
         # data. Template Jinja rendering arrives with #168 IVR; for #162
         # we pass through ``tts_text`` / ``audio_url`` as-is.
@@ -1110,7 +1142,7 @@ def handle_voice_message(message):
             provider_call_id=f"pending-{message.id}",  # replaced by adapter on initiate
             direction=CallDirection.OUTBOUND,
             from_number=str(from_number),
-            to_number=str(message.contact.phone),
+            to_number=to_number_e164,
             contact=message.contact,
             broadcast=broadcast,
             status=CallStatus.QUEUED,

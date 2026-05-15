@@ -370,6 +370,66 @@ class VoiceRecording(BaseTenantModelForFilterUser):
         return f"{self.call_id}:{self.provider_recording_id}"
 
 
+class RecordingConsent(BaseTenantModelForFilterUser):
+    """Per-contact recording-consent record (#171).
+
+    When a tenant has ``TenantVoiceApp.recording_requires_consent``
+    enabled, adapters refuse to turn on call recording for a contact
+    that doesn't have a ``RecordingConsent`` row with
+    ``consent_given=True``. The row tracks how consent was captured
+    (verbal IVR, web form, API, implied) so audit / legal reviews can
+    reconstruct the chain of custody.
+
+    A pointer back to the verbal-IVR recording (``recording_url``) lets
+    legal teams play back the consent capture itself, which most
+    jurisdictions need for two-party-consent regions.
+    """
+
+    filter_by_user_tenant_fk = "tenant__tenant_users__user"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="recording_consents")
+    contact = models.ForeignKey(
+        TenantContact,
+        on_delete=models.CASCADE,
+        related_name="recording_consents",
+    )
+    consent_given = models.BooleanField(default=False)
+    consent_timestamp = models.DateTimeField(null=True, blank=True)
+    consent_method = models.CharField(
+        max_length=20,
+        choices=[
+            ("verbal_ivr", "Verbal IVR"),
+            ("web_form", "Web form"),
+            ("api", "API"),
+            ("implied", "Implied (legal opt-in)"),
+        ],
+        blank=True,
+    )
+    recording_url = models.CharField(
+        max_length=512,
+        blank=True,
+        help_text="Storage key for the verbal-IVR consent recording, if applicable.",
+    )
+
+    class Meta:
+        verbose_name = "Recording consent"
+        verbose_name_plural = "Recording consents"
+        indexes = [
+            models.Index(fields=["tenant", "contact"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "contact"],
+                name="recordingconsent_unique_tenant_contact",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = "given" if self.consent_given else "not given"
+        return f"{self.tenant_id}:{self.contact_id}:{state}"
+
+
 class VoiceRateCard(BaseTenantModelForFilterUser):
     """Per-prefix per-config rate card.
 

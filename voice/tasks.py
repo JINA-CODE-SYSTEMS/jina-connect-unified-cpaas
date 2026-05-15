@@ -55,6 +55,16 @@ def initiate_call(self, call_id: str) -> None:
         flow_id=getattr(call.flow_session, "flow_id", None),
     )
 
+    # Stamp the consent decision on the call so adapters that emit
+    # recording verbs can check ``call.metadata["recording_allowed"]``
+    # before attaching them (#171). The compliance helper returns True
+    # for tenants that haven't opted into the consent gate, so this is
+    # a no-op for the default-permissive case.
+    from voice.compliance.consent import recording_allowed
+
+    consent_ok = recording_allowed(call)
+    call.metadata = {**call.metadata, "recording_allowed": consent_ok}
+
     callback_url = call.metadata.get("answer_callback_url", "")
     try:
         handle = adapter.initiate_call(
