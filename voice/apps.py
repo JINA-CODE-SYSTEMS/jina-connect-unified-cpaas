@@ -41,6 +41,13 @@ class VoiceConfig(AppConfig):
             logging.getLogger(__name__).exception("Failed to import Twilio voice adapter; provider unavailable.")
 
         try:
+            import voice.adapters.http_voice.plivo  # noqa: F401
+        except Exception:  # pragma: no cover — defensive
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to import Plivo voice adapter; provider unavailable.")
+
+        try:
             import voice.adapters.sip  # noqa: F401
         except Exception:  # pragma: no cover — defensive
             import logging

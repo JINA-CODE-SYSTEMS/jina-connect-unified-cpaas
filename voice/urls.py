@@ -11,6 +11,11 @@ from __future__ import annotations
 
 from django.urls import path
 
+from voice.webhooks.plivo import (
+    PlivoAnswerHandler,
+    PlivoCallStatusHandler,
+    PlivoRecordingHandler,
+)
 from voice.webhooks.twilio import (
     TwilioAnswerHandler,
     TwilioCallStatusHandler,
@@ -41,5 +46,21 @@ urlpatterns = [
         "webhooks/twilio/<uuid:config_uuid>/recording-status/",
         TwilioRecordingStatusHandler.as_view(),
         name="twilio-recording-status",
+    ),
+    # ── Plivo ──────────────────────────────────────────────────────────
+    path(
+        "webhooks/plivo/<uuid:config_uuid>/call-status/",
+        PlivoCallStatusHandler.as_view(),
+        name="plivo-call-status",
+    ),
+    path(
+        "webhooks/plivo/<uuid:config_uuid>/answer/",
+        PlivoAnswerHandler.as_view(),
+        name="plivo-answer",
+    ),
+    path(
+        "webhooks/plivo/<uuid:config_uuid>/recording/",
+        PlivoRecordingHandler.as_view(),
+        name="plivo-recording",
     ),
 ]
