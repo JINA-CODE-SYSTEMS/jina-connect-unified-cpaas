@@ -22,6 +22,10 @@ from voice.webhooks.twilio import (
     TwilioGatherHandler,
     TwilioRecordingStatusHandler,
 )
+from voice.webhooks.vonage import (
+    VonageAnswerHandler,
+    VonageEventHandler,
+)
 
 app_name = "voice"
 
@@ -62,5 +66,16 @@ urlpatterns = [
         "webhooks/plivo/<uuid:config_uuid>/recording/",
         PlivoRecordingHandler.as_view(),
         name="plivo-recording",
+    ),
+    # ── Vonage ─────────────────────────────────────────────────────────
+    path(
+        "webhooks/vonage/<uuid:config_uuid>/event/",
+        VonageEventHandler.as_view(),
+        name="vonage-event",
+    ),
+    path(
+        "webhooks/vonage/<uuid:config_uuid>/answer/",
+        VonageAnswerHandler.as_view(),
+        name="vonage-answer",
     ),
 ]
