@@ -331,6 +331,29 @@ class IvrSessionTests(SimpleTestCase):
         self.mock_client.exists.side_effect = self._store_exists
         self.mock_client.delete.side_effect = self._store_delete
 
+        # ``update()`` uses WATCH/MULTI/EXEC via ``client.pipeline()``
+        # (#179 review). Wire the mock pipeline to the same backing
+        # store so reads inside the watched block see the latest value.
+        self._buffered_writes: list[tuple[str, str, int | None]] = []
+
+        def _pipeline():
+            pipe = MagicMock()
+            pipe.watch = MagicMock(return_value=None)
+            pipe.get.side_effect = lambda key: self.store.get(key)
+            pipe.multi = MagicMock(return_value=None)
+            pipe.set.side_effect = lambda key, value, ex=None: self._buffered_writes.append((key, value, ex))
+            pipe.execute.side_effect = self._flush_pipeline
+            pipe.reset = MagicMock(return_value=None)
+            return pipe
+
+        self.mock_client.pipeline.side_effect = _pipeline
+
+    def _flush_pipeline(self):
+        for key, value, ex in self._buffered_writes:
+            self.store[key] = value
+        self._buffered_writes.clear()
+        return [True]
+
     def tearDown(self):
         self._redis_patcher.stop()
 

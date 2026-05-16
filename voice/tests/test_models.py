@@ -44,13 +44,28 @@ from voice.models import (
     VoiceTemplate,
 )
 
+_PROVIDER_CREDENTIALS = {
+    VoiceProvider.TWILIO: {"account_sid": "AC123", "auth_token": "secret"},
+    VoiceProvider.PLIVO: {"auth_id": "MA123", "auth_token": "secret"},
+    VoiceProvider.SIP: {
+        "sip_username": "u",
+        "sip_password": "p",
+        "sip_realm": "sip.example.com",
+        "sip_proxy": "sip.example.com",
+    },
+    VoiceProvider.EXOTEL: {"sid": "s", "api_key": "k", "api_token": "t"},
+}
+
 
 def _make_provider_config(tenant: Tenant, provider: str = VoiceProvider.TWILIO, **extra) -> VoiceProviderConfig:
+    # Pre-save signal validates credentials per-provider (#179 review),
+    # so the test fixture has to use a schema that matches.
+    creds = _PROVIDER_CREDENTIALS.get(provider, _PROVIDER_CREDENTIALS[VoiceProvider.TWILIO])
     return VoiceProviderConfig.objects.create(
         tenant=tenant,
         provider=provider,
         vendor_label=extra.pop("vendor_label", "Test config"),
-        credentials=json.dumps({"account_sid": "AC123", "auth_token": "secret"}),
+        credentials=json.dumps(creds),
         from_numbers=["+14155550100"],
         currency="USD",
         max_concurrent_calls=5,

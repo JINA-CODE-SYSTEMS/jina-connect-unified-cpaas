@@ -164,7 +164,9 @@ class HandleVoiceMessageTests(TestCase):
     def test_dispatch_blocked_by_concurrency_cap(self, mock_redis, mock_initiate):
         """When the semaphore is at the cap, dispatch returns success=False
         so the broadcast retry mechanism can pick it up later."""
-        # INCR returns max+1 → over cap.
+        # Lua-based acquire (#179 review) returns 0 when capped, 1 when ok.
+        mock_redis.return_value.eval.return_value = 0
+        # Belt-and-suspenders for the non-atomic fallback path: INCR=cap+1.
         mock_redis.return_value.incr.return_value = 11
 
         tenant, cfg = _make_setup(tenant_name="Cap Tenant", max_concurrent=10)
@@ -188,21 +190,34 @@ class ConcurrencySemaphoreTests(TestCase):
 
     @patch("voice.concurrency._get_redis_client")
     def test_acquire_under_cap_succeeds(self, mock_client):
+        """Atomic acquire (#179 review) uses Redis EVAL — 1 = success."""
         from voice.concurrency import acquire
 
-        mock_client.return_value.incr.return_value = 1
+        mock_client.return_value.eval.return_value = 1
         self.assertTrue(acquire("t1", "c1", 5))
-        # First increment sets TTL.
-        mock_client.return_value.expire.assert_called_once()
+        mock_client.return_value.eval.assert_called_once()
 
     @patch("voice.concurrency._get_redis_client")
     def test_acquire_at_cap_fails_and_rolls_back(self, mock_client):
+        """Atomic acquire returns 0 from EVAL when capped; the Lua script
+        itself does the DECR rollback, so no separate Python-level
+        DECR call is expected."""
         from voice.concurrency import acquire
 
-        mock_client.return_value.incr.return_value = 6  # exceeds cap=5
+        mock_client.return_value.eval.return_value = 0
         self.assertFalse(acquire("t1", "c1", 5))
-        # Counter rolled back.
-        mock_client.return_value.decr.assert_called_once()
+        mock_client.return_value.eval.assert_called_once()
+
+    @patch("voice.concurrency._get_redis_client")
+    def test_acquire_falls_back_to_non_atomic_when_eval_fails(self, mock_client):
+        """When EVAL raises (Redis without scripting / weird mock), the
+        non-atomic INCR+EXPIRE path takes over."""
+        from voice.concurrency import acquire
+
+        mock_client.return_value.eval.side_effect = RuntimeError("no eval")
+        mock_client.return_value.incr.return_value = 1
+        self.assertTrue(acquire("t1", "c1", 5))
+        mock_client.return_value.expire.assert_called_once()
 
     @patch("voice.concurrency._get_redis_client")
     def test_acquire_unlimited_when_max_zero(self, mock_client):
