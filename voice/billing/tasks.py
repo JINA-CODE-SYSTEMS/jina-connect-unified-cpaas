@@ -46,9 +46,13 @@ def fetch_provider_cost(self, call_id: str) -> None:
     """Re-fetch the call from the provider, extract the cost, write a
     ``TenantTransaction``.
 
-    For Twilio specifically: the ``Calls/{sid}.json`` endpoint returns
-    ``price`` (e.g. ``-0.01400``) and ``price_unit`` (e.g. ``USD``)
-    once Twilio has billed the call.
+    Routed to per-provider fetchers via ``_PROVIDER_PRICE_FETCHERS``.
+    Today only Twilio's cost-callback shape is implemented (the
+    ``Calls/{sid}.json`` resource). Plivo / Vonage / Telnyx / Exotel
+    all declare ``supports_provider_cost=True`` but each surfaces price
+    differently — wiring the rest is follow-up work; until then their
+    calls fall through to the local rate-card path. (#179 review —
+    rename to make the dispatcher explicit.)
     """
     from voice.models import VoiceCall
 
@@ -67,8 +71,19 @@ def fetch_provider_cost(self, call_id: str) -> None:
     adapter_cls = get_voice_adapter_cls(call.provider_config.provider)
     adapter = adapter_cls(call.provider_config)
 
+    fetcher = _PROVIDER_PRICE_FETCHERS.get(call.provider_config.provider)
+    if fetcher is None:
+        logger.info(
+            "[voice.billing.fetch_provider_cost] no price fetcher for provider %s; falling back to local rate card",
+            call.provider_config.provider,
+        )
+        from voice.billing.rater import rate_call_and_record
+
+        rate_call_and_record(call)
+        return
+
     try:
-        cost_amount, cost_currency = _fetch_twilio_price(adapter, call.provider_call_id)
+        cost_amount, cost_currency = fetcher(adapter, call.provider_call_id)
     except Exception as exc:  # noqa: BLE001 — retry transient provider errors
         logger.info(
             "[voice.billing.fetch_provider_cost] %s not yet billed by provider (%s); retrying",
@@ -135,3 +150,11 @@ def _record_transaction(call, cost_amount: Decimal, cost_currency: str) -> None:
             f"({call.provider_call_id}); cost_source={CostSource.PROVIDER}"
         ),
     )
+
+
+# Per-provider price fetchers. Keys must match ``VoiceProvider`` enum
+# values. Adding a new provider that publishes a cost callback = one
+# new fetcher + one row here. (#179 review)
+_PROVIDER_PRICE_FETCHERS = {
+    "twilio": _fetch_twilio_price,
+}

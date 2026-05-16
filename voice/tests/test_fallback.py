@@ -254,6 +254,36 @@ class MaybeSendSmsFallbackTests(TestCase):
         call.refresh_from_db()
         self.assertTrue(call.metadata.get("sms_fallback_sent"))
 
+    @patch("sms.services.message_sender.SMSMessageSender")
+    def test_save_after_send_failing_does_not_double_send(self, mock_sender_cls):
+        """Regression for the PR #179 review — if ``call.save()`` raised
+        *after* a successful SMS dispatch in the previous ordering, a
+        re-fired signal would re-send the SMS. The new ordering stamps
+        ``sms_fallback_sent`` *before* the send, so even if the post-send
+        save fails, the second invocation no-ops on ``already_sent``.
+        """
+        mock_sender_cls.return_value.send_text.return_value = {"success": True, "message_id": "SM_1"}
+
+        cfg = _make_voice_config(self.tenant, self.sms_app)
+        call = _make_call(self.tenant, cfg, self.contact)
+
+        # Run #1 — SMS dispatches and the idempotency flag lands.
+        result1 = maybe_send_sms_fallback(call)
+        self.assertTrue(result1["attempted"])
+        self.assertEqual(mock_sender_cls.return_value.send_text.call_count, 1)
+
+        # Simulate the post-send save having dropped the detail dict
+        # (e.g. DB hiccup) — only the idempotency flag is on the call.
+        call.refresh_from_db()
+        call.metadata = {"sms_fallback_sent": True}
+        call.save(update_fields=["metadata", "updated_at"])
+
+        # Run #2 — must NOT re-dispatch.
+        result2 = maybe_send_sms_fallback(call)
+        self.assertFalse(result2["attempted"])
+        self.assertEqual(result2["skipped_reason"], "already_sent")
+        self.assertEqual(mock_sender_cls.return_value.send_text.call_count, 1)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Broadcast override semantics

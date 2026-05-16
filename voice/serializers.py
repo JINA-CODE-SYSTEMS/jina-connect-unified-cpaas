@@ -55,6 +55,29 @@ class VoiceProviderConfigSerializer(serializers.ModelSerializer):
             ret["credentials"] = None
         return ret
 
+    def validate(self, attrs):
+        """Run per-provider credential schema validation at the API boundary.
+
+        Without this, a PATCH with a credentials payload that doesn't
+        match the chosen provider's schema sneaks through the
+        serializer and only fails when the adapter is first used.
+        Pre-validating here turns the failure into a 400 right at the
+        write call. (#179 review)
+        """
+        from voice.adapters.credentials import validate_credentials
+        from voice.exceptions import VoiceCredentialError
+
+        creds = attrs.get("credentials")
+        # ``provider`` may be absent on a PATCH; fall back to the
+        # instance's existing value.
+        provider = attrs.get("provider") or (self.instance.provider if self.instance else None)
+        if creds and provider:
+            try:
+                validate_credentials(provider, creds)
+            except VoiceCredentialError as exc:
+                raise serializers.ValidationError({"credentials": str(exc)}) from exc
+        return super().validate(attrs)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Calls + events

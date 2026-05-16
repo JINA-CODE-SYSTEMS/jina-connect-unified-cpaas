@@ -53,8 +53,18 @@ def download_recording(self, call_id: str, provider_recording_id: str) -> None:
         logger.warning("[voice.recordings.download_recording] call %s not found", call_id)
         return
 
-    # Idempotent — a re-fired webhook shouldn't double-store.
-    if VoiceRecording.objects.filter(call=call, provider_recording_id=provider_recording_id).exists():
+    # Idempotent — a re-fired webhook shouldn't double-store. We only
+    # short-circuit when the prior attempt actually finished (storage
+    # key landed); a row from a half-failed run (``storage_url=""``)
+    # should be retried, not skipped. (#179 review)
+    if (
+        VoiceRecording.objects.filter(
+            call=call,
+            provider_recording_id=provider_recording_id,
+        )
+        .exclude(storage_url="")
+        .exists()
+    ):
         return
 
     from voice.adapters.registry import get_voice_adapter_cls

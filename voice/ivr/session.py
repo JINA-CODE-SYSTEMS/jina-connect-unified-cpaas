@@ -26,10 +26,17 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from redis.exceptions import WatchError
 
 from abstract.webhooks import _get_redis_client
 
 logger = logging.getLogger(__name__)
+
+
+# Cap on optimistic-lock retries before ``update`` gives up — high
+# enough to absorb a couple of racing gather webhooks, low enough that
+# a stuck loop fails fast.
+_WATCH_RETRIES = 5
 
 
 def _key(call_id: str) -> str:
@@ -105,23 +112,53 @@ class IVRSession:
             return None
 
     def update(self, **patch: Any) -> dict[str, Any]:
-        """Merge ``patch`` into the stored state and persist.
+        """Merge ``patch`` into the stored state and persist atomically.
 
-        Returns the new state dict. Raises ``RuntimeError`` if no
-        prior state — call ``create`` first.
+        Uses Redis WATCH / MULTI / EXEC so two concurrent gather
+        webhooks for the same call can't read-modify-write the
+        variables dict with the later write winning (which silently
+        dropped the earlier var). Retries up to ``_WATCH_RETRIES``
+        times on contention. (#179 review)
         """
-        state = self.get()
-        if state is None:
-            raise RuntimeError(f"IVR session for call {self.call_id} does not exist (expired?)")
-        # Shallow merge — variables get nested merge so we don't
-        # accidentally wipe earlier vars when stamping a new one.
-        if "variables" in patch and isinstance(patch["variables"], dict):
-            new_vars = {**(state.get("variables") or {}), **patch["variables"]}
-            patch = {**patch, "variables": new_vars}
-        state.update(patch)
         client = _get_redis_client()
-        client.set(_key(self.call_id), json.dumps(state), ex=_ttl_seconds())
-        return state
+        key = _key(self.call_id)
+        for _attempt in range(_WATCH_RETRIES):
+            pipe = client.pipeline()
+            try:
+                pipe.watch(key)
+                raw = pipe.get(key)
+                if raw is None:
+                    raise RuntimeError(f"IVR session for call {self.call_id} does not exist (expired?)")
+                if isinstance(raw, bytes):
+                    raw = raw.decode()
+                state = json.loads(raw)
+
+                # Shallow merge, with nested merge for ``variables`` so
+                # we don't wipe earlier vars when stamping a new one.
+                merged_patch = dict(patch)
+                if "variables" in patch and isinstance(patch["variables"], dict):
+                    merged_patch["variables"] = {
+                        **(state.get("variables") or {}),
+                        **patch["variables"],
+                    }
+                state.update(merged_patch)
+
+                pipe.multi()
+                pipe.set(key, json.dumps(state), ex=_ttl_seconds())
+                pipe.execute()
+                return state
+            except WatchError:
+                # Another writer beat us; loop and re-read.
+                continue
+            finally:
+                try:
+                    pipe.reset()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        raise RuntimeError(
+            f"IVR session for call {self.call_id} could not be updated after {_WATCH_RETRIES} contention retries"
+        )
 
     # ── convenience accessors ───────────────────────────────────────────
 

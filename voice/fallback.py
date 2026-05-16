@@ -158,6 +158,14 @@ def maybe_send_sms_fallback(call) -> dict[str, Any]:
 
     result["attempted"] = True
 
+    # Stamp the idempotency flag *before* the SMS dispatch attempt.
+    # If we sent first and the post-send ``call.save()`` raised, the
+    # next signal invocation would re-send. Now if save fails the
+    # outcome detail is missing but ``sms_fallback_sent=True`` still
+    # lands on a fresh retry path. (#179 review)
+    call.metadata = {**(call.metadata or {}), "sms_fallback_sent": True}
+    call.save(update_fields=["metadata", "updated_at"])
+
     # Late imports — the SMS sender pulls in provider credentials, so
     # we want to be sure the call qualifies before touching it.
     try:
@@ -176,14 +184,16 @@ def maybe_send_sms_fallback(call) -> dict[str, Any]:
     result["sms_message_id"] = send_result.get("message_id", "")
     result["error"] = send_result.get("error", "")
 
-    # Stamp the outcome on the call so this signal is idempotent and
-    # admin views can see the fallback record.
-    new_metadata = {
-        **(call.metadata or {}),
-        "sms_fallback_sent": True,
-        "sms_fallback": result,
-    }
-    call.metadata = new_metadata
-    call.save(update_fields=["metadata", "updated_at"])
+    # Best-effort outcome detail on the call. If this save fails the
+    # idempotency flag already landed above, so a retry won't double-
+    # send.
+    try:
+        call.metadata = {**(call.metadata or {}), "sms_fallback": result}
+        call.save(update_fields=["metadata", "updated_at"])
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "[voice.fallback] failed to persist sms_fallback detail for call %s",
+            call.id,
+        )
 
     return result

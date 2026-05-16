@@ -32,6 +32,23 @@ def _key(tenant_id: "UUID | str", provider_config_id: "UUID | str") -> str:
 SEMAPHORE_TTL_SECONDS = 4200
 
 
+# Atomic acquire script: increment, set TTL on the *current* key value
+# (always, so a long-running campaign keeps the slot fresh), then check
+# the cap. If exceeded, roll back atomically. Returns 1 on success, 0
+# on cap-reached. (#179 review — splitting INCR + EXPIRE leaves the
+# key without TTL if the worker dies between the two round-trips, and
+# the per-call DECR rollback can race.)
+_ACQUIRE_LUA = """
+local v = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+if v > tonumber(ARGV[1]) then
+    redis.call('DECR', KEYS[1])
+    return 0
+end
+return 1
+"""
+
+
 def acquire(tenant_id, provider_config_id, max_concurrent: int) -> bool:
     """Try to take one in-flight slot.
 
@@ -45,15 +62,18 @@ def acquire(tenant_id, provider_config_id, max_concurrent: int) -> bool:
 
     key = _key(tenant_id, provider_config_id)
     client = _get_redis_client()
-    new_value = client.incr(key)
-    if new_value == 1:
-        # Fresh key — set TTL so a stuck slot eventually frees.
-        client.expire(key, SEMAPHORE_TTL_SECONDS)
-    if new_value > max_concurrent:
-        # Roll back — we exceeded the cap.
-        client.decr(key)
-        return False
-    return True
+    try:
+        result = client.eval(_ACQUIRE_LUA, 1, key, max_concurrent, SEMAPHORE_TTL_SECONDS)
+        return bool(int(result))
+    except Exception:  # noqa: BLE001 — defensive; degrade to non-atomic path
+        logger.exception("[voice.concurrency] Lua acquire failed for %s; falling back to non-atomic", key)
+        new_value = client.incr(key)
+        if new_value == 1:
+            client.expire(key, SEMAPHORE_TTL_SECONDS)
+        if new_value > max_concurrent:
+            client.decr(key)
+            return False
+        return True
 
 
 def release(tenant_id, provider_config_id) -> None:

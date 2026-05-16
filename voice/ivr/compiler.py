@@ -119,7 +119,16 @@ def _ordered_walk(flow_data: dict[str, Any]) -> list[dict[str, Any]]:
 
     Falls back to declaration order if no edges / no entry id.
     """
-    nodes_by_id = {n.get("id"): n for n in (flow_data.get("nodes") or []) if n.get("id")}
+    raw_nodes = list(flow_data.get("nodes") or [])
+    # Flag nodes with missing / falsy ids explicitly — silently
+    # dropping them produced confusing "unreachable node" errors
+    # downstream. (#179 review)
+    bad = [n for n in raw_nodes if not n.get("id")]
+    if bad:
+        raise IvrCompilationError(
+            f"flow_data.nodes contains {len(bad)} node(s) with no id; fix the flow data before compiling"
+        )
+    nodes_by_id = {n["id"]: n for n in raw_nodes}
     entry_id = flow_data.get("entry_node_id")
     if entry_id is None:
         # No explicit entry — use declaration order.

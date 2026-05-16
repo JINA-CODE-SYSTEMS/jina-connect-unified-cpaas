@@ -53,16 +53,40 @@ def _bucket() -> str:
     Falls back to ``AWS_STORAGE_BUCKET_NAME`` if no dedicated voice
     bucket is set — useful for dev where teams don't want to provision
     two buckets, but production should always set the dedicated var so
-    lifecycle rules don't collide with the media bucket.
+    retention lifecycle rules don't collide with the media bucket.
+
+    Logs a loud warning whenever the fallback kicks in so accidental
+    production drift surfaces in dashboards instead of silently
+    putting the retention sweep on the shared media bucket. Tenants
+    that want to make the fallback a hard failure set
+    ``VOICE_REQUIRE_DEDICATED_RECORDING_BUCKET=True``. (#179 review)
     """
-    bucket = getattr(settings, "VOICE_RECORDING_STORAGE_BUCKET", "") or getattr(settings, "AWS_STORAGE_BUCKET_NAME", "")
-    if not bucket:
-        raise ValueError(
-            "Voice recording storage is not configured. Set "
-            "VOICE_RECORDING_STORAGE_BUCKET (or AWS_STORAGE_BUCKET_NAME) "
-            "in the environment."
+    voice_bucket = getattr(settings, "VOICE_RECORDING_STORAGE_BUCKET", "") or ""
+    if voice_bucket:
+        return voice_bucket
+
+    media_bucket = getattr(settings, "AWS_STORAGE_BUCKET_NAME", "") or ""
+    if media_bucket:
+        if getattr(settings, "VOICE_REQUIRE_DEDICATED_RECORDING_BUCKET", False):
+            raise ValueError(
+                "VOICE_RECORDING_STORAGE_BUCKET is required but unset. "
+                "Refusing to fall back to the shared media bucket "
+                "(AWS_STORAGE_BUCKET_NAME) because retention rules "
+                "would conflict."
+            )
+        logger.warning(
+            "[voice.recordings.storage] VOICE_RECORDING_STORAGE_BUCKET unset; "
+            "falling back to AWS_STORAGE_BUCKET_NAME=%r. Production should "
+            "provision a dedicated voice-recordings bucket.",
+            media_bucket,
         )
-    return bucket
+        return media_bucket
+
+    raise ValueError(
+        "Voice recording storage is not configured. Set "
+        "VOICE_RECORDING_STORAGE_BUCKET (or AWS_STORAGE_BUCKET_NAME) "
+        "in the environment."
+    )
 
 
 def make_storage_key(

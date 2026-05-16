@@ -169,16 +169,66 @@ def _on_provider_config_deleted(sender, instance, **kwargs) -> None:
         )
 
 
+def _on_provider_config_pre_save(sender, instance, **kwargs) -> None:
+    """Validate credentials before the row hits the DB (#179 review).
+
+    ``VoiceProviderConfig.clean()`` only runs on admin / DRF saves; a
+    management command or migration data load that hits
+    ``.objects.create(...)`` directly would otherwise persist
+    credentials that don't match the per-provider schema. Running on
+    ``pre_save`` catches all save paths.
+    """
+    from django.core.exceptions import ValidationError as DjValidationError
+
+    from voice.adapters.credentials import validate_credentials
+    from voice.exceptions import VoiceCredentialError
+
+    creds = instance.credentials
+    if creds in (None, "", "{}"):
+        return
+    try:
+        validate_credentials(instance.provider, creds)
+    except VoiceCredentialError as exc:
+        raise DjValidationError({"credentials": str(exc)}) from exc
+
+
+def _on_recording_deleted(sender, instance, **kwargs) -> None:
+    """Clear the denormalized ``recording_*`` fields on the parent call
+    when its recording is deleted (#179 review).
+
+    ``VoiceCall.recording_url`` / ``recording_duration_seconds`` are
+    mirrored from ``VoiceRecording`` for fast admin / inbox display.
+    Without this clear, deleting the recording (via retention sweep or
+    admin) leaves a stale signed-URL pointer behind.
+    """
+    call = getattr(instance, "call", None)
+    if call is None or not (call.recording_url or call.recording_duration_seconds):
+        return
+    # Only clear when the *deleted* recording is the one mirrored on
+    # the call. A call with multiple recording rows keeps the others
+    # intact.
+    if call.recording_url and call.recording_url != instance.storage_url:
+        return
+    call.recording_url = ""
+    call.recording_duration_seconds = None
+    call.save(update_fields=["recording_url", "recording_duration_seconds", "updated_at"])
+
+
 def _connect_provisioning_signals() -> None:
-    """Wire ``post_save`` / ``post_delete`` on VoiceProviderConfig.
+    """Wire ``pre_save`` / ``post_save`` / ``post_delete`` on VoiceProviderConfig.
 
     Called lazily from the module body so the import doesn't fail when
     Django apps aren't ready yet.
     """
-    from django.db.models.signals import post_delete, post_save
+    from django.db.models.signals import post_delete, post_save, pre_save
 
-    from voice.models import VoiceProviderConfig
+    from voice.models import VoiceProviderConfig, VoiceRecording
 
+    pre_save.connect(
+        _on_provider_config_pre_save,
+        sender=VoiceProviderConfig,
+        dispatch_uid="voice.config.validate_credentials",
+    )
     post_save.connect(
         _on_provider_config_saved,
         sender=VoiceProviderConfig,
@@ -188,6 +238,11 @@ def _connect_provisioning_signals() -> None:
         _on_provider_config_deleted,
         sender=VoiceProviderConfig,
         dispatch_uid="voice.sip.remove_endpoint",
+    )
+    post_delete.connect(
+        _on_recording_deleted,
+        sender=VoiceRecording,
+        dispatch_uid="voice.recording.clear_call_mirror",
     )
 
 

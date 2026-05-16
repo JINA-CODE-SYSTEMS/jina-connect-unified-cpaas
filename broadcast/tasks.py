@@ -1102,6 +1102,13 @@ def handle_voice_message(message):
         # an ``allowed_hours_local`` window we check the recipient's local
         # time. Out-of-window dispatches re-queue themselves for
         # ``next_allowed_time`` instead of being dropped.
+        #
+        # Cap re-schedules at ``MAX_TOD_RESCHEDULES`` so a stuck-window
+        # broadcast (e.g. a wrap-around config that always evaluates
+        # "outside") fails loudly rather than re-queueing forever.
+        # Counter lives in ``BroadcastMessage.webhook_response`` since
+        # that's already JSON-typed on the model. (#179 review)
+        MAX_TOD_RESCHEDULES = 24
         to_number_e164 = str(message.contact.phone)
         if broadcast.allowed_hours_local:
             from voice.compliance.time_of_day import (
@@ -1112,6 +1119,25 @@ def handle_voice_message(message):
 
             recipient_tz = resolve_recipient_timezone(to_number_e164)
             if not is_within_allowed_hours(broadcast.allowed_hours_local, recipient_tz):
+                tod_state = dict(message.webhook_response or {})
+                reschedules = int(tod_state.get("tod_reschedule_count", 0))
+                if reschedules >= MAX_TOD_RESCHEDULES:
+                    logger.warning(
+                        "[broadcast.handle_voice_message] %s exceeded %d TOD reschedules; failing",
+                        message.id,
+                        MAX_TOD_RESCHEDULES,
+                    )
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Exceeded {MAX_TOD_RESCHEDULES} time-of-day reschedule "
+                            f"attempts; check allowed_hours_local + recipient timezone."
+                        ),
+                    }
+                tod_state["tod_reschedule_count"] = reschedules + 1
+                message.webhook_response = tod_state
+                message.save(update_fields=["webhook_response"])
+
                 eta = next_allowed_time(broadcast.allowed_hours_local, recipient_tz)
                 # Re-enter the routing batch task at the allowed time —
                 # that's the same path the scheduler uses, so the message
@@ -1119,10 +1145,13 @@ def handle_voice_message(message):
                 # without bypassing status accounting.
                 process_broadcast_messages_batch.apply_async(args=[[message.id]], eta=eta)
                 logger.info(
-                    "[broadcast.handle_voice_message] %s out of allowed_hours_local; rescheduled for %s (%s)",
+                    "[broadcast.handle_voice_message] %s out of allowed_hours_local; "
+                    "rescheduled for %s (%s), attempt %d/%d",
                     message.id,
                     eta.isoformat(),
                     recipient_tz,
+                    reschedules + 1,
+                    MAX_TOD_RESCHEDULES,
                 )
                 return {
                     "success": True,
