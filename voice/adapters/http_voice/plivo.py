@@ -265,7 +265,9 @@ class PlivoVoiceAdapter(HttpVoiceAdapter):
         if not auth_token:
             return False
 
-        url = request.build_absolute_uri()
+        # Proxy-aware canonical URL — same TLS-termination concern as
+        # Twilio. See ``HttpVoiceAdapter._canonical_request_url``.
+        url = self._canonical_request_url(request)
         params = sorted(request.POST.items())
         # Plivo's signing string: nonce + uri + concatenated params
         # (key.value pairs, separated by . — matching Plivo SDK behavior).

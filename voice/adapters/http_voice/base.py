@@ -105,6 +105,34 @@ class HttpVoiceAdapter(VoiceAdapter):
             return HangupCause.UNKNOWN
         return self.HANGUP_CAUSE_MAP.get(provider_cause, HangupCause.UNKNOWN)
 
+    @staticmethod
+    def _canonical_request_url(request) -> str:
+        """Reconstruct the request URL the provider would have signed.
+
+        ``request.build_absolute_uri()`` derives scheme/host from the
+        WSGI environ — behind a TLS-terminating proxy that means
+        ``http://...`` while the provider signed ``https://...`` (the
+        public URL it POSTed to), so HMAC verification fails on every
+        webhook.
+
+        We honour ``X-Forwarded-Proto`` / ``X-Forwarded-Host`` when
+        present so the canonical URL matches what the provider signed.
+        ``SECURE_PROXY_SSL_HEADER`` in Django settings is the
+        framework-level fix for this too; this helper makes the adapter
+        correct regardless of whether the deployment set it.
+        """
+        meta = request.META
+        scheme = meta.get("HTTP_X_FORWARDED_PROTO", "").split(",")[0].strip() or request.scheme
+        host = (
+            meta.get("HTTP_X_FORWARDED_HOST", "").split(",")[0].strip()
+            or meta.get("HTTP_HOST", "")
+            or request.get_host()
+        )
+        # Path + query string come from the WSGI request directly;
+        # proxies don't typically rewrite these.
+        path = request.get_full_path()
+        return f"{scheme}://{host}{path}"
+
     # ── Abstract — concrete adapters still must implement these ──────────
 
     @abstractmethod

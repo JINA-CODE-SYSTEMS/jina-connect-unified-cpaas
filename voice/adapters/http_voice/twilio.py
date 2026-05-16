@@ -266,7 +266,11 @@ class TwilioVoiceAdapter(HttpVoiceAdapter):
         if not auth_token:
             return False
 
-        url = request.build_absolute_uri()
+        # Use the proxy-aware canonical URL so TLS-terminating
+        # load balancers don't break the signature check (the
+        # provider signed ``https://...``, ``build_absolute_uri()``
+        # would otherwise reconstruct ``http://...``).
+        url = self._canonical_request_url(request)
         params = sorted(request.POST.items())
         data = url + "".join(k + v for k, v in params)
         expected = base64.b64encode(hmac.new(auth_token.encode(), data.encode(), hashlib.sha1).digest()).decode()

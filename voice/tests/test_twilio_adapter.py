@@ -82,6 +82,29 @@ class SignatureVerifyTests(TestCase):
         req = self._make_request({"CallSid": "x"}, signature="anything")
         self.assertFalse(adapter.verify_webhook(req))
 
+    def test_https_proxy_signature_is_accepted(self):
+        """Regression for PR #179 review — behind a TLS-terminating
+        proxy ``request.build_absolute_uri()`` would reconstruct
+        ``http://...`` while the provider signed ``https://...``. The
+        adapter must canonicalise via ``X-Forwarded-Proto`` so the
+        HMAC check survives the hop."""
+        post = {"CallSid": "CA_proxy", "CallStatus": "completed"}
+        # The provider POSTs to and signs the public ``https://`` URL.
+        signed_url = "https://voice.example.com/voice/v1/webhooks/twilio/abc/call-status/"
+        sig = _twilio_signature("secret_token", signed_url, post)
+
+        # The request arrives at Django over HTTP (proxy → app), but
+        # with the X-Forwarded-Proto and X-Forwarded-Host headers the
+        # proxy set.
+        req = self.factory.post(
+            "/voice/v1/webhooks/twilio/abc/call-status/",
+            data=post,
+            HTTP_X_FORWARDED_PROTO="https",
+            HTTP_X_FORWARDED_HOST="voice.example.com",
+        )
+        req.META["HTTP_X_TWILIO_SIGNATURE"] = sig
+        self.assertTrue(self.adapter.verify_webhook(req))
+
 
 class ParseWebhookTests(TestCase):
     @classmethod

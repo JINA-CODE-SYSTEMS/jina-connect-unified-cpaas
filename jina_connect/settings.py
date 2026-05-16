@@ -45,6 +45,15 @@ SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", False, cast=bool)
 SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", not DEBUG, cast=bool)
 CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", not DEBUG, cast=bool)
 
+# Behind a TLS-terminating proxy (ALB / Nginx / Cloudflare), trust the
+# ``X-Forwarded-Proto`` header so ``request.scheme`` /
+# ``request.is_secure()`` return ``https`` and webhook signature
+# verification reconstructs URLs the providers actually signed.
+# Disabled in dev (``DEBUG=True``) so a local ngrok tunnel without the
+# header still works.
+if not DEBUG and config("TRUST_X_FORWARDED_PROTO", True, cast=bool):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Silence deploy-check warnings that are infrastructure concerns (handled by
 # the reverse proxy / load balancer in production, not Django itself).
 SILENCED_SYSTEM_CHECKS = [

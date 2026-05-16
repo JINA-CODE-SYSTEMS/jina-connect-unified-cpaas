@@ -283,6 +283,29 @@ class TestCallsEndpoint:
         assert body["status"] == CallStatus.QUEUED
         mock_delay.assert_called_once_with(body["id"])
 
+    @patch("voice.tasks.initiate_call.delay")
+    def test_repeat_dials_to_same_contact_do_not_collide(self, mock_delay, admin_client, voice_app, config):
+        """Regression for the placeholder ``provider_call_id`` collision
+        flagged in the PR #179 review — two dials to the same contact
+        used to hit the (provider_config, provider_call_id) unique
+        constraint because the placeholder was derived from the contact
+        id."""
+        TenantVoiceApp.objects.filter(tenant=config.tenant).update(default_outbound_config=config)
+        first = admin_client.post(
+            "/voice/v1/api/calls/initiate/",
+            data={"to_number": "+14155550199", "tts_text": "First"},
+            format="json",
+        )
+        second = admin_client.post(
+            "/voice/v1/api/calls/initiate/",
+            data={"to_number": "+14155550199", "tts_text": "Second"},
+            format="json",
+        )
+        assert first.status_code == 201
+        assert second.status_code == 201
+        assert first.json()["provider_call_id"] != second.json()["provider_call_id"]
+        assert VoiceCall.objects.filter(provider_config=config).count() == 2
+
     def test_hangup_terminal_call_no_op(self, admin_client, voice_app, config):
         call = _make_call(config.tenant, config, status=CallStatus.COMPLETED, provider_call_id="CA_term")
         resp = admin_client.post(f"/voice/v1/api/calls/{call.id}/hangup/")

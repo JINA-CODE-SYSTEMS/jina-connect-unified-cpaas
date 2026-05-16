@@ -143,11 +143,17 @@ def voice_initiate_call(
     if tts_text:
         metadata["static_play"] = {"tts_text": tts_text}
 
+    # Placeholder ``provider_call_id`` must be unique per provider
+    # config (unique constraint), so use a fresh UUID rather than the
+    # contact id — otherwise concurrent dials to the same contact
+    # collide.
+    import uuid as _uuid
+
     call = VoiceCall.objects.create(
         tenant=tenant,
         name=f"mcp-{to_number}",
         provider_config=config,
-        provider_call_id=f"pending-{contact.id}",
+        provider_call_id=f"pending-{_uuid.uuid4()}",
         direction=CallDirection.OUTBOUND,
         from_number=str(from_number),
         to_number=to_number,

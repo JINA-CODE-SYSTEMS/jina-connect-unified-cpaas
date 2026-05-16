@@ -19,6 +19,8 @@ Custom actions:
 
 from __future__ import annotations
 
+import uuid
+
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -184,11 +186,16 @@ class VoiceCallViewSet(
         if tts_text:
             metadata["static_play"] = {"tts_text": tts_text}
 
+        # ``provider_call_id`` carries a placeholder until the adapter
+        # replaces it with the real upstream SID. The (provider_config,
+        # provider_call_id) unique constraint means concurrent dials to
+        # the *same contact* collide if we use the contact id — burn
+        # a UUID so each placeholder is unique.
         call = VoiceCall.objects.create(
             tenant=tenant,
             name=f"rest-{to_number}",
             provider_config=config,
-            provider_call_id=f"pending-{contact.id}",
+            provider_call_id=f"pending-{uuid.uuid4()}",
             direction=CallDirection.OUTBOUND,
             from_number=str(from_number),
             to_number=to_number,
