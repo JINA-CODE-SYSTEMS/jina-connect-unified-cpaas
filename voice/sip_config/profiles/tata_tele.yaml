@@ -1,0 +1,38 @@
+name: tata_tele
+display_name: "Tata Tele Business Services"
+notes: |
+  Tata Tele issues per-account SIP details during provisioning.
+  Most deployments are IP-auth (leave sip_username/sip_password empty,
+  set registration_required=false) with allowlisted source IPs.
+
+endpoint_template: |
+  [{endpoint_id}]
+  type=endpoint
+  context=jina-voice-inbound
+  disallow=all
+  allow=alaw
+  allow=ulaw
+  auth={auth_id}
+  aors={aor_id}
+  from_user={sip_username}
+  from_domain={sip_realm}
+  dtmf_mode=rfc4733
+  rtp_symmetric=yes
+  force_rport=yes
+  rewrite_contact=yes
+
+auth_template: |
+  [{auth_id}]
+  type=auth
+  auth_type=userpass
+  username={sip_username}
+  password={sip_password}
+  realm={sip_realm}
+
+aor_template: |
+  [{aor_id}]
+  type=aor
+  contact=sip:{sip_proxy}
+  qualify_frequency=60
+
+registration_template: ""

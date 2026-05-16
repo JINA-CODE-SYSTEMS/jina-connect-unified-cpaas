@@ -246,6 +246,64 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         return False
 
 
+class TenantVoiceApp(BaseTenantModelForFilterUser):
+    """Per-tenant voice channel enablement and defaults.
+
+    Mirrors the ``TenantWAApp`` pattern: one row per tenant, gated by
+    ``is_enabled``. Default outbound/inbound configs point at
+    ``voice.VoiceProviderConfig`` rows; if either is null the tenant
+    has no working default for that direction yet.
+
+    The voice channel is feature-flagged at the tenant level via
+    ``is_enabled``. All voice URLs, MCP tools, and admin actions check
+    this flag before doing anything.
+    """
+
+    filter_by_user_tenant_fk = "tenant__tenant_users__user"
+    tenant = models.OneToOneField(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="voice_app",
+    )
+    is_enabled = models.BooleanField(
+        default=False,
+        help_text="Master switch for the voice channel for this tenant.",
+    )
+    default_outbound_config = models.ForeignKey(
+        "voice.VoiceProviderConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tenants_as_default_outbound",
+    )
+    default_inbound_config = models.ForeignKey(
+        "voice.VoiceProviderConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tenants_as_default_inbound",
+    )
+    recording_retention_days = models.IntegerField(
+        default=90,
+        help_text="Days a recording is kept before retention sweep deletes it.",
+    )
+    recording_requires_consent = models.BooleanField(
+        default=False,
+        help_text=(
+            "When set, adapters refuse to record a call unless a "
+            "``RecordingConsent`` row with ``consent_given=True`` exists "
+            "for the contact (#171)."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "Tenant voice app"
+        verbose_name_plural = "Tenant voice apps"
+
+    def __str__(self) -> str:
+        return f"{self.tenant_id}:voice(enabled={self.is_enabled})"
+
+
 class WABAInfo(BaseTenantModelForFilterUser):
     """
     Model to store WhatsApp Business Account (WABA) information from API.

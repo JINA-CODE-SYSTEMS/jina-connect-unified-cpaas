@@ -45,6 +45,15 @@ SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", False, cast=bool)
 SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", not DEBUG, cast=bool)
 CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", not DEBUG, cast=bool)
 
+# Behind a TLS-terminating proxy (ALB / Nginx / Cloudflare), trust the
+# ``X-Forwarded-Proto`` header so ``request.scheme`` /
+# ``request.is_secure()`` return ``https`` and webhook signature
+# verification reconstructs URLs the providers actually signed.
+# Disabled in dev (``DEBUG=True``) so a local ngrok tunnel without the
+# header still works.
+if not DEBUG and config("TRUST_X_FORWARDED_PROTO", True, cast=bool):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Silence deploy-check warnings that are infrastructure concerns (handled by
 # the reverse proxy / load balancer in production, not Django itself).
 SILENCED_SYSTEM_CHECKS = [
@@ -113,6 +122,7 @@ INSTALLED_APPS = [
     "telegram",
     "sms",
     "rcs",
+    "voice",
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
@@ -509,6 +519,39 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
+
+# Celery beat — periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    "voice-enforce-recording-retention": {
+        # Hard-delete expired recordings nightly at 02:30 in the
+        # configured CELERY_TIMEZONE (Asia/Kolkata).
+        "task": "voice.recordings.tasks.enforce_retention",
+        "schedule": __import__("celery.schedules", fromlist=["crontab"]).crontab(hour=2, minute=30),
+    },
+}
+
+
+# ── Voice channel ──────────────────────────────────────────────────────
+# Recordings live in their own S3 bucket so retention rules / lifecycle
+# policies can be applied independently of the main media bucket.
+VOICE_RECORDING_STORAGE_BUCKET = config("VOICE_RECORDING_STORAGE_BUCKET", "")
+VOICE_MAX_CALL_DURATION_SECONDS = config("VOICE_MAX_CALL_DURATION_SECONDS", 3600, cast=int)
+
+# Transcription backend selection (#169). Set to "" to disable
+# transcription entirely; "deepgram" / "whisper" / "provider_native"
+# pick the corresponding backend in ``voice.transcription``.
+VOICE_TRANSCRIPTION_PROVIDER = config("VOICE_TRANSCRIPTION_PROVIDER", "")
+DEEPGRAM_API_KEY = config("DEEPGRAM_API_KEY", "")
+OPENAI_API_KEY = config("OPENAI_API_KEY", "")
+
+# Asterisk (only needed for SIP voice — HTTP voice providers don't touch this).
+ASTERISK_ARI_URL = config("ASTERISK_ARI_URL", "")
+ASTERISK_ARI_USER = config("ASTERISK_ARI_USER", "")
+ASTERISK_ARI_PASSWORD = config("ASTERISK_ARI_PASSWORD", "")
+ASTERISK_ARI_APP_NAME = config("ASTERISK_ARI_APP_NAME", "jina-voice")
+# Directory where rendered PJSIP fragments are dropped for Asterisk
+# to ``pjsip reload``. Empty → falls back to ``<project>/asterisk-config/pjsip.d``.
+ASTERISK_PJSIP_DROP_DIR = config("ASTERISK_PJSIP_DROP_DIR", "")
 
 
 GUPSHUP_BASE_URL = config("GUPSHUP_BASE_URL", "")

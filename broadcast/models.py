@@ -86,6 +86,7 @@ class BroadcastPlatformChoices(models.TextChoices):
     TELEGRAM = "TELEGRAM", "Telegram"
     SMS = "SMS", "SMS"
     RCS = "RCS", "RCS"
+    VOICE = "VOICE", "Voice"
     # Canonical source: jina_connect.platform_choices.PlatformChoices
 
 
@@ -123,6 +124,17 @@ class Broadcast(BaseTenantModelForFilterUser):
     )
     task_id = models.CharField(max_length=255, blank=True, null=True, editable=False)
     template_number = models.ForeignKey(TemplateNumber, on_delete=models.CASCADE, null=True, blank=True)
+    # Voice broadcasts point at a ``VoiceTemplate`` instead of a TemplateNumber.
+    # Lazy string ref so this app doesn't import ``voice`` at module load time
+    # (keeps tenant-side migrations independent of voice app readiness).
+    voice_template = models.ForeignKey(
+        "voice.VoiceTemplate",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="broadcasts",
+        help_text="Voice template for VOICE-platform broadcasts (TTS / pre-recorded audio).",
+    )
     placeholder_data = models.JSONField(default=dict, blank=True)
     media_overrides = models.JSONField(
         default=dict,
@@ -134,6 +146,33 @@ class Broadcast(BaseTenantModelForFilterUser):
         ),
     )
     reason_for_cancellation = models.TextField(blank=True, null=True)
+
+    # Voice compliance: per-broadcast time-of-day window, evaluated in
+    # the recipient's local timezone. Out-of-window dispatches are
+    # rescheduled (see ``voice.compliance.time_of_day``) rather than
+    # dropped. Shape: ``{"start": "09:00", "end": "21:00"}`` (24-hour).
+    # Voice-only — text-channel handlers ignore this field. (#171)
+    allowed_hours_local = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Voice-only time-of-day window in the recipient's local TZ; "
+            'e.g. ``{"start": "09:00", "end": "21:00"}``. Out-of-window '
+            "dispatches are deferred to the next allowed time."
+        ),
+    )
+
+    # Per-broadcast SMS-fallback override. ``True`` / ``False`` overrides
+    # ``VoiceProviderConfig.fallback_sms_enabled``; ``None`` inherits
+    # the config-level default. Voice-only. (#172)
+    fallback_sms_enabled = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Override VoiceProviderConfig.fallback_sms_enabled for this "
+            "broadcast. None = inherit; True/False forces the policy."
+        ),
+    )
 
     # Credit management fields
     credit_deducted = models.BooleanField(
@@ -295,6 +334,8 @@ class Broadcast(BaseTenantModelForFilterUser):
             return self._get_telegram_message_price()
         elif self.platform == BroadcastPlatformChoices.RCS:
             return self._get_rcs_message_price()
+        elif self.platform == BroadcastPlatformChoices.VOICE:
+            return self._get_voice_message_price()
         else:
             return Decimal("0")
 
@@ -357,6 +398,20 @@ class Broadcast(BaseTenantModelForFilterUser):
         if not rcs_app:
             return Decimal("0")
         return Decimal(str(rcs_app.price_per_message or 0))
+
+    def _get_voice_message_price(self) -> Decimal:
+        """
+        Voice broadcasts are billed per-call after completion (via the
+        provider-cost path for Twilio/Plivo/etc., or the local
+        ``VoiceRateCard`` for SIP — see #170).
+
+        At broadcast-creation time we don't know the per-call price yet
+        (depends on destination + answered duration), so this returns
+        ``Decimal("0")`` for the upfront credit reservation. The actual
+        cost lands on ``TenantTransaction`` per-call from
+        ``voice.billing`` once each call completes.
+        """
+        return Decimal("0")
 
     def calculate_initial_cost(self):
         """

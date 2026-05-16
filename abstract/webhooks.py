@@ -39,6 +39,26 @@ from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
 
+# Module-level cache for the Redis client. redis.from_url() creates a new
+# connection pool each call, which is wasteful under voice-grade QPS. The
+# client is thread-safe so a single shared instance is fine. Tests reset
+# this via ``_reset_redis_client_cache()``.
+_REDIS_CLIENT: redis.Redis | None = None
+
+
+def _get_redis_client() -> redis.Redis:
+    """Return the shared Redis client, creating it on first use."""
+    global _REDIS_CLIENT
+    if _REDIS_CLIENT is None:
+        _REDIS_CLIENT = redis.from_url(settings.REDIS_URL)
+    return _REDIS_CLIENT
+
+
+def _reset_redis_client_cache() -> None:
+    """Test hook: drop the cached client so the next call rebuilds it."""
+    global _REDIS_CLIENT
+    _REDIS_CLIENT = None
+
 
 @method_decorator(csrf_exempt, name="dispatch")
 class BaseWebhookHandler(View, ABC):
@@ -130,7 +150,7 @@ class BaseWebhookHandler(View, ABC):
         with ``NX`` + ``EX``, which is atomic and TTL'd in one round-trip.
         """
         full_key = f"{self.redis_key_prefix}:{key}"
-        client = redis.from_url(settings.REDIS_URL)
+        client = _get_redis_client()
         # r.set(..., ex=ttl, nx=True) returns True on success, None if the
         # key already exists. Coerce to bool.
         claimed = client.set(full_key, "1", ex=self.idempotency_ttl_seconds, nx=True)

@@ -1039,6 +1039,176 @@ def handle_rcs_message(message):
         return {"success": False, "error": error_msg}
 
 
+def handle_voice_message(message):
+    """Dispatch one voice broadcast recipient.
+
+    Creates a ``VoiceCall`` row, acquires the per-config concurrency
+    semaphore, and queues ``voice.tasks.initiate_call``. The call
+    state machine takes over from there; ``voice.signals`` mirrors
+    terminal status back onto the ``BroadcastMessage`` (see #162
+    status sync).
+
+    Args:
+        message (BroadcastMessage): The voice recipient to dial.
+
+    Returns:
+        dict: ``{success, message_id, error}`` matching the other
+        platform handlers' shape.
+    """
+    try:
+        from voice.concurrency import acquire as acquire_voice_slot
+        from voice.constants import CallDirection, CallStatus
+        from voice.models import VoiceCall, VoiceProviderConfig
+        from voice.tasks import initiate_call as voice_initiate_call
+
+        broadcast = message.broadcast
+        tenant = broadcast.tenant
+
+        # Resolve outbound config — prefer the tenant's default; fall back
+        # to the first enabled config so dev setups without TenantVoiceApp
+        # still dispatch.
+        config = None
+        voice_app = getattr(tenant, "voice_app", None)
+        if voice_app is not None and voice_app.default_outbound_config_id:
+            config = voice_app.default_outbound_config
+        if config is None:
+            config = VoiceProviderConfig.objects.filter(tenant=tenant, enabled=True).order_by("-priority").first()
+        if config is None:
+            return {
+                "success": False,
+                "error": f"No active VoiceProviderConfig for tenant {tenant.id}",
+            }
+
+        # Semaphore: cap simultaneous in-flight calls per config so a big
+        # campaign doesn't blow past the provider's concurrency limit.
+        if not acquire_voice_slot(tenant.id, config.id, config.max_concurrent_calls):
+            return {
+                "success": False,
+                "error": (
+                    f"Voice concurrency cap reached for config "
+                    f"{config.id} (max={config.max_concurrent_calls}); "
+                    f"message will be retried."
+                ),
+            }
+
+        from_number = (config.from_numbers or [None])[0]
+        if not from_number:
+            return {
+                "success": False,
+                "error": f"VoiceProviderConfig {config.id} has no from_numbers configured",
+            }
+
+        # Time-of-day compliance gate (#171). When the broadcast carries
+        # an ``allowed_hours_local`` window we check the recipient's local
+        # time. Out-of-window dispatches re-queue themselves for
+        # ``next_allowed_time`` instead of being dropped.
+        #
+        # Cap re-schedules at ``MAX_TOD_RESCHEDULES`` so a stuck-window
+        # broadcast (e.g. a wrap-around config that always evaluates
+        # "outside") fails loudly rather than re-queueing forever.
+        # Counter lives in ``BroadcastMessage.webhook_response`` since
+        # that's already JSON-typed on the model. (#179 review)
+        MAX_TOD_RESCHEDULES = 24
+        to_number_e164 = str(message.contact.phone)
+        if broadcast.allowed_hours_local:
+            from voice.compliance.time_of_day import (
+                is_within_allowed_hours,
+                next_allowed_time,
+                resolve_recipient_timezone,
+            )
+
+            recipient_tz = resolve_recipient_timezone(to_number_e164)
+            if not is_within_allowed_hours(broadcast.allowed_hours_local, recipient_tz):
+                tod_state = dict(message.webhook_response or {})
+                reschedules = int(tod_state.get("tod_reschedule_count", 0))
+                if reschedules >= MAX_TOD_RESCHEDULES:
+                    logger.warning(
+                        "[broadcast.handle_voice_message] %s exceeded %d TOD reschedules; failing",
+                        message.id,
+                        MAX_TOD_RESCHEDULES,
+                    )
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Exceeded {MAX_TOD_RESCHEDULES} time-of-day reschedule "
+                            f"attempts; check allowed_hours_local + recipient timezone."
+                        ),
+                    }
+                tod_state["tod_reschedule_count"] = reschedules + 1
+                message.webhook_response = tod_state
+                message.save(update_fields=["webhook_response"])
+
+                eta = next_allowed_time(broadcast.allowed_hours_local, recipient_tz)
+                # Re-enter the routing batch task at the allowed time —
+                # that's the same path the scheduler uses, so the message
+                # transitions back through SENDING → routed handler
+                # without bypassing status accounting.
+                process_broadcast_messages_batch.apply_async(args=[[message.id]], eta=eta)
+                logger.info(
+                    "[broadcast.handle_voice_message] %s out of allowed_hours_local; "
+                    "rescheduled for %s (%s), attempt %d/%d",
+                    message.id,
+                    eta.isoformat(),
+                    recipient_tz,
+                    reschedules + 1,
+                    MAX_TOD_RESCHEDULES,
+                )
+                return {
+                    "success": True,
+                    "message_id": str(message.id),
+                    "response": {"rescheduled_for": eta.isoformat()},
+                }
+
+        # Render TTS / audio URL from the voice template + placeholder
+        # data. Template Jinja rendering arrives with #168 IVR; for #162
+        # we pass through ``tts_text`` / ``audio_url`` as-is.
+        static_play = _render_voice_template(broadcast)
+
+        call = VoiceCall.objects.create(
+            tenant=tenant,
+            name=f"broadcast-{broadcast.id}-msg-{message.id}",
+            provider_config=config,
+            provider_call_id=f"pending-{message.id}",  # replaced by adapter on initiate
+            direction=CallDirection.OUTBOUND,
+            from_number=str(from_number),
+            to_number=to_number_e164,
+            contact=message.contact,
+            broadcast=broadcast,
+            status=CallStatus.QUEUED,
+            metadata={"static_play": static_play, "broadcast_message_id": message.id},
+        )
+
+        voice_initiate_call.delay(str(call.id))
+
+        return {
+            "success": True,
+            "message_id": str(call.id),
+            "response": {"voice_call_id": str(call.id)},
+        }
+
+    except Exception as e:
+        error_msg = f"Voice broadcast dispatch failed: {str(e)}"
+        logger.exception(error_msg)
+        return {"success": False, "error": error_msg}
+
+
+def _render_voice_template(broadcast) -> dict:
+    """Resolve the broadcast's voice template into a play instruction.
+
+    Returns a dict matching ``voice.adapters.base.PlayInstruction`` keys
+    (``audio_url`` / ``tts_text`` / ``tts_voice`` / ``tts_language``).
+    """
+    tpl = getattr(broadcast, "voice_template", None)
+    if tpl is None:
+        return {}
+    return {
+        "audio_url": tpl.audio_url or None,
+        "tts_text": tpl.tts_text or None,
+        "tts_voice": tpl.tts_voice or None,
+        "tts_language": tpl.tts_language or None,
+    }
+
+
 # ── Populate platform handler registry (must come after function definitions)
 _PLATFORM_HANDLERS.update(
     {
@@ -1046,5 +1216,6 @@ _PLATFORM_HANDLERS.update(
         "TELEGRAM": handle_telegram_message,
         "SMS": handle_sms_message,
         "RCS": handle_rcs_message,
+        "VOICE": handle_voice_message,
     }
 )

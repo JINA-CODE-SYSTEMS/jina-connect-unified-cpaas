@@ -1,0 +1,364 @@
+---
+title: Voice
+description: Voice calls and IVR via Twilio, Plivo, Vonage, Telnyx, Exotel, and SIP trunks (Asterisk + PJSIP).
+---
+
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Overview
+
+Jina Connect's voice channel covers outbound + inbound calling with IVR
+flows, recording, transcription, and TCPA-style time-of-day compliance.
+It plugs into the same channel abstraction as WhatsApp / Telegram /
+SMS / RCS, so broadcasts, flows, inbox, and MCP all work without
+channel-specific glue.
+
+Two paths:
+
+* **HTTP voice providers** — Twilio, Plivo, Vonage, Telnyx, Exotel.
+  Cloud APIs, no infrastructure. Pick this when you want fastest
+  time-to-first-call.
+* **SIP trunk via Asterisk** — twelve YAML carrier profiles
+  (Dialogic, Telnyx SIP, Twilio Elastic, Plivo SIP, Vonage SIP, Exotel
+  SIP, Knowlarity, Servetel, MyOperator, Tata Tele, Airtel, generic).
+  Pick this when you have a carrier contract / lower per-minute cost.
+
+Out of scope today: voicemail drop, agent live-listen, LLM voice
+agents (planned for the next iteration).
+
+## Provider matrix
+
+Capability flags live on each adapter's `Capabilities` block. Use
+`voice_check_capability` or read `VoiceProviderConfig.provider` in
+admin to confirm what a given config supports.
+
+| Provider  | Voice call | Recording | DTMF gather | Speech gather | Transfer | Conference | Provider cost callback | Auth                         |
+|-----------|:----------:|:---------:|:-----------:|:-------------:|:--------:|:----------:|:----------------------:|------------------------------|
+| Twilio    | ✅         | ✅        | ✅          | ✅            | ✅       | —          | ✅                     | HMAC-SHA1 + Basic            |
+| Plivo     | ✅         | ✅        | ✅          | ✅            | ✅       | —          | ✅                     | HMAC-SHA256 (V3 nonce + URL) |
+| Vonage    | ✅         | ✅        | ✅          | ✅            | ✅       | ✅         | ✅                     | RS256 JWT + HS256 webhook    |
+| Telnyx    | ✅         | ✅        | ✅          | ✅            | ✅       | —          | ✅                     | Bearer + Ed25519 webhook     |
+| Exotel    | ✅         | ✅        | ✅          | —             | ✅       | —          | ✅                     | Basic + path-token webhook   |
+| SIP       | ✅         | ✅        | ✅          | —             | ✅       | —          | ❌ (local rate-card)    | PJSIP digest                 |
+
+## HTTP voice quickstart (Twilio)
+
+<Steps>
+
+1. **Create a `VoiceProviderConfig`** for your tenant.
+
+   ```bash
+   curl -X POST http://localhost:8000/voice/v1/api/provider-configs/ \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "Twilio Production",
+       "provider": "twilio",
+       "vendor_label": "Twilio US",
+       "from_numbers": ["+14155550100"],
+       "credentials": {
+         "account_sid": "ACxxxxxxxx",
+         "auth_token": "your-auth-token"
+       },
+       "recording_enabled": true,
+       "is_default_outbound": true
+     }'
+   ```
+
+   The `credentials` field is encrypted at rest and never returned by
+   `GET` — the response shows `credentials_set: true` instead.
+
+2. **Enable voice for the tenant** (idempotent).
+
+   ```bash
+   curl -X PATCH http://localhost:8000/voice/v1/api/tenant-voice-app/{id}/ \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{"is_enabled": true, "default_outbound_config": "<config-uuid>"}'
+   ```
+
+3. **Configure Twilio webhooks** in the Twilio console to point at:
+
+   | Webhook        | URL                                                                         |
+   |----------------|-----------------------------------------------------------------------------|
+   | Call status    | `https://your-domain.com/voice/v1/webhooks/twilio/{config_uuid}/call-status/`     |
+   | Answer (TwiML) | `https://your-domain.com/voice/v1/webhooks/twilio/{config_uuid}/answer/`          |
+   | Gather         | `https://your-domain.com/voice/v1/webhooks/twilio/{config_uuid}/gather/`          |
+   | Recording      | `https://your-domain.com/voice/v1/webhooks/twilio/{config_uuid}/recording-status/`|
+
+4. **Place a call.**
+
+   ```bash
+   curl -X POST http://localhost:8000/voice/v1/api/calls/initiate/ \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{"to_number": "+14155550199", "tts_text": "Hello from Jina Connect!"}'
+   ```
+
+   Or with a saved IVR flow:
+
+   ```bash
+   curl -X POST http://localhost:8000/voice/v1/api/calls/initiate/ \
+     -d '{"to_number": "+14155550199", "flow_id": "<flow-uuid>"}'
+   ```
+
+</Steps>
+
+The other HTTP providers (`plivo` / `vonage` / `telnyx` / `exotel`)
+follow the same shape; see [voice-vendor-configs](./voice-vendor-configs)
+for the per-provider credential payload.
+
+## SIP trunk quickstart (Asterisk + PJSIP)
+
+<Steps>
+
+1. **Bring up the SIP profile of the stack** with docker compose:
+
+   ```bash
+   docker-compose --profile sip up
+   ```
+
+   This starts the `asterisk` container and the `voice-ari-consumer`
+   service that bridges ARI events back into Django.
+
+2. **Pick the vendor YAML profile** that matches your carrier and
+   create a `VoiceProviderConfig`:
+
+   ```bash
+   curl -X POST http://localhost:8000/voice/v1/api/provider-configs/ \
+     -d '{
+       "name": "Dialogic India",
+       "provider": "sip",
+       "vendor_label": "Dialogic IND",
+       "from_numbers": ["+919999000111"],
+       "credentials": {
+         "sip_username": "your-username",
+         "sip_password": "your-password",
+         "sip_realm": "sip.dialogic.in",
+         "sip_proxy": "sip.dialogic.in",
+         "sip_transport": "udp",
+         "vendor_profile": "dialogic"
+       }
+     }'
+   ```
+
+   A `post_save` signal renders the PJSIP fragment under
+   `ASTERISK_PJSIP_DROP_DIR` and triggers `pjsip reload`.
+
+3. **Seed a rate card** (SIP has no provider-cost callback, so local
+   rating is what bills the call):
+
+   ```bash
+   python manage.py seed_voice_rate_cards --config-id <config-uuid> --currency USD
+   ```
+
+   Or roll your own per-prefix rates with `POST /voice/v1/api/rate-cards/`.
+
+4. **Place a call** — same `POST /calls/initiate/` body as the HTTP
+   path. The IVR compiler emits ARI command sequences instead of
+   TwiML / NCCO / Plivo XML / Telnyx Call Control / ExoML.
+
+</Steps>
+
+## IVR flow building
+
+Voice flows reuse `chat_flow` with six voice-specific node types
+registered at app startup (`voice.ivr.node_specs`):
+
+| Node type         | Purpose                                                  |
+|-------------------|----------------------------------------------------------|
+| `voice.play`      | TTS or pre-recorded audio.                               |
+| `voice.gather_dtmf` | Prompt + collect DTMF digits.                          |
+| `voice.gather_speech` | Prompt + transcribe a short speech reply.            |
+| `voice.record`    | Record the caller's speech to S3.                        |
+| `voice.transfer`  | Hand the call to another SIP URI / DID.                  |
+| `voice.hangup`    | End the call.                                            |
+
+`chat_flow.platform` is set to `VOICE` and the flow editor uses these
+node types; `validate_flow_for_platform` rejects text-channel nodes
+on voice flows (and vice versa).
+
+At runtime the compiler walks edges from the entry node and emits
+adapter-native instructions:
+
+```python
+from voice.ivr.compiler import compile_for_adapter
+from voice.adapters.registry import get_voice_adapter_cls
+
+adapter = get_voice_adapter_cls(call.provider_config.provider)(call.provider_config)
+twiml = compile_for_adapter(flow_data, adapter, context={"first_name": "Riya"})
+```
+
+`compile_for_adapter` raises `IvrCompilationError` on empty flows,
+malformed edges, or unhandled node types — surfaced as a flow-save
+error rather than a runtime crash.
+
+## Recording + transcription
+
+* **Recording.** `VoiceProviderConfig.recording_enabled = True` plus
+  a recording webhook → audio downloads land in
+  `VOICE_RECORDING_STORAGE_BUCKET` (S3-compatible). The
+  `enforce_retention` Celery beat task deletes anything past
+  `TenantVoiceApp.recording_retention_days` (default 90).
+* **Transcription.** Set `VOICE_TRANSCRIPTION_PROVIDER` to one of
+  `deepgram`, `whisper`, or `provider_native`. The
+  `recording_created` signal fires `transcribe_recording.delay` which
+  fetches the audio from S3 and stamps
+  `VoiceRecording.{transcription, transcription_provider,
+  transcription_confidence}`.
+
+```env
+VOICE_RECORDING_STORAGE_BUCKET=voice-recordings
+VOICE_MAX_CALL_DURATION_SECONDS=3600
+VOICE_TRANSCRIPTION_PROVIDER=deepgram
+DEEPGRAM_API_KEY=...
+# or for whisper:
+# VOICE_TRANSCRIPTION_PROVIDER=whisper
+# OPENAI_API_KEY=sk-...
+```
+
+### Consent gate
+
+When `TenantVoiceApp.recording_requires_consent = True`, adapters
+refuse to attach `<Record>` verbs unless a `RecordingConsent` row with
+`consent_given=True` exists for `(tenant, contact)`. The
+`initiate_call` task stamps the decision into
+`call.metadata["recording_allowed"]`; adapters that emit record verbs
+check this flag.
+
+```bash
+curl -X POST http://localhost:8000/voice/v1/api/recording-consents/ \
+  -d '{
+    "name": "Consent for Riya",
+    "contact": "<contact-uuid>",
+    "consent_given": true,
+    "consent_method": "web_form"
+  }'
+```
+
+## Billing
+
+Two paths, picked automatically by `voice.signals.trigger_provider_cost_billing`:
+
+* **Provider cost (Twilio, Plivo, Vonage, Telnyx, Exotel).** 30s
+  after call completion, `fetch_provider_cost` re-queries the
+  provider for the authoritative price and writes a
+  `TenantTransaction`. `cost_source = "provider"`.
+* **Local rate-card (SIP + any HTTP provider that doesn't publish
+  cost).** `rate_call_locally` does a longest-prefix match against
+  `VoiceRateCard`, rounds duration up to the configured increment,
+  multiplies by the per-minute rate, writes a transaction.
+  `cost_source = "local_ratecard"`.
+
+CDR import for carriers that publish daily files:
+
+```bash
+python manage.py import_voice_cdr /path/to/cdr.csv \
+  --config-id <config-uuid> --vendor knowlarity
+```
+
+The importer reconciles each row against `VoiceCall.provider_call_id`,
+flips the cost source to `provider`, and logs a discrepancy line when
+the carrier number diverges from a prior local estimate by more than
+10%.
+
+## Time-of-day compliance
+
+Voice broadcasts can carry `allowed_hours_local`:
+
+```json
+{
+  "platform": "VOICE",
+  "name": "Morning campaign",
+  "allowed_hours_local": {"start": "09:00", "end": "21:00"}
+}
+```
+
+The dispatcher resolves the recipient's local timezone from the E.164
+number (`phonenumbers.timezone.time_zones_for_number`) and:
+
+* In-window → dispatches immediately.
+* Out-of-window → re-queues `process_broadcast_messages_batch` with
+  `eta = next_allowed_time(...)`.
+
+Wrap-around windows (e.g. `22:00`–`06:00`) and unknown timezones
+(fall back to UTC) are handled.
+
+## Cross-channel fallback
+
+Failed calls (NO_ANSWER / USER_BUSY / CALL_REJECTED — configurable
+per `fallback_on_causes`) can automatically dispatch an SMS:
+
+```bash
+curl -X PATCH http://localhost:8000/voice/v1/api/provider-configs/{id}/ \
+  -d '{
+    "fallback_sms_enabled": true,
+    "fallback_sms_config": "<sms-app-uuid>",
+    "fallback_sms_template": "Hi {{first_name}}, missed your call. We will reach out again soon."
+  }'
+```
+
+`Broadcast.fallback_sms_enabled` overrides the per-config default per
+campaign (True / False / None = inherit). The post-call signal stamps
+`call.metadata["sms_fallback_sent"] = True` so re-fired signals
+don't double-send.
+
+## API endpoints
+
+| Method   | Endpoint                                             | Description                              |
+|----------|------------------------------------------------------|------------------------------------------|
+| `GET`    | `/voice/v1/api/provider-configs/`                    | List provider configs (admin)            |
+| `POST`   | `/voice/v1/api/provider-configs/`                    | Create provider config (admin)           |
+| `GET`    | `/voice/v1/api/calls/`                               | List calls; filters: `status`, `direction`, `contact_id`, `started_at_from/to` |
+| `POST`   | `/voice/v1/api/calls/initiate/`                      | Place an outbound call                   |
+| `POST`   | `/voice/v1/api/calls/{id}/hangup/`                   | End a live call                          |
+| `GET`    | `/voice/v1/api/recordings/`                          | List recordings (signed URLs)            |
+| `GET`    | `/voice/v1/api/recordings/{id}/download/`            | Signed URL with caller-specified TTL     |
+| `GET`    | `/voice/v1/api/templates/` (CRUD)                    | Voice templates                          |
+| `POST`   | `/voice/v1/api/templates/{id}/preview/`              | Render placeholder substitution          |
+| `GET`    | `/voice/v1/api/rate-cards/` (admin CRUD)             | Rate cards                               |
+| `GET`    | `/voice/v1/api/recording-consents/` (CRUD)           | Recording consent rows                   |
+| `GET`    | `/voice/v1/api/tenant-voice-app/`                    | Tenant voice settings                    |
+
+## MCP tools
+
+Available through the MCP server for AI agents:
+
+| Tool                       | Purpose                                          |
+|----------------------------|--------------------------------------------------|
+| `voice_initiate_call`      | Place an outbound call                           |
+| `voice_get_call_status`    | Full call row + events                           |
+| `voice_list_calls`         | Paginated list with filters                      |
+| `voice_get_recording`      | Signed URL for recording (1h default TTL)        |
+| `voice_get_transcription`  | Transcription text + provider + confidence       |
+| `voice_hangup_call`        | End a live call                                  |
+| `voice_trigger_broadcast`  | Dispatch a `Broadcast.platform=VOICE` campaign  |
+
+All tools resolve the tenant from the MCP API key and gate on
+`TenantVoiceApp.is_enabled` — no caller-provided `tenant_id` is ever
+trusted.
+
+## Troubleshooting
+
+| Symptom                                            | Likely cause                                                                                                  |
+|----------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| `503` on webhook                                    | Signature verification failed. Check the auth-token / signing-key on `VoiceProviderConfig.credentials`.       |
+| Calls stay `QUEUED`                                 | `initiate_call` Celery task isn't running, or the adapter raised — check worker logs.                         |
+| Recording URL returns 403                           | Signed URL TTL expired. Re-fetch via `GET /recordings/{id}/download/?expires_seconds=3600`.                   |
+| Local rate-card billing skipped                     | No matching `VoiceRateCard` for the dialed prefix at `call.ended_at`. Run `seed_voice_rate_cards` or add one. |
+| Out-of-hours call still dispatched                  | `allowed_hours_local` is set on the *broadcast*, not the call. Per-call enforcement uses the broadcast field. |
+| SMS fallback not sending                            | Check `fallback_sms_enabled` on both `VoiceProviderConfig` and the `Broadcast` override, plus `fallback_on_causes` filter. |
+
+### Canonical hangup cause map
+
+Adapters normalise provider-specific codes to a shared `HangupCause`
+enum (`voice.constants.HangupCause`):
+
+| Canonical          | Twilio       | Plivo            | Vonage     | Telnyx (Q.850 code)   | Exotel       | Notes                                |
+|--------------------|--------------|------------------|------------|-----------------------|--------------|--------------------------------------|
+| `NORMAL_CLEARING`  | `completed`  | `normal_clearing`| `complete` | 16                    | `completed`  | Successful end                       |
+| `NO_ANSWER`        | `no-answer`  | `no_answer`      | `timeout`  | 19                    | `no_answer`  | Recipient never picked up            |
+| `USER_BUSY`        | `busy`       | `busy`           | `busy`     | 17                    | `busy`       | Recipient on another call            |
+| `CALL_REJECTED`    | `failed`     | `rejected`       | `rejected` | 21                    | `failed`     | Recipient declined                   |
+| `UNALLOCATED_NUMBER` | `failed`   | `not_assigned`   | `failed`   | 1                     | `failed`     | Invalid DID                          |
+| `NETWORK_OUT_OF_ORDER` | `failed` | `unknown`        | `failed`   | 38                    | `failed`     | Carrier outage                       |

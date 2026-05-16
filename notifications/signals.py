@@ -37,7 +37,7 @@ def notify_broadcast_scheduled(sender, instance, created, **kwargs):
 @receiver(post_save, sender="transaction.TenantTransaction")
 def notify_wallet_recharged(sender, instance, created, **kwargs):
     """Create notification on successful wallet recharge and check low balance."""
-    from transaction.models import TransactionTypeChoices
+    from abstract.models import TransactionTypeChoices
 
     if not (created and instance.transaction_type == TransactionTypeChoices.SUCCESS_RECHARGE):
         return
