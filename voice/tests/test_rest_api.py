@@ -313,7 +313,7 @@ class TestTemplateEndpoint:
             "/voice/v1/api/templates/",
             data={
                 "name": "Welcome",
-                "template_kind": "tts",
+                "template_kind": "tts_script",
                 "tts_text": "Hi {{first_name}}!",
                 "tts_voice": "alice",
                 "tts_language": "en-US",

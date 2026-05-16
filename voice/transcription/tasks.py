@@ -44,7 +44,7 @@ def transcribe_recording(self, recording_id: str, language: str | None = None) -
     from voice.models import VoiceRecording
 
     try:
-        recording = VoiceRecording.objects.select_related("call", "tenant").get(pk=UUID(recording_id))
+        recording = VoiceRecording.objects.select_related("call", "call__tenant").get(pk=UUID(recording_id))
     except VoiceRecording.DoesNotExist:
         logger.warning("[voice.transcription] recording %s not found", recording_id)
         return

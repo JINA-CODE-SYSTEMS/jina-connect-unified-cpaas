@@ -140,7 +140,12 @@ def maybe_send_sms_fallback(call) -> dict[str, Any]:
         result["skipped_reason"] = "no_sms_app"
         return result
 
-    causes = config.fallback_on_causes or list(DEFAULT_FALLBACK_CAUSES)
+    # An empty list explicitly disables the cause filter (any failure
+    # qualifies). ``None`` (which JSONField won't produce given
+    # ``default=list``, but we keep the guard defensive) falls back to
+    # ``DEFAULT_FALLBACK_CAUSES``.
+    raw_causes = config.fallback_on_causes
+    causes = list(DEFAULT_FALLBACK_CAUSES) if raw_causes is None else list(raw_causes)
     if not _cause_matches(call, causes):
         result["skipped_reason"] = "cause_filtered"
         return result
