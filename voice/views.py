@@ -201,6 +201,26 @@ class VoiceCallViewSet(
         if tts_text:
             metadata["static_play"] = {"tts_text": tts_text}
 
+        # Stamp the provider's answer-webhook URL onto the call so
+        # ``voice.tasks.initiate_call`` can pass it as ``callback_url``
+        # to the adapter. Without this the task reads
+        # ``call.metadata["answer_callback_url"] == ""`` and Twilio
+        # rejects the request with an empty ``Url`` parameter.
+        _PROVIDER_ANSWER_ROUTE = {
+            "twilio": "voice:twilio-answer",
+            "plivo": "voice:plivo-answer",
+            "vonage": "voice:vonage-answer",
+            "telnyx": "voice:telnyx-event",
+            "exotel": "voice:exotel-passthru",
+        }
+        route_name = _PROVIDER_ANSWER_ROUTE.get(config.provider)
+        if route_name:
+            from django.urls import reverse
+
+            metadata["answer_callback_url"] = request.build_absolute_uri(
+                reverse(route_name, kwargs={"config_uuid": str(config.id)})
+            )
+
         # ``provider_call_id`` carries a placeholder until the adapter
         # replaces it with the real upstream SID. The (provider_config,
         # provider_call_id) unique constraint means concurrent dials to
