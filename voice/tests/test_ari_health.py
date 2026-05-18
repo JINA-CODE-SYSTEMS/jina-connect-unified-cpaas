@@ -103,7 +103,10 @@ class TestAriHealth:
         assert body["ok"] is False
         assert "401" in body["reason"]
 
-    def test_happy_path(self, user_client, settings):
+    def test_happy_path_hides_endpoint_count_for_non_staff(self, user_client, settings):
+        # Non-staff users get the boolean + version only; the box-wide
+        # endpoints_registered count is staff-gated to prevent
+        # cross-tenant inference. (#185 review)
         settings.ASTERISK_ARI_URL = "http://127.0.0.1:8088"
         info = {"system": {"version": "20.6.0"}}
         endpoints = [{"technology": "PJSIP", "resource": "ep-a"}, {"technology": "PJSIP", "resource": "ep-b"}]
@@ -114,7 +117,39 @@ class TestAriHealth:
             resp = user_client.get(URL)
         assert resp.status_code == 200, resp.content
         body = resp.json()
-        assert body == {"ok": True, "asterisk_version": "20.6.0", "endpoints_registered": 2}
+        assert body == {"ok": True, "asterisk_version": "20.6.0"}
+        assert "endpoints_registered" not in body
+
+    def test_happy_path_exposes_endpoint_count_for_staff(self, db, tenant, voice_app, settings):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient as _APIClient
+
+        role = TenantRole.objects.get(tenant=tenant, slug="agent")
+        user = get_user_model().objects.create_user(
+            username="ari_staff",
+            email="aris@t.io",
+            mobile="+919600007003",
+            password="x",
+            is_staff=True,
+        )
+        TenantUser.objects.create(tenant=tenant, user=user, role=role, is_active=True)
+        c = _APIClient()
+        c.force_authenticate(user=user)
+        settings.ASTERISK_ARI_URL = "http://127.0.0.1:8088"
+        with (
+            patch(
+                "voice.sip_config.ari_client.AriClient.asterisk_info",
+                return_value={"system": {"version": "20.6.0"}},
+            ),
+            patch(
+                "voice.sip_config.ari_client.AriClient.list_endpoints",
+                return_value=[{"resource": "a"}, {"resource": "b"}],
+            ),
+        ):
+            resp = c.get(URL)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["endpoints_registered"] == 2
 
     def test_happy_path_version_fallback(self, user_client, settings):
         # Some Asterisk builds expose ``version`` at the top level rather
@@ -130,4 +165,4 @@ class TestAriHealth:
             resp = user_client.get(URL)
         assert resp.status_code == 200
         assert resp.json()["asterisk_version"] == "18.20.0"
-        assert resp.json()["endpoints_registered"] == 0
+        assert "endpoints_registered" not in resp.json()

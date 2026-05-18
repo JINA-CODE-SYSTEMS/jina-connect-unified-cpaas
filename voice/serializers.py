@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from tenants.models import TenantVoiceApp
@@ -98,17 +98,35 @@ class VoiceProviderConfigSerializer(serializers.ModelSerializer):
                 qs = qs.exclude(pk=exclude_pk)
             qs.update(**{flag: False})
 
+    @staticmethod
+    def _raise_default_race(flag: str) -> None:
+        # Read-committed isolation lets two concurrent transactions
+        # both see "no current default" during their respective
+        # ``_demote_existing_defaults`` and proceed to flip themselves
+        # to True — the partial unique constraint then 500s the second
+        # commit. Translate to a 400 so the caller can retry rather
+        # than seeing an opaque server error. (#185 review)
+        raise serializers.ValidationError({flag: "Another default was promoted concurrently; please retry."})
+
     def create(self, validated_data):
         tenant = validated_data.get("tenant")
-        with transaction.atomic():
-            if tenant is not None:
-                self._demote_existing_defaults(tenant, validated_data)
-            return super().create(validated_data)
+        try:
+            with transaction.atomic():
+                if tenant is not None:
+                    self._demote_existing_defaults(tenant, validated_data)
+                return super().create(validated_data)
+        except IntegrityError:
+            flag = "is_default_outbound" if validated_data.get("is_default_outbound") else "is_default_inbound"
+            self._raise_default_race(flag)
 
     def update(self, instance, validated_data):
-        with transaction.atomic():
-            self._demote_existing_defaults(instance.tenant, validated_data, exclude_pk=instance.pk)
-            return super().update(instance, validated_data)
+        try:
+            with transaction.atomic():
+                self._demote_existing_defaults(instance.tenant, validated_data, exclude_pk=instance.pk)
+                return super().update(instance, validated_data)
+        except IntegrityError:
+            flag = "is_default_outbound" if validated_data.get("is_default_outbound") else "is_default_inbound"
+            self._raise_default_race(flag)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

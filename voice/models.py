@@ -327,6 +327,16 @@ class VoiceCallEvent(BaseTenantModelForFilterUser):
         verbose_name_plural = "Voice call events"
         indexes = [
             models.Index(fields=["call", "sequence"]),
+            # B4 webhook-reachability aggregate. ``probe_config`` issues
+            # ``GROUP BY event_type`` over the events of one provider
+            # config; the (call, event_type, occurred_at DESC) composite
+            # lets that aggregate stay cheap as event volume grows.
+            # Without it, a per-route MAX(occurred_at) scan dominates on
+            # configs with millions of rows. (#185 review)
+            models.Index(
+                fields=["call", "event_type", "-occurred_at"],
+                name="voice_event_call_type_t_idx",
+            ),
         ]
         ordering = ["call", "sequence"]
 

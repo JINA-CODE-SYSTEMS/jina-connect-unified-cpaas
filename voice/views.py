@@ -37,7 +37,12 @@ from voice.models import (
     VoiceRecording,
     VoiceTemplate,
 )
-from voice.permissions import IsAuthenticated, IsVoiceAdmin, IsVoiceEnabledForTenant
+from voice.permissions import (
+    HasVoicePermission,
+    IsAuthenticated,
+    IsVoiceAdmin,
+    IsVoiceEnabledForTenant,
+)
 from voice.serializers import (
     RecordingConsentSerializer,
     TenantVoiceAppSerializer,
@@ -95,7 +100,7 @@ class VoiceProviderConfigViewSet(viewsets.ModelViewSet):
         from voice.webhooks.reachability import probe_config
 
         config = self.get_object()
-        return Response(probe_config(config))
+        return Response(probe_config(config, request=request))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -342,7 +347,18 @@ class VoiceRecordingViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = VoiceRecordingSerializer
-    permission_classes = [IsAuthenticated, IsVoiceEnabledForTenant]
+    permission_classes = [IsAuthenticated, IsVoiceEnabledForTenant, HasVoicePermission]
+    # Differentiates play (list/retrieve return a short-TTL signed URL
+    # for inline playback) from download (the `download` action mints a
+    # caller-specified TTL — typically used for saving the audio locally).
+    # Maps to the voice.call.recording.* RBAC keys seeded in tenants/0019.
+    # (#185 review nit)
+    voice_required_permissions = {
+        "list": "voice.call.recording.play",
+        "retrieve": "voice.call.recording.play",
+        "download": "voice.call.recording.download",
+        "default": "voice.call.recording.play",
+    }
 
     def get_queryset(self):
         qs = (
@@ -481,10 +497,13 @@ class AriHealthView(APIView):
             )
 
         version = (info.get("system") or {}).get("version") or info.get("version") or "unknown"
-        return Response(
-            {
-                "ok": True,
-                "asterisk_version": version,
-                "endpoints_registered": len(endpoints),
-            }
-        )
+        body = {"ok": True, "asterisk_version": version}
+        # ``endpoints_registered`` is a box-wide count — Asterisk runs
+        # once per host across all tenants. Surfacing it to non-staff
+        # users would let one tenant infer another tenant's SIP
+        # onboarding activity by polling. Staff need the number for ops
+        # diagnostics; the wizard only needs the boolean "ARI is up".
+        # (#185 review)
+        if getattr(request.user, "is_staff", False):
+            body["endpoints_registered"] = len(endpoints)
+        return Response(body)

@@ -171,3 +171,41 @@ class TestDefaultFlagSerializerMutex:
         assert resp.status_code == 200, resp.content
         cfg.refresh_from_db()
         assert cfg.is_default_outbound is True
+
+    def test_integrityerror_race_returns_400_not_500(self, api, tenant, voice_app, monkeypatch):
+        """B3 race: two concurrent transactions both pass the demote
+        check (each sees no committed default after the other's
+        uncommitted demote), the partial unique index then rejects the
+        second commit. The serializer must translate the
+        ``IntegrityError`` into a 400 ``ValidationError`` so the
+        frontend can show a retry message instead of an opaque 500.
+
+        We simulate the race by short-circuiting the demote step (no-op)
+        so the second create races straight at the constraint, the same
+        way two parallel transactions would after both pass demote.
+        """
+        # Pre-existing default-outbound row that *won't* be demoted.
+        _make_cfg(tenant, name="incumbent", is_default_outbound=True)
+
+        from voice.serializers import VoiceProviderConfigSerializer
+
+        monkeypatch.setattr(
+            VoiceProviderConfigSerializer,
+            "_demote_existing_defaults",
+            lambda *a, **kw: None,
+        )
+        resp = api.post(
+            "/voice/v1/api/provider-configs/",
+            data={
+                "name": "challenger",
+                "provider": VoiceProvider.TWILIO,
+                "credentials": {"account_sid": "AC2", "auth_token": "t2"},
+                "from_numbers": ["+14155550144"],
+                "is_default_outbound": True,
+            },
+            format="json",
+        )
+        assert resp.status_code == 400, resp.content
+        body = resp.json()
+        assert "is_default_outbound" in body
+        assert "concurrently" in body["is_default_outbound"][0].lower()

@@ -44,19 +44,22 @@ def _user_has_voice_perm(user, perm_key: str) -> bool:
     tenant role.
 
     The RBAC layer (``tenants.permissions.has_permission``) operates on
-    a single ``TenantRole`` so this helper iterates the user's
-    memberships and short-circuits on the first allow. Avoids the
-    ``user.tenant`` shortcut used by ``TenantRolePermission`` so it
-    works for users whose tenant is not pinned on the request.
+    a single ``TenantRole`` and ``RolePermission`` is the source of
+    truth — so this resolves to a single ``EXISTS`` round-trip joining
+    the user's active ``TenantUser`` rows to ``RolePermission`` rather
+    than the per-tenant Python loop the first iteration shipped. Avoids
+    the ``user.tenant`` shortcut used by ``TenantRolePermission`` so
+    it works for users whose tenant is not pinned on the request.
+    (#185 review nit)
     """
-    from tenants.models import TenantUser
-    from tenants.permissions import has_permission
+    from tenants.models import RolePermission
 
-    tenant_users = TenantUser.objects.filter(user=user, is_active=True).select_related("role")
-    for tu in tenant_users:
-        if tu.role and has_permission(tu.role, perm_key):
-            return True
-    return False
+    return RolePermission.objects.filter(
+        role__members__user=user,
+        role__members__is_active=True,
+        permission=perm_key,
+        allowed=True,
+    ).exists()
 
 
 class IsVoiceAdmin(BasePermission):

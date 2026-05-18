@@ -158,6 +158,43 @@ class TestProbeConfig:
         # call-status accepts any event so it's also recent.
         assert rows["call-status"]["status"] == "passive_recent"
 
+    def test_inferred_from_flag(self):
+        # call-status / event / status routes are "any event" -> inferred_from=any_event.
+        # answer / gather / recording-status routes are filtered by event type.
+        tenant = Tenant.objects.create(name="ReachInferred")
+        cfg = _make_cfg(tenant, VoiceProvider.TWILIO)
+        from voice.webhooks.reachability import probe_config
+
+        rows = {r["label"]: r for r in probe_config(cfg)["results"]}
+        assert rows["call-status"]["inferred_from"] == "any_event"
+        assert rows["answer"]["inferred_from"] == "event_type"
+        assert rows["gather"]["inferred_from"] == "event_type"
+        assert rows["recording-status"]["inferred_from"] == "event_type"
+
+    def test_aggregate_query_count_is_bounded(self, django_assert_num_queries):
+        # B4 review feedback: probe_config used to issue N+1 queries
+        # (one per route). The aggregate version should land a small,
+        # constant number regardless of how many routes the provider
+        # has. Twilio has 4 routes; we cap at a generous bound that
+        # still catches the regression if the loop comes back.
+        tenant = Tenant.objects.create(name="ReachQueryCount")
+        cfg = _make_cfg(tenant, VoiceProvider.TWILIO)
+        call = _make_call(tenant, cfg)
+        for et in (
+            CallEventType.INITIATED,
+            CallEventType.RINGING,
+            CallEventType.RECORDING_COMPLETED,
+            CallEventType.COMPLETED,
+        ):
+            _make_event(call, et, timezone.now())
+        from voice.webhooks.reachability import probe_config
+
+        # 1 aggregate + 1 sample for any-event routes + up to 3 per
+        # filtered route that has a hit. Be generous; the goal is
+        # "constant, not N+1 per route count".
+        with django_assert_num_queries(10):
+            probe_config(cfg)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoint: POST /provider-configs/{id}/test-webhooks/

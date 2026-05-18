@@ -26,18 +26,25 @@ Schema:
       "url": "https://example.com/voice/v1/webhooks/twilio/<uuid>/call-status/",
       "status": "passive_recent" | "passive_stale" | "passive_never",
       "last_received_at": "2026-05-18T..." | null,
-      "sample_call_id": "<uuid>" | null
+      "sample_call_id": "<uuid>" | null,
+      "inferred_from": "any_event" | "event_type"
     },
     ...
   ]
 }
 ```
 
-Status thresholds (configurable via ``settings``):
+Status thresholds:
 
   * ``passive_recent`` — last event within the last 15 minutes
   * ``passive_stale``  — last event older than 15 minutes
   * ``passive_never``  — no event ever for this URL on this config
+
+``inferred_from`` ("any_event" vs "event_type") flags how the freshness
+was derived. For providers with a single webhook URL (Telnyx, Exotel's
+``status``), the row covers all events so we tag it ``any_event`` — the
+UI can render a "best-effort" hint instead of pretending the freshness
+is per-route. (#185 review)
 """
 
 from __future__ import annotations
@@ -48,6 +55,7 @@ from typing import Optional
 from urllib.parse import urljoin
 
 from django.conf import settings
+from django.db.models import Max
 from django.urls import reverse
 from django.utils import timezone
 
@@ -99,54 +107,22 @@ WEBHOOK_ROUTES_BY_PROVIDER: dict[str, list[WebhookRoute]] = {
 }
 
 
-def _public_base_url() -> str:
-    """Best-effort guess at the public origin for webhook URLs.
-
-    Falls back to a placeholder host so the URL is still parseable when
-    the project hasn't set ``PUBLIC_BASE_URL`` — the frontend cares
-    about the *path*, not the host, in the passive case.
-    """
-    return getattr(settings, "PUBLIC_BASE_URL", "") or "https://example.invalid/"
-
-
-def _absolute_url(url_name: str, config_uuid: str) -> str:
-    path = reverse(url_name, kwargs={"config_uuid": config_uuid})
-    return urljoin(_public_base_url(), path)
+# Each route maps to a list of canonical ``CallEventType`` values it
+# represents. An empty list means "any event" — the route covers a
+# single webhook URL that receives all events, so its freshness is
+# inferred from the latest event of any type. ``inferred_from`` in the
+# response surfaces this distinction. Filled in lazily on first probe
+# to avoid importing ``CallEventType`` at module load.
+_ROUTE_EVENT_TYPES: dict[str, list[str]] = {}
 
 
-def _routes_for(provider: str) -> list[WebhookRoute]:
-    return WEBHOOK_ROUTES_BY_PROVIDER.get(provider, [])
-
-
-def _classify(last_received_at) -> str:
-    if last_received_at is None:
-        return "passive_never"
-    if timezone.now() - last_received_at <= PASSIVE_RECENT_WINDOW:
-        return "passive_recent"
-    return "passive_stale"
-
-
-def _last_event_for_route(config: VoiceProviderConfig, label: str) -> tuple[Optional[object], Optional[str]]:
-    """Return ``(occurred_at, sample_call_id)`` for the most recent event
-    on a config that we can attribute to *label*.
-
-    The route-label mapping to ``VoiceCallEvent.event_type`` is coarse —
-    we do not record which webhook URL fired which event, only the
-    canonical event type. For the passive probe this is good enough:
-
-      * "call-status" / "event" / "status" route → any non-recording event
-      * "answer" route → INITIATED or RINGING events (the answer hook
-        is invoked at call setup)
-      * "gather" route → DTMF_RECEIVED / SPEECH_RECEIVED events
-      * "recording-status" / "recording" / "passthru" route → RECORDING_*
-        events
-
-    For providers like Telnyx that have a single event webhook, all
-    events count toward freshness — exactly what the user wants.
-    """
+def _route_event_types() -> dict[str, list[str]]:
+    global _ROUTE_EVENT_TYPES
+    if _ROUTE_EVENT_TYPES:
+        return _ROUTE_EVENT_TYPES
     from voice.constants import CallEventType
 
-    label_filters: dict[str, list[str]] = {
+    _ROUTE_EVENT_TYPES = {
         "call-status": [],  # any event
         "event": [],
         "status": [],
@@ -165,35 +141,116 @@ def _last_event_for_route(config: VoiceProviderConfig, label: str) -> tuple[Opti
             CallEventType.RECORDING_COMPLETED,
         ],
     }
-    events = VoiceCallEvent.objects.filter(call__provider_config=config).order_by("-occurred_at")
-    type_filter = label_filters.get(label)
-    if type_filter:
-        events = events.filter(event_type__in=type_filter)
-    last = events.values("occurred_at", "call_id").first()
-    if not last:
-        return None, None
-    return last["occurred_at"], str(last["call_id"])
+    return _ROUTE_EVENT_TYPES
 
 
-def probe_config(config: VoiceProviderConfig) -> dict:
+def _absolute_url(request, url_name: str, config_uuid: str) -> str:
+    """Build the public URL for a webhook route.
+
+    Prefers ``request.build_absolute_uri()`` (uses the inbound Host
+    header — always reflects how the caller reached us). Falls back to
+    ``PUBLIC_BASE_URL`` when no request is available (e.g. called from
+    a Celery task). The legacy ``example.invalid`` fallback was loud
+    on purpose but confusing in operator output — drop it for an empty
+    base path instead. (#185 review)
+    """
+    path = reverse(url_name, kwargs={"config_uuid": config_uuid})
+    if request is not None:
+        return request.build_absolute_uri(path)
+    base = getattr(settings, "PUBLIC_BASE_URL", "") or ""
+    return urljoin(base.rstrip("/") + "/", path.lstrip("/")) if base else path
+
+
+def _routes_for(provider: str) -> list[WebhookRoute]:
+    return WEBHOOK_ROUTES_BY_PROVIDER.get(provider, [])
+
+
+def _classify(last_received_at) -> str:
+    if last_received_at is None:
+        return "passive_never"
+    if timezone.now() - last_received_at <= PASSIVE_RECENT_WINDOW:
+        return "passive_recent"
+    return "passive_stale"
+
+
+def probe_config(config: VoiceProviderConfig, request=None) -> dict:
     """Run the passive reachability probe for *config*.
 
-    Returns the response dict the API surface emits verbatim.
+    Returns the response dict the API surface emits verbatim. Issues
+    one aggregate query that finds ``(event_type, max(occurred_at))``
+    per type, then projects per-route freshness in Python — replacing
+    the previous N+1 path that ran one ``ORDER BY occurred_at DESC
+    LIMIT 1`` per route. Pairs with the composite index on
+    ``VoiceCallEvent`` added in migration ``0006``. (#185 review)
     """
     routes = _routes_for(config.provider)
-    results: list[dict] = []
     config_uuid = str(config.id)
+
+    # Single query: for this config, find latest occurrence of each
+    # event type, plus a sample call id for that latest occurrence.
+    # We can't pull sample_call_id in the GROUP BY without a window
+    # function, so do a second cheap query keyed by the (event_type,
+    # occurred_at) tuples we found.
+    per_type_max = dict(
+        VoiceCallEvent.objects.filter(call__provider_config=config)
+        .values_list("event_type")
+        .annotate(latest=Max("occurred_at"))
+        .values_list("event_type", "latest")
+    )
+    if per_type_max:
+        latest_overall = max(per_type_max.values())
+        sample_for_latest = (
+            VoiceCallEvent.objects.filter(
+                call__provider_config=config,
+                occurred_at=latest_overall,
+            )
+            .values_list("event_type", "call_id")
+            .first()
+        )
+    else:
+        latest_overall = None
+        sample_for_latest = None
+
+    route_event_types = _route_event_types()
+    results: list[dict] = []
     for route in routes:
-        last_at, sample_call_id = _last_event_for_route(config, route.label)
+        filter_types = route_event_types.get(route.label, [])
+        if filter_types:
+            inferred_from = "event_type"
+            last_at = None
+            sample_call_id: Optional[str] = None
+            for et in filter_types:
+                t = per_type_max.get(et)
+                if t and (last_at is None or t > last_at):
+                    last_at = t
+            if last_at is not None:
+                row = (
+                    VoiceCallEvent.objects.filter(
+                        call__provider_config=config,
+                        event_type__in=filter_types,
+                        occurred_at=last_at,
+                    )
+                    .values_list("call_id")
+                    .first()
+                )
+                if row:
+                    sample_call_id = str(row[0])
+        else:
+            inferred_from = "any_event"
+            last_at = latest_overall
+            sample_call_id = str(sample_for_latest[1]) if sample_for_latest else None
+
         results.append(
             {
                 "label": route.label,
-                "url": _absolute_url(route.url_name, config_uuid),
+                "url": _absolute_url(request, route.url_name, config_uuid),
                 "status": _classify(last_at),
                 "last_received_at": last_at.isoformat() if last_at else None,
                 "sample_call_id": sample_call_id,
+                "inferred_from": inferred_from,
             }
         )
+
     return {
         "config_id": config_uuid,
         "provider": config.provider,

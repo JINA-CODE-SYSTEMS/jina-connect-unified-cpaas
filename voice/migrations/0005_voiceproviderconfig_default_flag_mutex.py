@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="voiceproviderconfig",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("is_default_outbound", True)),
+                condition=models.Q(is_default_outbound=True),
                 fields=("tenant",),
                 name="voiceconfig_unique_default_outbound_per_tenant",
             ),
@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="voiceproviderconfig",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("is_default_inbound", True)),
+                condition=models.Q(is_default_inbound=True),
                 fields=("tenant",),
                 name="voiceconfig_unique_default_inbound_per_tenant",
             ),
