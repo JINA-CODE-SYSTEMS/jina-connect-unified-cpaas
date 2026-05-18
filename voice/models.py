@@ -137,6 +137,22 @@ class VoiceProviderConfig(BaseTenantModelForFilterUser):
             models.Index(fields=["tenant", "provider"]),
             models.Index(fields=["tenant", "enabled", "priority"]),
         ]
+        constraints = [
+            # At most one default-outbound config per tenant. Without the
+            # partial unique index two admins racing the "set default"
+            # action could leave the tenant with two defaults — the
+            # outbound resolver would then pick one non-deterministically.
+            models.UniqueConstraint(
+                fields=["tenant"],
+                condition=models.Q(is_default_outbound=True),
+                name="voiceconfig_unique_default_outbound_per_tenant",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant"],
+                condition=models.Q(is_default_inbound=True),
+                name="voiceconfig_unique_default_inbound_per_tenant",
+            ),
+        ]
 
     def __str__(self) -> str:
         label = self.vendor_label or self.get_provider_display()
@@ -311,6 +327,16 @@ class VoiceCallEvent(BaseTenantModelForFilterUser):
         verbose_name_plural = "Voice call events"
         indexes = [
             models.Index(fields=["call", "sequence"]),
+            # B4 webhook-reachability aggregate. ``probe_config`` issues
+            # ``GROUP BY event_type`` over the events of one provider
+            # config; the (call, event_type, occurred_at DESC) composite
+            # lets that aggregate stay cheap as event volume grows.
+            # Without it, a per-route MAX(occurred_at) scan dominates on
+            # configs with millions of rows. (#185 review)
+            models.Index(
+                fields=["call", "event_type", "-occurred_at"],
+                name="voice_event_call_type_t_idx",
+            ),
         ]
         ordering = ["call", "sequence"]
 

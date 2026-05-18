@@ -80,8 +80,12 @@ class PermissionRegistryTests(TestCase):
         self.assertEqual(len(ALL_PERMISSIONS), len(set(ALL_PERMISSIONS)))
 
     def test_all_permissions_count(self):
-        """Sanity check that we have the expected number of permission keys."""
-        self.assertEqual(len(ALL_PERMISSIONS), 43)
+        """Sanity check that we have the expected number of permission keys.
+
+        Bumped from 43 → 61 when the voice channel landed its 18 voice.*
+        RBAC keys in #182 (B2).
+        """
+        self.assertEqual(len(ALL_PERMISSIONS), 61)
 
     def test_default_roles_have_entries(self):
         for slug in DefaultRoleSlugs.values:
@@ -107,10 +111,15 @@ class PermissionRegistryTests(TestCase):
 
     def test_viewer_only_has_view_permissions(self):
         viewer_perms = DEFAULT_ROLE_PERMISSIONS["viewer"]
+        # ``voice.call.recording.play`` is read-side (listening to a stored
+        # recording does not mutate state) but doesn't carry the ``.view``
+        # suffix because "play" is the canonical verb for media playback —
+        # see #182 (B2) for the rationale.
+        VIEWER_READ_EXCEPTIONS = {"billing.view", "voice.call.recording.play"}
         for perm, allowed in viewer_perms.items():
             if allowed:
                 self.assertTrue(
-                    perm.endswith(".view") or perm == "billing.view",
+                    perm.endswith(".view") or perm in VIEWER_READ_EXCEPTIONS,
                     f"VIEWER has non-view permission '{perm}' set to True",
                 )
 
@@ -171,8 +180,11 @@ class HasPermissionFunctionTests(TestCase):
             self.assertTrue(has_permission(self.owner_role, perm), f"OWNER should have '{perm}'")
 
     def test_viewer_denied_create_permissions(self):
+        # See note in ``test_viewer_only_has_view_permissions`` — viewer's
+        # read-side permissions are not strictly ``.view``-suffixed.
+        VIEWER_READ_EXCEPTIONS = {"billing.view", "voice.call.recording.play"}
         for perm in ALL_PERMISSIONS:
-            if not perm.endswith(".view") and perm != "billing.view":
+            if not perm.endswith(".view") and perm not in VIEWER_READ_EXCEPTIONS:
                 self.assertFalse(has_permission(self.viewer_role, perm), f"VIEWER should NOT have '{perm}'")
 
     def test_unknown_permission_denied(self):
@@ -3100,8 +3112,13 @@ class PreProductionSweepTests(RBACIntegrationBase):
     # ── 5. Permission Registry Completeness ────────────────────────────
 
     def test_all_permissions_count_is_43(self):
-        """#255: ALL_PERMISSIONS has exactly 43 keys after all RBAC tickets."""
-        self.assertEqual(len(ALL_PERMISSIONS), 43)
+        """#255 sweep: ALL_PERMISSIONS key count.
+
+        Was 43 after the RBAC bring-up tickets; bumped to 61 in #182 (B2)
+        when 18 voice.* keys were added. Method name kept for grep
+        continuity.
+        """
+        self.assertEqual(len(ALL_PERMISSIONS), 61)
 
     def test_every_permission_has_description(self):
         """#255: Every key in ALL_PERMISSIONS has a description."""

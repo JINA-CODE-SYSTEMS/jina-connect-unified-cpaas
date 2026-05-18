@@ -173,3 +173,17 @@ class AriClient:
         # when supported; fallback callers can read from disk.
         resp = self._request("GET", f"ari/recordings/stored/{recording_name}/file")
         return resp.content
+
+    # ── Health / discovery (B1 #181) ────────────────────────────────────
+
+    def asterisk_info(self) -> dict:
+        """Return Asterisk system info via ``GET /ari/asterisk/info``.
+
+        Used by the health endpoint to confirm ARI reachability and
+        report the running Asterisk version back to the frontend.
+        """
+        return self._request("GET", "ari/asterisk/info").json()
+
+    def list_endpoints(self) -> list[dict]:
+        """Return registered PJSIP endpoints via ``GET /ari/endpoints``."""
+        return self._request("GET", "ari/endpoints").json()

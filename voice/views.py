@@ -25,6 +25,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from tenants.models import TenantVoiceApp
 from voice.models import (
@@ -36,7 +37,12 @@ from voice.models import (
     VoiceRecording,
     VoiceTemplate,
 )
-from voice.permissions import IsAuthenticated, IsVoiceAdmin, IsVoiceEnabledForTenant
+from voice.permissions import (
+    HasVoicePermission,
+    IsAuthenticated,
+    IsVoiceAdmin,
+    IsVoiceEnabledForTenant,
+)
 from voice.serializers import (
     RecordingConsentSerializer,
     TenantVoiceAppSerializer,
@@ -81,6 +87,20 @@ class VoiceProviderConfigViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(tenant=_user_tenant(self.request))
+
+    @action(detail=True, methods=["post"], url_path="test-webhooks")
+    def test_webhooks(self, request, pk=None):
+        """B4 (#184): probe webhook reachability for this config.
+
+        Returns one row per configured webhook URL with a status that
+        reflects whether the URL has received an event recently. The
+        first iteration is passive only — for active probes (provider
+        API → wait for callback) see ``voice/webhooks/reachability.py``.
+        """
+        from voice.webhooks.reachability import probe_config
+
+        config = self.get_object()
+        return Response(probe_config(config, request=request))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -185,6 +205,26 @@ class VoiceCallViewSet(
         metadata = {}
         if tts_text:
             metadata["static_play"] = {"tts_text": tts_text}
+
+        # Stamp the provider's answer-webhook URL onto the call so
+        # ``voice.tasks.initiate_call`` can pass it as ``callback_url``
+        # to the adapter. Without this the task reads
+        # ``call.metadata["answer_callback_url"] == ""`` and Twilio
+        # rejects the request with an empty ``Url`` parameter.
+        _PROVIDER_ANSWER_ROUTE = {
+            "twilio": "voice:twilio-answer",
+            "plivo": "voice:plivo-answer",
+            "vonage": "voice:vonage-answer",
+            "telnyx": "voice:telnyx-event",
+            "exotel": "voice:exotel-passthru",
+        }
+        route_name = _PROVIDER_ANSWER_ROUTE.get(config.provider)
+        if route_name:
+            from django.urls import reverse
+
+            metadata["answer_callback_url"] = request.build_absolute_uri(
+                reverse(route_name, kwargs={"config_uuid": str(config.id)})
+            )
 
         # ``provider_call_id`` carries a placeholder until the adapter
         # replaces it with the real upstream SID. The (provider_config,
@@ -307,7 +347,18 @@ class VoiceRecordingViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = VoiceRecordingSerializer
-    permission_classes = [IsAuthenticated, IsVoiceEnabledForTenant]
+    permission_classes = [IsAuthenticated, IsVoiceEnabledForTenant, HasVoicePermission]
+    # Differentiates play (list/retrieve return a short-TTL signed URL
+    # for inline playback) from download (the `download` action mints a
+    # caller-specified TTL — typically used for saving the audio locally).
+    # Maps to the voice.call.recording.* RBAC keys seeded in tenants/0019.
+    # (#185 review nit)
+    voice_required_permissions = {
+        "list": "voice.call.recording.play",
+        "retrieve": "voice.call.recording.play",
+        "download": "voice.call.recording.download",
+        "default": "voice.call.recording.play",
+    }
 
     def get_queryset(self):
         qs = (
@@ -400,3 +451,59 @@ class RecordingConsentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(tenant=_user_tenant(self.request))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Asterisk ARI health (B1 #181)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class AriHealthView(APIView):
+    """``GET /voice/v1/api/ari-health/`` — confirm Asterisk ARI is up.
+
+    Returns 200 with ``{ok: true, asterisk_version, endpoints_registered}``
+    on success, 503 with ``{ok: false, reason}`` when ARI is unreachable
+    or misconfigured. The frontend SIP gallery tile flips from greyed →
+    enabled based on this response.
+
+    The check is tenant-agnostic — ARI runs once per box, not per
+    tenant. We still gate on ``IsVoiceEnabledForTenant`` so unrelated
+    callers can't probe infrastructure state.
+    """
+
+    permission_classes = [IsAuthenticated, IsVoiceEnabledForTenant]
+
+    def get(self, request):
+        from voice.sip_config.ari_client import AriClient, AriError
+
+        client = AriClient()
+        if not client.base_url:
+            return Response(
+                {"ok": False, "reason": "ASTERISK_ARI_URL is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        try:
+            info = client.asterisk_info()
+            endpoints = client.list_endpoints()
+        except AriError as exc:
+            return Response(
+                {"ok": False, "reason": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as exc:  # noqa: BLE001 — connection refused etc.
+            return Response(
+                {"ok": False, "reason": f"ARI unreachable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        version = (info.get("system") or {}).get("version") or info.get("version") or "unknown"
+        body = {"ok": True, "asterisk_version": version}
+        # ``endpoints_registered`` is a box-wide count — Asterisk runs
+        # once per host across all tenants. Surfacing it to non-staff
+        # users would let one tenant infer another tenant's SIP
+        # onboarding activity by polling. Staff need the number for ops
+        # diagnostics; the wizard only needs the boolean "ARI is up".
+        # (#185 review)
+        if getattr(request.user, "is_staff", False):
+            body["endpoints_registered"] = len(endpoints)
+        return Response(body)

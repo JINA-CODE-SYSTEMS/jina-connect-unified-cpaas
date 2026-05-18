@@ -7,11 +7,8 @@ Two gates layered on top of ``IsAuthenticated``:
     tenant without voice provisioning sees the same 403 a non-member
     would — no info-leak via differential responses.
   * ``IsVoiceAdmin`` — applied to endpoints that touch
-    ``VoiceProviderConfig`` / ``VoiceRateCard``. Falls back to
-    ``is_staff`` since the project's RBAC layer is per-channel and the
-    voice-specific permission strings haven't been wired into the seed
-    role yet — staff users keep working, regular tenant users can't
-    poke at provider credentials.
+    ``VoiceProviderConfig`` / ``VoiceRateCard``. Checks the RBAC
+    permission key ``voice.provider.edit`` (B2 #182). Staff users bypass.
 """
 
 from __future__ import annotations
@@ -42,13 +39,43 @@ class IsVoiceEnabledForTenant(BasePermission):
         ).exists()
 
 
-class IsVoiceAdmin(BasePermission):
-    """Restrict provider-credential / rate-card endpoints to staff.
+def _user_has_voice_perm(user, perm_key: str) -> bool:
+    """True if ``user`` has *perm_key* granted on at least one active
+    tenant role.
 
-    Staff bypass tenants entirely. Non-staff users that are
-    ``TenantUser`` rows with an ``OWNER`` / ``ADMIN`` role on at least
-    one tenant also qualify — keeps regular agents out of credential
-    UIs without coupling the voice app to a specific RBAC seed.
+    The RBAC layer (``tenants.permissions.has_permission``) operates on
+    a single ``TenantRole`` and ``RolePermission`` is the source of
+    truth — so this resolves to a single ``EXISTS`` round-trip joining
+    the user's active ``TenantUser`` rows to ``RolePermission`` rather
+    than the per-tenant Python loop the first iteration shipped. Avoids
+    the ``user.tenant`` shortcut used by ``TenantRolePermission`` so
+    it works for users whose tenant is not pinned on the request.
+    (#185 review nit)
+    """
+    from tenants.models import RolePermission
+
+    return RolePermission.objects.filter(
+        role__members__user=user,
+        role__members__is_active=True,
+        permission=perm_key,
+        allowed=True,
+    ).exists()
+
+
+class IsVoiceAdmin(BasePermission):
+    """Restrict provider-credential / rate-card endpoints to admins.
+
+    A user passes if either:
+
+      * ``request.user.is_staff`` (superuser bypass), or
+      * any of the user's active tenant roles grants
+        ``voice.provider.edit`` (the canonical voice-admin RBAC key
+        seeded by tenants migration 0019).
+
+    Falling back to staff keeps the gate working when a tenant's role
+    rows haven't been re-seeded — voice.* keys are auto-granted to
+    OWNER/ADMIN on tenant creation via the ``Tenant.post_save`` signal,
+    and the data migration back-fills existing tenants.
     """
 
     message = "Voice provider configuration is admin-only."
@@ -59,14 +86,39 @@ class IsVoiceAdmin(BasePermission):
             return False
         if user.is_staff:
             return True
-        # Best-effort RBAC check — the role names vary across seed
-        # data, but ADMIN / OWNER are the canonical "can manage
-        # config" tiers.
-        try:
-            from tenants.models import TenantUser
-        except ImportError:  # pragma: no cover — defensive
+        return _user_has_voice_perm(user, "voice.provider.edit")
+
+
+class HasVoicePermission(BasePermission):
+    """Generic gate that reads the required key from the viewset.
+
+    The viewset declares a ``voice_required_permission`` attribute (or
+    a per-action dict via ``voice_required_permissions``). The gate
+    resolves the active action, looks up the matching key, and checks
+    it against the user's tenant roles.
+
+    Drop-in replacement for ``IsVoiceAdmin`` when the viewset needs
+    per-action granularity (e.g. recordings: ``play`` vs. ``download``).
+    """
+
+    message = "You do not have the required voice permission for this action."
+
+    def has_permission(self, request, view) -> bool:
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
             return False
-        return TenantUser.objects.filter(
-            user=user,
-            role__name__in=("OWNER", "ADMIN", "Owner", "Admin"),
-        ).exists()
+        if user.is_staff:
+            return True
+
+        per_action = getattr(view, "voice_required_permissions", None)
+        if per_action:
+            action = getattr(view, "action", None) or request.method.lower()
+            perm_key = per_action.get(action) or per_action.get("default")
+        else:
+            perm_key = getattr(view, "voice_required_permission", None)
+
+        if not perm_key:
+            # No key declared → fall through to the rest of the
+            # permission stack (deny-only-when-keyed).
+            return True
+        return _user_has_voice_perm(user, perm_key)
