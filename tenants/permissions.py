@@ -67,6 +67,30 @@ ALL_PERMISSIONS = [
     "product.manage",
     # Analytics
     "analytics.view",
+    # ── Voice (B2 #182) ──────────────────────────────────────────────────
+    # Configuration / provider (admin tier)
+    "voice.provider.view",
+    "voice.provider.create",
+    "voice.provider.edit",
+    "voice.provider.delete",
+    "voice.config.view",
+    "voice.config.edit",
+    # Calls (operator tier)
+    "voice.call.view",
+    "voice.call.initiate",
+    "voice.call.recording.play",
+    "voice.call.recording.download",
+    # Templates (reserved — UI ships later)
+    "voice.template.view",
+    "voice.template.create",
+    "voice.template.edit",
+    "voice.template.delete",
+    # Recording-consent records
+    "voice.consent.view",
+    "voice.consent.edit",
+    # Rate cards (admin tier)
+    "voice.rate_card.view",
+    "voice.rate_card.edit",
 ]
 
 # ---------------------------------------------------------------------------
@@ -118,6 +142,25 @@ PERMISSION_DESCRIPTIONS: dict[str, str] = {
     "product.view": "View product catalog",
     "product.manage": "Manage products and catalog",
     "analytics.view": "View analytics and reports",
+    # Voice (B2 #182)
+    "voice.provider.view": "View voice provider connections",
+    "voice.provider.create": "Add new voice provider connections",
+    "voice.provider.edit": "Edit voice provider connections",
+    "voice.provider.delete": "Remove voice provider connections",
+    "voice.config.view": "View voice channel configuration",
+    "voice.config.edit": "Edit voice channel configuration",
+    "voice.call.view": "View voice call history",
+    "voice.call.initiate": "Place outbound calls and transfer in-progress calls",
+    "voice.call.recording.play": "Stream voice call recordings",
+    "voice.call.recording.download": "Download voice call recordings",
+    "voice.template.view": "View voice templates",
+    "voice.template.create": "Create voice templates",
+    "voice.template.edit": "Edit voice templates",
+    "voice.template.delete": "Delete voice templates",
+    "voice.consent.view": "View recording-consent records",
+    "voice.consent.edit": "Edit recording-consent records",
+    "voice.rate_card.view": "View voice rate cards",
+    "voice.rate_card.edit": "Edit voice rate cards",
 }
 
 # ---------------------------------------------------------------------------
@@ -172,6 +215,13 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "product.view": True,
         "product.manage": True,
         "analytics.view": True,
+        # Voice — operate calls, read provider config (B2 #182)
+        "voice.call.view": True,
+        "voice.call.initiate": True,
+        "voice.call.recording.play": True,
+        "voice.call.recording.download": True,
+        "voice.provider.view": True,
+        "voice.config.view": True,
     },
     "agent": {
         "tenant.view": True,
@@ -185,6 +235,10 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "chatflow.view": True,
         "product.view": True,
         "analytics.view": True,
+        # Voice — initiate calls, listen to recordings (B2 #182)
+        "voice.call.view": True,
+        "voice.call.initiate": True,
+        "voice.call.recording.play": True,
     },
     # ── VIEWER: read-only ────────────────────────────────────────────────
     "viewer": {
@@ -199,6 +253,9 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
         "chatflow.view": True,
         "product.view": True,
         "analytics.view": True,
+        # Voice — read-only call history + playback (B2 #182)
+        "voice.call.view": True,
+        "voice.call.recording.play": True,
     },
 }
 
