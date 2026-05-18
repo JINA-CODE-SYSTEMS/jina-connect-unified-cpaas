@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 
+from django.db import transaction
 from rest_framework import serializers
 
 from tenants.models import TenantVoiceApp
@@ -77,6 +78,37 @@ class VoiceProviderConfigSerializer(serializers.ModelSerializer):
             except VoiceCredentialError as exc:
                 raise serializers.ValidationError({"credentials": str(exc)}) from exc
         return super().validate(attrs)
+
+    # ── B3 (#183): transactional default-flag mutex ───────────────────────
+    # The model has partial unique constraints on (tenant) conditioned on
+    # is_default_outbound=True / is_default_inbound=True. Naive save() on
+    # a row that flips a flag to True while another row in the same tenant
+    # already holds it would raise IntegrityError. We flip the existing
+    # holder off in the same transaction so the API does the safe thing
+    # by default — the alternative (two PATCHes from the frontend) has a
+    # race window between the demote and the promote.
+    _DEFAULT_FLAGS = ("is_default_outbound", "is_default_inbound")
+
+    def _demote_existing_defaults(self, tenant, validated_data, *, exclude_pk=None) -> None:
+        for flag in self._DEFAULT_FLAGS:
+            if not validated_data.get(flag):
+                continue
+            qs = VoiceProviderConfig.objects.filter(tenant=tenant, **{flag: True})
+            if exclude_pk is not None:
+                qs = qs.exclude(pk=exclude_pk)
+            qs.update(**{flag: False})
+
+    def create(self, validated_data):
+        tenant = validated_data.get("tenant")
+        with transaction.atomic():
+            if tenant is not None:
+                self._demote_existing_defaults(tenant, validated_data)
+            return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        with transaction.atomic():
+            self._demote_existing_defaults(instance.tenant, validated_data, exclude_pk=instance.pk)
+            return super().update(instance, validated_data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

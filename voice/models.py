@@ -137,6 +137,22 @@ class VoiceProviderConfig(BaseTenantModelForFilterUser):
             models.Index(fields=["tenant", "provider"]),
             models.Index(fields=["tenant", "enabled", "priority"]),
         ]
+        constraints = [
+            # At most one default-outbound config per tenant. Without the
+            # partial unique index two admins racing the "set default"
+            # action could leave the tenant with two defaults — the
+            # outbound resolver would then pick one non-deterministically.
+            models.UniqueConstraint(
+                fields=["tenant"],
+                condition=models.Q(is_default_outbound=True),
+                name="voiceconfig_unique_default_outbound_per_tenant",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant"],
+                condition=models.Q(is_default_inbound=True),
+                name="voiceconfig_unique_default_inbound_per_tenant",
+            ),
+        ]
 
     def __str__(self) -> str:
         label = self.vendor_label or self.get_provider_display()
