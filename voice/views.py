@@ -25,6 +25,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from tenants.models import TenantVoiceApp
 from voice.models import (
@@ -81,6 +82,20 @@ class VoiceProviderConfigViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(tenant=_user_tenant(self.request))
+
+    @action(detail=True, methods=["post"], url_path="test-webhooks")
+    def test_webhooks(self, request, pk=None):
+        """B4 (#184): probe webhook reachability for this config.
+
+        Returns one row per configured webhook URL with a status that
+        reflects whether the URL has received an event recently. The
+        first iteration is passive only — for active probes (provider
+        API → wait for callback) see ``voice/webhooks/reachability.py``.
+        """
+        from voice.webhooks.reachability import probe_config
+
+        config = self.get_object()
+        return Response(probe_config(config))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -400,3 +415,56 @@ class RecordingConsentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(tenant=_user_tenant(self.request))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Asterisk ARI health (B1 #181)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class AriHealthView(APIView):
+    """``GET /voice/v1/api/ari-health/`` — confirm Asterisk ARI is up.
+
+    Returns 200 with ``{ok: true, asterisk_version, endpoints_registered}``
+    on success, 503 with ``{ok: false, reason}`` when ARI is unreachable
+    or misconfigured. The frontend SIP gallery tile flips from greyed →
+    enabled based on this response.
+
+    The check is tenant-agnostic — ARI runs once per box, not per
+    tenant. We still gate on ``IsVoiceEnabledForTenant`` so unrelated
+    callers can't probe infrastructure state.
+    """
+
+    permission_classes = [IsAuthenticated, IsVoiceEnabledForTenant]
+
+    def get(self, request):
+        from voice.sip_config.ari_client import AriClient, AriError
+
+        client = AriClient()
+        if not client.base_url:
+            return Response(
+                {"ok": False, "reason": "ASTERISK_ARI_URL is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        try:
+            info = client.asterisk_info()
+            endpoints = client.list_endpoints()
+        except AriError as exc:
+            return Response(
+                {"ok": False, "reason": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as exc:  # noqa: BLE001 — connection refused etc.
+            return Response(
+                {"ok": False, "reason": f"ARI unreachable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        version = (info.get("system") or {}).get("version") or info.get("version") or "unknown"
+        return Response(
+            {
+                "ok": True,
+                "asterisk_version": version,
+                "endpoints_registered": len(endpoints),
+            }
+        )

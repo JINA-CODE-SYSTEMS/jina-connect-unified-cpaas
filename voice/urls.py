@@ -13,6 +13,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from voice.views import (
+    AriHealthView,
     RecordingConsentViewSet,
     TenantVoiceAppViewSet,
     VoiceCallEventViewSet,
@@ -60,6 +61,8 @@ urlpatterns = [
     # REST API surface — mounted under ``/voice/v1/`` from the project
     # URL conf, so the effective prefix becomes ``/voice/v1/api/``.
     path("api/", include(router.urls)),
+    # B1 (#181): Asterisk ARI health probe used by the SIP wizard.
+    path("api/ari-health/", AriHealthView.as_view(), name="ari-health"),
     # ── Twilio ─────────────────────────────────────────────────────────
     path(
         "webhooks/twilio/<uuid:config_uuid>/call-status/",

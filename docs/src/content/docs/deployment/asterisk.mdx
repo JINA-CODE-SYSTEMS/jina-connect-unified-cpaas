@@ -1,0 +1,302 @@
+---
+title: Asterisk + chan_pjsip
+description: Deploy Asterisk 20 LTS with chan_pjsip + ARI to unblock the SIP voice adapter.
+---
+
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+The SIP voice adapter (`voice/adapters/sip.py`) writes per-config PJSIP
+endpoint files and originates calls through Asterisk's REST Interface
+(ARI). The adapter alone does not place calls — Asterisk has to be
+running on the same box as Django (or reachable on a private network)
+and configured to load `chan_pjsip`, expose ARI on the loopback, and
+include the writer's drop-in directory.
+
+This page is the runbook for standing that up. The frontend SIP wizard
+flips from greyed → enabled by polling
+`GET /voice/v1/api/ari-health/`, so once Asterisk is up the gallery
+tile becomes available automatically.
+
+## Prerequisites
+
+* A Linux VM with at least 2 vCPU / 4 GB RAM (sized for ~50 concurrent
+  call legs; scale horizontally for more).
+* Outbound network access on UDP 5060 to your carrier(s) and inbound
+  UDP 5060 + UDP 10000-20000 from the carrier's published source IPs.
+* Django container can reach the Asterisk box on TCP 8088 (ARI).
+* Carrier-supplied SIP credentials (username, password, realm, proxy).
+
+<Aside type="caution">
+  Never expose ARI (TCP 8088) on a public IP. The REST API has full
+  control of call routing — bind it to `127.0.0.1` or a private subnet.
+</Aside>
+
+## 1. Install Asterisk
+
+<Tabs>
+<TabItem label="Debian / Ubuntu">
+
+```sh
+sudo apt update
+sudo apt install -y asterisk asterisk-mp3 asterisk-modules
+sudo systemctl enable asterisk
+```
+
+</TabItem>
+<TabItem label="Build from source">
+
+The distro packages are typically a major version behind. Build from
+source if you need Asterisk 21+ features (e.g. WebRTC media bridge):
+
+```sh
+sudo apt install -y build-essential libedit-dev libjansson-dev \
+  libsqlite3-dev libssl-dev libxml2-dev libuuid1
+curl -L https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-20-current.tar.gz | tar xz
+cd asterisk-20.*/
+sudo contrib/scripts/install_prereq install
+./configure --with-jansson-bundled
+make menuselect.makeopts
+sudo make install
+sudo make samples
+sudo make config
+```
+
+</TabItem>
+</Tabs>
+
+Confirm the version and that `chan_pjsip` is built in (the default for
+Asterisk 18+):
+
+```sh
+asterisk -V
+sudo asterisk -rx "module show like chan_pjsip"
+```
+
+## 2. Configure ARI
+
+Edit `/etc/asterisk/ari.conf`:
+
+```ini
+[general]
+enabled = yes
+pretty = yes
+
+[jina-voice]
+type = user
+password = REPLACE_ME_WITH_A_LONG_RANDOM_SECRET
+read_only = no
+```
+
+Edit `/etc/asterisk/http.conf` — ARI lives on top of the built-in HTTP
+server. Keep it on loopback only:
+
+```ini
+[general]
+enabled = yes
+bindaddr = 127.0.0.1
+bindport = 8088
+```
+
+Reload:
+
+```sh
+sudo systemctl restart asterisk
+sudo asterisk -rx "ari show status"
+```
+
+You should see `ARI HTTP enabled: Yes` and the `jina-voice` user listed.
+
+## 3. PJSIP skeleton + drop-in directory
+
+`voice/sip_config/pjsip_writer.py` writes one file per
+`VoiceProviderConfig` into `/etc/asterisk/pjsip.d/<config_uuid>.conf`
+(transport + endpoint + auth + registration). The base
+`/etc/asterisk/pjsip.conf` must include that directory and define the
+shared inbound dialplan context that endpoint templates reference:
+
+```ini
+; /etc/asterisk/pjsip.conf
+
+[global]
+type = global
+user_agent = jina-voice
+
+[transport-udp]
+type = transport
+protocol = udp
+bind = 0.0.0.0:5060
+
+[transport-tcp]
+type = transport
+protocol = tcp
+bind = 0.0.0.0:5060
+
+#include pjsip.d/*.conf
+```
+
+And the dialplan context the endpoint files set as their `context=`:
+
+```ini
+; /etc/asterisk/extensions.conf
+
+[jina-voice-inbound]
+exten => _X.,1,NoOp(Inbound call ${EXTEN})
+ same => n,Stasis(jina-voice,inbound,${EXTEN},${CALLERID(num)})
+ same => n,Hangup()
+
+[jina-voice-outbound]
+exten => _X.,1,NoOp(Outbound call ${EXTEN})
+ same => n,Stasis(jina-voice,outbound,${EXTEN})
+ same => n,Hangup()
+```
+
+Reload Asterisk to pick up the writer's drop-in:
+
+```sh
+sudo asterisk -rx "pjsip reload"
+sudo asterisk -rx "dialplan reload"
+```
+
+## 4. RTP port range + firewall
+
+In `/etc/asterisk/rtp.conf`:
+
+```ini
+[general]
+rtpstart = 10000
+rtpend = 20000
+```
+
+On the firewall (GCP / AWS / iptables):
+
+| Port range            | Protocol | Direction | Source                       |
+|-----------------------|----------|-----------|------------------------------|
+| 5060                  | UDP      | Ingress   | Carrier SBC IPs (per vendor) |
+| 5060                  | TCP      | Ingress   | Carrier SBC IPs (TLS-SIP)    |
+| 10000-20000           | UDP      | Ingress   | Carrier SBC IPs              |
+| 8088                  | TCP      | —         | **Closed externally**        |
+
+Each carrier publishes its source IPs:
+
+* **Didlogic** — see your account dashboard
+* **Telnyx** — [telnyx.com/legal/ip-addresses](https://telnyx.com/legal/ip-addresses)
+* **Plivo** — see Plivo console under SIP trunking
+* **Twilio Elastic SIP** — [twilio.com/docs/sip-trunking/ip-addresses](https://www.twilio.com/docs/sip-trunking/ip-addresses)
+
+For GCP, the firewall rules look like:
+
+```sh
+gcloud compute firewall-rules create voice-sip-udp \
+  --network=default --direction=INGRESS --action=ALLOW \
+  --rules=udp:5060,udp:10000-20000 \
+  --source-ranges=<carrier-ip>,...
+
+gcloud compute firewall-rules create voice-sip-tcp \
+  --network=default --direction=INGRESS --action=ALLOW \
+  --rules=tcp:5060 \
+  --source-ranges=<carrier-ip>,...
+```
+
+## 5. Django env vars
+
+Set these in the Django container / systemd unit:
+
+| Variable                  | Example                       |
+|---------------------------|-------------------------------|
+| `ASTERISK_ARI_URL`        | `http://127.0.0.1:8088/`      |
+| `ASTERISK_ARI_USER`       | `jina-voice`                  |
+| `ASTERISK_ARI_PASSWORD`   | (matches `ari.conf`)          |
+| `ASTERISK_ARI_APP_NAME`   | `jina-voice`                  |
+
+The same secrets are referenced by `voice/sip_config/ari_client.py`.
+
+## 6. ARI WebSocket consumer
+
+`voice/sip_config/ari_consumer.py` is a long-running process that opens
+a WebSocket to ARI and translates Stasis events into `VoiceCallEvent`
+rows. It must run alongside the web workers:
+
+<Tabs>
+<TabItem label="systemd">
+
+`/etc/systemd/system/jina-voice-ari.service`:
+
+```ini
+[Unit]
+Description=Jina Voice ARI consumer
+After=network.target asterisk.service
+Requires=asterisk.service
+
+[Service]
+Type=simple
+User=tech
+WorkingDirectory=/home/tech/server-v2
+EnvironmentFile=/etc/jina/env
+ExecStart=/home/tech/server-v2/venv/bin/python manage.py voice_ari_consumer
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now jina-voice-ari
+```
+
+</TabItem>
+<TabItem label="Celery beat watchdog">
+
+If you prefer to keep the process model uniform with the rest of the
+stack, add a Celery beat that ensures the consumer is alive every
+minute. The consumer is idempotent — re-launching when already running
+is a no-op.
+
+</TabItem>
+</Tabs>
+
+## 7. Verify
+
+```sh
+# Asterisk healthy?
+sudo asterisk -rx "core show uptime"
+
+# ARI reachable from Django host?
+curl -u jina-voice:REPLACE_ME http://127.0.0.1:8088/ari/asterisk/info
+
+# Endpoints registered for your VoiceProviderConfig?
+sudo asterisk -rx "pjsip show endpoints"
+```
+
+From any tenant user that has voice enabled, hit the health endpoint:
+
+```sh
+curl -H "Authorization: Token …" https://example.com/voice/v1/api/ari-health/
+```
+
+A 200 response means the SIP gallery tile in the wizard will be
+enabled. A 503 surfaces the reason (`ASTERISK_ARI_URL not set`, auth
+failure, connection refused, …) so the issue is debuggable without
+shelling into the box.
+
+## 8. Smoke test
+
+Provision a `VoiceProviderConfig` with `provider=sip` against your
+carrier, then place a call via the REST API:
+
+```sh
+curl -X POST -H "Authorization: Token …" -H "Content-Type: application/json" \
+  https://example.com/voice/v1/api/calls/initiate/ \
+  -d '{"to_number": "+14155550100", "tts_text": "Hello from Jina."}'
+```
+
+Watch the call hit `RINGING` in:
+
+```sh
+sudo asterisk -rx "core show channels"
+```
+
+If it never leaves `QUEUED` and `ari-health` returns 200, the failure
+is in the endpoint config — check `asterisk -rvvv` for the SIP
+negotiation trace.
