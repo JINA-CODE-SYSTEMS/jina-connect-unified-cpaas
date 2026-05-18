@@ -171,12 +171,14 @@ class TestProbeConfig:
         assert rows["gather"]["inferred_from"] == "event_type"
         assert rows["recording-status"]["inferred_from"] == "event_type"
 
-    def test_aggregate_query_count_is_bounded(self, django_assert_num_queries):
+    def test_aggregate_query_count_is_bounded(self, django_assert_max_num_queries):
         # B4 review feedback: probe_config used to issue N+1 queries
         # (one per route). The aggregate version should land a small,
         # constant number regardless of how many routes the provider
         # has. Twilio has 4 routes; we cap at a generous bound that
-        # still catches the regression if the loop comes back.
+        # still catches the regression if the loop comes back, without
+        # being brittle to small implementation tweaks (max_num_queries
+        # is an upper bound, not equality).
         tenant = Tenant.objects.create(name="ReachQueryCount")
         cfg = _make_cfg(tenant, VoiceProvider.TWILIO)
         call = _make_call(tenant, cfg)
@@ -189,10 +191,7 @@ class TestProbeConfig:
             _make_event(call, et, timezone.now())
         from voice.webhooks.reachability import probe_config
 
-        # 1 aggregate + 1 sample for any-event routes + up to 3 per
-        # filtered route that has a hit. Be generous; the goal is
-        # "constant, not N+1 per route count".
-        with django_assert_num_queries(10):
+        with django_assert_max_num_queries(10):
             probe_config(cfg)
 
 

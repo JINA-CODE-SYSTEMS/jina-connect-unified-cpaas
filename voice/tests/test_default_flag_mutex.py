@@ -208,4 +208,7 @@ class TestDefaultFlagSerializerMutex:
         assert resp.status_code == 400, resp.content
         body = resp.json()
         assert "is_default_outbound" in body
-        assert "concurrently" in body["is_default_outbound"][0].lower()
+        # DRF may serialise the field value as a bare string or a
+        # one-element list depending on how ValidationError was raised;
+        # both forms are valid. Coerce to string before substring check.
+        assert "concurrently" in str(body["is_default_outbound"]).lower()
