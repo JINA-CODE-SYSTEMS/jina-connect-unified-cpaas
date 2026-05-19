@@ -51,6 +51,13 @@ CAPABILITY_TO_METHOD: dict[str, str | None] = {
     "supports_conference": None,
     # Billing
     "supports_provider_cost": None,
+    # CTWA referral parsing (#192) — declaration-only flags. The
+    # corresponding method is ``parse_referral()`` on ``BaseBSPAdapter``;
+    # the test exercises method presence via the adapter-method coverage
+    # block below rather than naming a single method here, because not
+    # every BSP supports the full referral (capability flag varies).
+    "supports_ctwa_referral": None,
+    "supports_ctwa_clid": None,
 }
 
 
