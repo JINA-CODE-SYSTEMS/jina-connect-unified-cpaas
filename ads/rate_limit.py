@@ -69,6 +69,19 @@ def _bucket_key(tenant_id: int, ad_account_id: str) -> str:
     return f"meta:buc:{tenant_id}:{ad_account_id}"
 
 
+def _redis_connection():
+    """Indirection layer so tests can patch the Redis client without
+    needing ``django_redis`` installed locally. CI runs without
+    ``django_redis`` (it's only present on the prod server), so a
+    test patching ``django_redis.get_redis_connection`` would fail
+    at patch-resolution time. Tests patch ``_redis_connection``
+    instead.
+    """
+    from django_redis import get_redis_connection
+
+    return get_redis_connection("default")
+
+
 def acquire(
     *,
     tenant_id: int,
@@ -83,9 +96,7 @@ def acquire(
     surface the throttle to the tenant UI.
     """
     try:
-        from django_redis import get_redis_connection
-
-        r = get_redis_connection("default")
+        r = _redis_connection()
     except Exception as exc:  # noqa: BLE001
         logger.warning("[ads.rate_limit] Redis unavailable (allowing call): %s", exc)
         return
@@ -113,9 +124,7 @@ def acquire(
 def status(*, tenant_id: int, ad_account_id: str) -> dict:
     """Return ``{tokens, capacity}`` for the operator dashboard."""
     try:
-        from django_redis import get_redis_connection
-
-        r = get_redis_connection("default")
+        r = _redis_connection()
         tokens_raw, _ = r.hmget(_bucket_key(tenant_id, ad_account_id), ["tokens", "ts"])
     except Exception:  # noqa: BLE001
         return {"tokens": None, "capacity": DEFAULT_BUCKET_SIZE, "redis": "down"}

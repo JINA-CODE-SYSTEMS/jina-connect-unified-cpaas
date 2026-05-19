@@ -1,9 +1,9 @@
 """Token-bucket tests (#196 + #201 review).
 
-Key invariant: under concurrent acquires for the same (tenant,
-ad_account), at most ``bucket_size`` calls in a single burst succeed.
-The v1 implementation was a hmget→compute→hmset Python loop —
-racy. The current implementation is a Lua script — atomic.
+Tests patch ``ads.rate_limit._redis_connection`` (the in-module
+indirection) rather than ``django_redis.get_redis_connection``
+directly — ``django_redis`` isn't installed in CI today, only on the
+prod server.
 """
 
 from __future__ import annotations
@@ -20,28 +20,28 @@ class TestRateLimiter:
         """If Redis isn't reachable, ``acquire`` returns silently —
         per module contract the rate limiter never blocks ingestion
         on infrastructure hiccups."""
-        with patch("django_redis.get_redis_connection", side_effect=RuntimeError("redis down")):
+        with patch("ads.rate_limit._redis_connection", side_effect=RuntimeError("redis down")):
             acquire(tenant_id=1, ad_account_id="act_1")
 
     def test_lua_eval_failure_fails_open(self):
         """Lua eval errors (cluster mode reject, etc.) also fail open."""
         mock_r = MagicMock()
         mock_r.eval.side_effect = RuntimeError("lua boom")
-        with patch("django_redis.get_redis_connection", return_value=mock_r):
+        with patch("ads.rate_limit._redis_connection", return_value=mock_r):
             acquire(tenant_id=1, ad_account_id="act_1")
         mock_r.eval.assert_called_once()
 
     def test_lua_returns_1_means_token_acquired(self):
         mock_r = MagicMock()
         mock_r.eval.return_value = 1
-        with patch("django_redis.get_redis_connection", return_value=mock_r):
+        with patch("ads.rate_limit._redis_connection", return_value=mock_r):
             acquire(tenant_id=1, ad_account_id="act_1")  # should not raise
         mock_r.eval.assert_called_once()
 
     def test_lua_returns_0_means_rate_limited(self):
         mock_r = MagicMock()
         mock_r.eval.return_value = 0
-        with patch("django_redis.get_redis_connection", return_value=mock_r):
+        with patch("ads.rate_limit._redis_connection", return_value=mock_r):
             with pytest.raises(RateLimited):
                 acquire(tenant_id=1, ad_account_id="act_1")
 
@@ -51,7 +51,7 @@ class TestRateLimiter:
         # passed by the caller make it into the eval call.
         mock_r = MagicMock()
         mock_r.eval.return_value = 1
-        with patch("django_redis.get_redis_connection", return_value=mock_r):
+        with patch("ads.rate_limit._redis_connection", return_value=mock_r):
             acquire(
                 tenant_id=42,
                 ad_account_id="act_42",
