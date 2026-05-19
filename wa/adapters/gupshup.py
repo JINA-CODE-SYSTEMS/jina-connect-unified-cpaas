@@ -69,8 +69,58 @@ class GupshupAdapter(BaseBSPAdapter):
         supports_template_buttons=True,
         supports_reactions=True,
         supports_typing_indicator=True,
+        # CTWA #192 — Gupshup forwards the Meta referral payload. The
+        # ``ctwa_clid`` field landed in a relatively recent Gupshup API
+        # version; older tenant integrations will see referral without
+        # clid (attribution still works, EMQ score drops).
+        supports_ctwa_referral=True,
+        supports_ctwa_clid=True,
         extra=frozenset({"templates", "subscriptions", "media_upload"}),
     )
+
+    # ── CTWA referral parsing (#192) ─────────────────────────────────────
+
+    def parse_referral(self, raw_webhook_payload: dict):
+        """Extract CTWA referral from a Gupshup inbound webhook.
+
+        Gupshup wraps the Meta payload under ``payload.payload`` and uses
+        either ``referral`` (modern Gupshup API) or ``referredProduct``
+        (older field name). Returns ``CtwaReferral`` or ``None``.
+        Never raises.
+        """
+        from wa.adapters.ctwa_referral import CtwaReferral
+
+        if not isinstance(raw_webhook_payload, dict):
+            return None
+        try:
+            # Gupshup nests the WA payload under payload.payload; some
+            # tenants forward the raw Meta envelope instead. Tolerate
+            # both shapes.
+            inner = raw_webhook_payload.get("payload") or raw_webhook_payload
+            if isinstance(inner, dict) and isinstance(inner.get("payload"), dict):
+                inner = inner["payload"]
+
+            ref = None
+            if isinstance(inner, dict):
+                ref = inner.get("referral") or inner.get("referredProduct")
+            if not isinstance(ref, dict):
+                return None
+            source_id = ref.get("source_id") or ref.get("source_ad_id") or ref.get("ad_id")
+            if not source_id:
+                return None
+            return CtwaReferral(
+                source_type=str(ref.get("source_type") or "ad"),
+                source_id=str(source_id),
+                source_url=str(ref.get("source_url") or ""),
+                headline=str(ref.get("headline") or ""),
+                body=str(ref.get("body") or ""),
+                media_type=str(ref.get("media_type") or ""),
+                media_url=str(ref.get("media_url") or ""),
+                thumbnail_url=str(ref.get("thumbnail_url") or ""),
+                ctwa_clid=str(ref.get("ctwa_clid") or ""),
+            )
+        except Exception:  # noqa: BLE001 — never raise from parse_referral
+            return None
 
     # ── credential helpers ────────────────────────────────────────────────
 

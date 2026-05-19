@@ -549,13 +549,60 @@ def process_message_webhook(pk: str):
                 # Route to ChatFlow if contact is assigned to a ChatFlow
                 _handle_chatflow_routing(contact, instance, content)
 
+                # ── CTWA wiring (#189 + #192 + #194 + #195) ────────────
+                # Resolve-or-create the WaConversation that holds 24h
+                # service-window state; parse the CTWA referral via the
+                # BSP adapter; if present, create a CtwaLead and stamp
+                # the campaign tag on this message. All wrapped in
+                # try/except — every CTWA step is additive and must
+                # never break inbound ingestion.
+                referral_extra: dict = {}
+                try:
+                    from wa.adapters import get_bsp_adapter
+                    from wa.services.conversations import resolve_or_create as resolve_conversation
+
+                    conversation = resolve_conversation(wa_app=instance.wa_app, contact=contact)
+
+                    referral = None
+                    try:
+                        adapter = get_bsp_adapter(instance.wa_app)
+                        referral = adapter.parse_referral(instance.payload or {})
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("[wa.tasks] parse_referral failed: %s", exc)
+
+                    if referral is not None:
+                        referral_extra = {
+                            "referral_source_type": referral.source_type,
+                            "referral_source_id": referral.source_id,
+                            "referral_source_url": referral.source_url,
+                            "referral_headline": referral.headline,
+                            "referral_body": referral.body,
+                            "referral_media_type": referral.media_type,
+                            "referral_media_url": referral.media_url,
+                            "referral_ctwa_clid": referral.ctwa_clid,
+                        }
+
+                        from ctwa.ingestion import handle_inbound_referral
+
+                        lead = handle_inbound_referral(conversation=conversation, referral=referral)
+                        if lead is not None:
+                            referral_extra["ctwa_lead_id"] = str(lead.id)
+                            referral_extra["campaign_id"] = (
+                                str(lead.campaign_id) if lead.campaign_id else ""
+                            )
+                            # Auto-apply a CTWA tag to the message so the
+                            # inbox UI can render the "From CTWA Ad" badge.
+                            try:
+                                _autotag_ctwa_message(message=message, lead=lead, tenant=tenant)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.warning("[wa.tasks] CTWA auto-tag failed: %s", exc)
+                except Exception as exc:  # noqa: BLE001 — never break inbound
+                    logger.warning("[wa.tasks] CTWA inbound wiring failed: %s", exc)
+
                 # Emit a normalised TriggerEvent so any active flow whose
                 # ``triggers`` config matches this inbound auto-spawns
                 # via ``chat_flow.triggers.dispatch`` (#188). Idempotent
-                # across webhook replays. Wrapped in try/except so a
-                # trigger-subsystem failure never breaks inbound
-                # ingestion — triggers are an additive routing layer,
-                # not load-bearing.
+                # across webhook replays.
                 try:
                     from chat_flow.triggers import TriggerEvent, emit
 
@@ -564,6 +611,12 @@ def process_message_webhook(pk: str):
                         body_text = content.get("body") if isinstance(content, dict) else None
                     except Exception:  # noqa: BLE001
                         body_text = None
+
+                    extra = {
+                        "wa_webhook_event_id": str(instance.pk),
+                        "external_message_id": extracted_data.get("message_id") or "",
+                    }
+                    extra.update(referral_extra)
 
                     emit(
                         TriggerEvent(
@@ -574,12 +627,7 @@ def process_message_webhook(pk: str):
                             inbound_row_model="team_inbox.Messages",
                             body_text=body_text,
                             received_at=timezone.now().isoformat(),
-                            extra={
-                                # CTWA referral fields land here once #192
-                                # populates them on the inbound row.
-                                "wa_webhook_event_id": str(instance.pk),
-                                "external_message_id": extracted_data.get("message_id") or "",
-                            },
+                            extra=extra,
                         )
                     )
                 except Exception as exc:  # noqa: BLE001 — never break ingestion
@@ -596,6 +644,24 @@ def process_message_webhook(pk: str):
         raise Exception(f"WAWebhookEvent with pk={pk} does not exist.")
     except Exception as e:
         raise Exception(f"Failed to process message webhook: {str(e)}")
+
+
+def _autotag_ctwa_message(*, message, lead, tenant):
+    """Apply the per-campaign CTWA tag to *message* (#195).
+
+    Tag name format ``"CTWA: <campaign-name-or-ad-id>"`` so the inbox
+    filter UI renders meaningful chips. Idempotent — the unique
+    constraint on ``(message, tag)`` makes re-tagging a no-op.
+    """
+    from team_inbox.models import MessageTag
+    from tenants.models import TenantTags
+
+    if lead.campaign_id:
+        tag_name = f"CTWA: {lead.campaign.name or lead.meta_ad_id}"
+    else:
+        tag_name = f"CTWA: orphan {lead.meta_ad_id}"
+    tag, _ = TenantTags.objects.get_or_create(tenant=tenant, name=tag_name)
+    MessageTag.objects.get_or_create(message=message, tag=tag, defaults={"auto": True})
 
 
 # ── BSP-specific message payload parsers ──────────────────────────────────────
