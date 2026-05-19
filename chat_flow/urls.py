@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .triggers.views import TriggerTypesView
 from .viewsets import ChatFlowAnalyticsViewSet, ChatFlowEdgeViewSet, ChatFlowNodeViewSet, ChatFlowViewSet
 
 app_name = "chat_flow"
@@ -13,4 +14,6 @@ router.register(r"analytics", ChatFlowAnalyticsViewSet, basename="chatflow-analy
 
 urlpatterns = [
     path("", include(router.urls)),
+    # #188: trigger-types introspection for the frontend flow builder.
+    path("triggers/types/", TriggerTypesView.as_view(), name="trigger-types"),
 ]

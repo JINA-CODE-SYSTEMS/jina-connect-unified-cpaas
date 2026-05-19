@@ -549,6 +549,46 @@ def process_message_webhook(pk: str):
                 # Route to ChatFlow if contact is assigned to a ChatFlow
                 _handle_chatflow_routing(contact, instance, content)
 
+                # Emit a normalised TriggerEvent so any active flow whose
+                # ``triggers`` config matches this inbound auto-spawns
+                # via ``chat_flow.triggers.dispatch`` (#188). Idempotent
+                # across webhook replays. Wrapped in try/except so a
+                # trigger-subsystem failure never breaks inbound
+                # ingestion — triggers are an additive routing layer,
+                # not load-bearing.
+                try:
+                    from chat_flow.triggers import TriggerEvent, emit
+
+                    body_text = None
+                    try:
+                        body_text = content.get("body") if isinstance(content, dict) else None
+                    except Exception:  # noqa: BLE001
+                        body_text = None
+
+                    emit(
+                        TriggerEvent(
+                            tenant_id=tenant.id,
+                            channel="wa",
+                            contact_id=contact.id,
+                            inbound_row_id=str(message.pk),
+                            inbound_row_model="team_inbox.Messages",
+                            body_text=body_text,
+                            received_at=timezone.now().isoformat(),
+                            extra={
+                                # CTWA referral fields land here once #192
+                                # populates them on the inbound row.
+                                "wa_webhook_event_id": str(instance.pk),
+                                "external_message_id": extracted_data.get("message_id") or "",
+                            },
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 — never break ingestion
+                    logger.warning(
+                        "[wa.tasks] chat_flow trigger emit failed for msg %s: %s",
+                        message.pk,
+                        exc,
+                    )
+
             except Exception as e:
                 logger.error("Error creating team_inbox Message: %s", str(e))
 

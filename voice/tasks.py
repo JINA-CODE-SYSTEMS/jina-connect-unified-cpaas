@@ -23,7 +23,12 @@ from django.db import transaction
 from django.utils import timezone
 
 from voice.adapters.base import CallInstructions
-from voice.constants import TERMINAL_STATUSES, CallEventType, CallStatus
+from voice.constants import (
+    TERMINAL_STATUSES,
+    CallDirection,
+    CallEventType,
+    CallStatus,
+)
 from voice.signals import call_completed
 
 logger = logging.getLogger(__name__)
@@ -153,3 +158,40 @@ def process_call_status(payload: dict) -> None:
 
     if new_status in TERMINAL_STATUSES:
         call_completed.send(sender=VoiceCall, call=call)
+
+    # Emit a TriggerEvent on the *first* event for an inbound call so
+    # flows keyed on ``ctwa_referral_received`` / DTMF-style triggers
+    # (future) can auto-spawn. Outbound calls are excluded — they're
+    # initiated by the platform, not by the caller, so they're not the
+    # "inbound event" trigger semantics target. (#188)
+    if (
+        event_type in (CallEventType.INITIATED, CallEventType.RINGING)
+        and call.direction == CallDirection.INBOUND
+        and call.contact_id is not None
+    ):
+        try:
+            from chat_flow.triggers import TriggerEvent, emit
+
+            emit(
+                TriggerEvent(
+                    tenant_id=call.tenant_id,
+                    channel="voice",
+                    contact_id=call.contact_id,
+                    inbound_row_id=str(call.id),
+                    inbound_row_model="voice.VoiceCall",
+                    body_text=None,
+                    received_at=now.isoformat(),
+                    extra={
+                        "provider_call_id": call.provider_call_id,
+                        "from_number": call.from_number,
+                        "to_number": call.to_number,
+                        "event_type": event_type,
+                    },
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 — never break ingestion
+            logger.warning(
+                "[voice.tasks] chat_flow trigger emit failed for call %s: %s",
+                call.id,
+                exc,
+            )

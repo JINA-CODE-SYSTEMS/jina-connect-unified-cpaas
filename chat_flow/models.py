@@ -137,6 +137,21 @@ class ChatFlow(BaseTenantModelForFilterUser):
         help_text="Platform this flow targets. Determines which node types are valid.",
     )
 
+    # Event triggers — declarative list of {type, config} entries that
+    # auto-spawn this flow when a matching inbound event arrives. Empty
+    # list (the default) preserves the legacy contact-assignment path
+    # untouched; flows opt in to event-based invocation by populating
+    # this field. Validated at save time via
+    # ``chat_flow.triggers.validators.validate_trigger_list`` (#188).
+    triggers = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "List of {type, config} entries that auto-spawn this flow on "
+            "matching inbound events. Empty = legacy assignment-only flow."
+        ),
+    )
+
     class Meta:
         verbose_name = "Chat Flow"
         verbose_name_plural = "Chat Flows"
@@ -157,6 +172,11 @@ class ChatFlow(BaseTenantModelForFilterUser):
         errors = validate_flow_for_platform(self.flow_data, self.platform)
         if errors:
             raise ValidationError({"flow_data": errors})
+        # Validate ``triggers`` payload — unknown type / bad config /
+        # duplicate within one flow (#188).
+        from chat_flow.triggers.validators import validate_trigger_list
+
+        validate_trigger_list(self.triggers)
 
     def save(self, *args, **kwargs):
         # Run our custom ``clean()`` (registry validation against
