@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gcloud compute *)",
+      "Bash(FIELD_ENCRYPTION_KEY=q9hzPS2vfAcwHKQHkyrXKHRxvB-h28X9oj7eMZTttFE= python -c ' *)",
+      "Bash(python -m ruff check --fix attribution/ ads/ ctwa/ crm/ meta/ wa/adapters/gupshup.py wa/services/conversations.py)",
+      "Bash(python -m ruff format --check .)",
+      "Bash(python -m ruff format .)",
+      "Bash(python -m ruff check attribution/ ads/ ctwa/ crm/ meta/)",
+      "Bash(python -m ruff format attribution/ ads/ ctwa/ crm/ meta/ wa/adapters/gupshup.py wa/services/conversations.py)",
+      "Bash(python -m ruff check attribution/ ads/ ctwa/ crm/ meta/ wa/adapters/gupshup.py wa/services/conversations.py)",
+      "Bash(python -m ruff check .)",
+      "Bash(python -m ruff check ads/)",
+      "Bash(git commit -m ' *)",
+      "Bash(FIELD_ENCRYPTION_KEY=\"q9hzPS2vfAcwHKQHkyrXKHRxvB-h28X9oj7eMZTttFE=\" python -m pytest attribution/tests/ ads/tests/ ctwa/tests/ crm/tests/ meta/tests/ --tb=line --no-header --reuse-db -k \"not concurrent\")"
+    ]
+  }
+}

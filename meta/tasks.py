@@ -32,22 +32,24 @@ def refresh_expiring_connections() -> dict:
     once it does, replace :func:`_probe` with a real call (e.g.
     ``GET /me`` against the connection's token).
     """
+    from django.db.models import Q
+
     from meta.models import MetaBusinessConnection
 
     threshold = timezone.now() - REFRESH_INTERVAL
+    # Push the "never refreshed OR refreshed before threshold" predicate
+    # into the queryset. v1 had ``.filter(**{})`` (no-op) followed by a
+    # Python ``continue`` — every non-revoked connection was loaded and
+    # then most were discarded in-process. The Q expression keeps the
+    # ``refreshed_at`` index path available. (#201 second review)
     qs = MetaBusinessConnection.objects.filter(
         revoked_at__isnull=True,
         needs_reauth=False,
-    ).filter(
-        # Either never refreshed OR last refresh older than threshold.
-        **{},
-    )
+    ).filter(Q(refreshed_at__isnull=True) | Q(refreshed_at__lt=threshold))
 
     probed = 0
     flipped_reauth = 0
     for conn in qs.iterator():
-        if conn.refreshed_at is not None and conn.refreshed_at > threshold:
-            continue
         probed += 1
         try:
             _probe(conn)

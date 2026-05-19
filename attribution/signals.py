@@ -23,6 +23,7 @@ nodes can drive it manually before then.
 from __future__ import annotations
 
 import logging
+import weakref
 
 from django.db import transaction
 from django.db.models.signals import post_save, pre_save
@@ -34,11 +35,16 @@ from ctwa.models import CtwaLead
 
 logger = logging.getLogger(__name__)
 
-# Pre-save status cache — keyed by instance.pk so post_save can tell
-# whether ``qualification_status`` actually transitioned vs. was just
-# resaved at the same value. Resave-at-qualified is idempotent (no new
-# AttributionEvent) per #201 review.
-_PRESAVE_QUALIFICATION_STATUS: dict = {}
+# Pre-save status snapshot. ``WeakKeyDictionary`` keyed on the
+# ``CtwaLead`` instance so Python's GC drops entries automatically
+# when the instance is collected — no leaks on save() exceptions
+# (v1 used a plain ``dict[id(instance), str]`` which both leaked
+# entries and risked collisions when ``id()`` was reused after GC).
+# (#201 second review Medium #7)
+#
+# Workers MUST NOT hot-reload this module — doing so reinitialises
+# the table and breaks the pre/post pairing for any in-flight save.
+_PRESAVE_QUALIFICATION_STATUS: "weakref.WeakKeyDictionary[CtwaLead, str | None]" = weakref.WeakKeyDictionary()
 
 
 def _allocate_event(
@@ -89,13 +95,13 @@ def _capture_prev_qualification(sender, instance: CtwaLead, **_kw):
     at the same value. Without this, re-saving a qualified lead would
     keep allocating new Lead events. (#201 review)"""
     if not instance.pk:
-        _PRESAVE_QUALIFICATION_STATUS[id(instance)] = None
+        _PRESAVE_QUALIFICATION_STATUS[instance] = None
         return
     try:
         prev = CtwaLead.objects.only("qualification_status").get(pk=instance.pk)
-        _PRESAVE_QUALIFICATION_STATUS[id(instance)] = prev.qualification_status
+        _PRESAVE_QUALIFICATION_STATUS[instance] = prev.qualification_status
     except CtwaLead.DoesNotExist:
-        _PRESAVE_QUALIFICATION_STATUS[id(instance)] = None
+        _PRESAVE_QUALIFICATION_STATUS[instance] = None
 
 
 @receiver(post_save, sender=CtwaLead)
@@ -108,7 +114,7 @@ def fire_lead_event_on_qualification(sender, instance: CtwaLead, created, **_kw)
     qualified lead at the same value is a no-op; a true
     disqualify→qualify cycle allocates a fresh sequence.
     """
-    prev = _PRESAVE_QUALIFICATION_STATUS.pop(id(instance), None)
+    prev = _PRESAVE_QUALIFICATION_STATUS.pop(instance, None)
 
     if created:
         return

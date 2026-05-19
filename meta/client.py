@@ -91,12 +91,16 @@ class MetaApiClient:
         Returns an empty dict so callers don't crash during tests.
         Production replaces this body with an authenticated call.
         """
+        # Don't log the body or its values — once production wires
+        # the real call this would expose tokens / PII. ``has_body``
+        # is the only useful operator signal at this layer. (#201
+        # second review Low #9)
         logger.info(
-            "[meta.client] STUB %s %s params=%s body=%s",
+            "[meta.client] STUB %s %s params=%s has_body=%s",
             method,
             path,
             params,
-            (json_body or {}).keys() if isinstance(json_body, dict) else json_body,
+            json_body is not None,
         )
         return {}
 

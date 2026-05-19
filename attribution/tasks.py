@@ -89,31 +89,42 @@ def flush_capi_queue() -> dict:
     one batch per ad account. Retries on failure with exponential
     backoff; DLQs after :data:`MAX_ATTEMPTS`.
 
+    Multi-worker safety: rows are claimed inside ``transaction.atomic``
+    with ``select_for_update(skip_locked=True)`` so two concurrent
+    workers running this task don't both pick up the same event and
+    double-POST. (#201 second review High #3) Each event's lock is
+    released when the transaction commits below.
+
     Scheduled via Celery beat: every 60s OR when queue depth crosses
     1000 (driven by a separate signal that's added once volume warrants).
     """
-    now = timezone.now()
-    due = (
-        AttributionEvent.objects.filter(
-            capi_status__in=[CapiStatus.PENDING, CapiStatus.FAILED],
-        )
-        .filter(
-            models_q_due(now),
-        )
-        .order_by("created_at")[:BATCH_SIZE]
-    )
+    from django.db import transaction
 
     sent = 0
     failed = 0
     dlq = 0
-    for event in due.iterator():
-        result = _send_one(event)
-        if result == "sent":
-            sent += 1
-        elif result == "dlq":
-            dlq += 1
-        else:
-            failed += 1
+    now = timezone.now()
+
+    with transaction.atomic():
+        # Materialise the locked IDs so the queryset that drives the
+        # iteration is bounded — and so SELECT FOR UPDATE actually
+        # holds the lock through the per-event _send_one calls below.
+        due_ids = list(
+            AttributionEvent.objects.select_for_update(skip_locked=True)
+            .filter(capi_status__in=[CapiStatus.PENDING, CapiStatus.FAILED])
+            .filter(models_q_due(now))
+            .order_by("created_at")
+            .values_list("id", flat=True)[:BATCH_SIZE]
+        )
+        for event in AttributionEvent.objects.filter(id__in=due_ids).iterator():
+            result = _send_one(event)
+            if result == "sent":
+                sent += 1
+            elif result == "dlq":
+                dlq += 1
+            else:
+                failed += 1
+
     summary = {"sent": sent, "failed": failed, "dlq": dlq}
     logger.info("[attribution.flush] %s", summary)
     return summary
@@ -139,11 +150,31 @@ def _send_one(event: AttributionEvent) -> str:
         return _record_failure(event, str(exc))
 
     event.capi_response = response
-    event.emq_score = (response or {}).get("events_received", [{}])[0].get("matching_score")
+    event.emq_score = _extract_emq_score(response)
     event.capi_status = CapiStatus.SENT
     event.capi_attempts += 1
     event.save(update_fields=["capi_response", "emq_score", "capi_status", "capi_attempts", "updated_at"])
     return "sent"
+
+
+def _extract_emq_score(response: dict | None) -> int | None:
+    """Pull Meta's per-event match-quality score from a CAPI response.
+
+    Defensive: real CAPI returns ``events_received: []`` on partial
+    failure (some events received, some rejected), and the response
+    dict can be missing entirely on serialisation hiccups. (#201
+    second review Medium #8)
+    """
+    if not isinstance(response, dict):
+        return None
+    received = response.get("events_received")
+    if not isinstance(received, list) or not received:
+        return None
+    first = received[0]
+    if not isinstance(first, dict):
+        return None
+    score = first.get("matching_score")
+    return score if isinstance(score, int) else None
 
 
 def _record_failure(event: AttributionEvent, error: str) -> str:

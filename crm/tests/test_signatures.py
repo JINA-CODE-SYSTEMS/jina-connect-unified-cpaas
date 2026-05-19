@@ -1,14 +1,11 @@
-"""Webhook-signature verification tests (#198 + #201 review).
-
-Reviewer's High concern: Salesforce v1 returned ``True`` when the
-webhook secret was empty, "trusting the IP allowlist." That's an
-unsafe default — anyone could spoof a SF webhook. The fix is fail-closed.
-"""
+"""Webhook-signature verification tests (#198 + #201 review)."""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+
+import pytest
 
 
 class _FakeRequest:
@@ -17,31 +14,22 @@ class _FakeRequest:
         self.META = headers or {}
 
 
-class TestHubSpotSignature:
-    def test_valid_signature_accepted(self, db, hubspot_connection):
+class TestHubSpotSignatureNotImplemented:
+    """v1 of ``HubSpotConnector.verify_inbound_signature`` did
+    ``HMAC-SHA256(body)`` which doesn't match HubSpot's V3 spec
+    (``HMAC-SHA256(method + uri + body + timestamp)``). Rather than
+    ship a half-implementation that silently looks correct, the
+    method now raises ``NotImplementedError`` so production cannot
+    enable the connector until the full V3 algorithm + replay-window
+    check lands. (#201 second review Medium #6)"""
+
+    def test_raises_not_implemented(self, db, hubspot_connection):
         from crm.adapters import get_connector
 
-        body = b'{"events": []}'
-        secret = hubspot_connection.webhook_secret.encode("utf-8")
-        sig = hmac.new(secret, body, hashlib.sha256).hexdigest()
-        req = _FakeRequest(body, {"HTTP_X_HUBSPOT_SIGNATURE_V3": sig})
-
+        req = _FakeRequest(b'{"events": []}', {"HTTP_X_HUBSPOT_SIGNATURE_V3": "anything"})
         connector = get_connector(hubspot_connection)
-        assert connector.verify_inbound_signature(req) is True
-
-    def test_invalid_signature_rejected(self, db, hubspot_connection):
-        from crm.adapters import get_connector
-
-        req = _FakeRequest(b'{"events": []}', {"HTTP_X_HUBSPOT_SIGNATURE_V3": "deadbeef"})
-        connector = get_connector(hubspot_connection)
-        assert connector.verify_inbound_signature(req) is False
-
-    def test_missing_signature_rejected(self, db, hubspot_connection):
-        from crm.adapters import get_connector
-
-        req = _FakeRequest(b'{"events": []}')
-        connector = get_connector(hubspot_connection)
-        assert connector.verify_inbound_signature(req) is False
+        with pytest.raises(NotImplementedError, match="V3"):
+            connector.verify_inbound_signature(req)
 
 
 class TestSalesforceSignatureFailClosed:

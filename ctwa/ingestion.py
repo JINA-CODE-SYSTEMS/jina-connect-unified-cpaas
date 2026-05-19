@@ -63,10 +63,18 @@ def handle_inbound_referral(
 
     # Try to resolve a local campaign by ad id. Tenant-scoped to avoid
     # accidentally matching a different tenant's campaign with the same
-    # ad id (rare but possible across re-shared assets).
-    campaign = CtwaCampaign.objects.filter(tenant=tenant, meta_ad_id=referral.source_id).only("id").first()
+    # ad id (rare but possible across re-shared assets). Fetch the
+    # whole row (not ``.only("id")``) so the caller in ``wa/tasks.py``
+    # can read ``campaign.name`` for the auto-tag without a second
+    # round-trip. (#201 second review Medium #5)
+    campaign = CtwaCampaign.objects.filter(tenant=tenant, meta_ad_id=referral.source_id).first()
 
-    flagged_orphan = campaign is None or campaign.status in {"paused", "archived"}
+    from ctwa.constants import CtwaCampaignStatus
+
+    flagged_orphan = campaign is None or campaign.status in {
+        CtwaCampaignStatus.PAUSED.value,
+        CtwaCampaignStatus.ARCHIVED.value,
+    }
 
     try:
         lead = CtwaLead.objects.create(

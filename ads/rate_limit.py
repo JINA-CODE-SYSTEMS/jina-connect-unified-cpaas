@@ -121,18 +121,11 @@ def acquire(
         raise RateLimited(f"BUC bucket exhausted for tenant={tenant_id} ad_account={ad_account_id}")
 
 
-def status(*, tenant_id: int, ad_account_id: str) -> dict:
-    """Return ``{tokens, capacity}`` for the operator dashboard."""
-    try:
-        r = _redis_connection()
-        tokens_raw, _ = r.hmget(_bucket_key(tenant_id, ad_account_id), ["tokens", "ts"])
-    except Exception:  # noqa: BLE001
-        return {"tokens": None, "capacity": DEFAULT_BUCKET_SIZE, "redis": "down"}
-    return {
-        "tokens": float(tokens_raw) if tokens_raw else DEFAULT_BUCKET_SIZE,
-        "capacity": DEFAULT_BUCKET_SIZE,
-        "redis": "up",
-    }
+# The ``status()`` helper that v1 shipped reported ``DEFAULT_BUCKET_SIZE``
+# as capacity regardless of what the caller passed to ``acquire()`` —
+# misleading when per-tenant capacity overrides are in play.
+# Dropped in favour of building an operator dashboard properly later
+# (capacity stored alongside tokens in the bucket hash). (#201 second
+# review Low #12)
 
-
-__all__ = ["RateLimited", "acquire", "status"]
+__all__ = ["RateLimited", "acquire"]

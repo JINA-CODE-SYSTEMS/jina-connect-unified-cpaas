@@ -41,12 +41,23 @@ def refresh_expiring_connections() -> dict:
     now = timezone.now()
     cutoff = now + REFRESH_AHEAD
 
-    qs = CrmConnection.objects.filter(enabled=True).exclude(provider="generic_webhook")
+    # Push the "expires_at within REFRESH_AHEAD" predicate into the
+    # queryset. v1 scanned every enabled non-generic-webhook connection
+    # and discarded the not-yet-expiring ones in Python. (#201 second
+    # review) Note: connections with NULL ``expires_at`` are skipped
+    # — production refresh logic should set ``expires_at`` on every
+    # successful refresh; a NULL there means "we don't know" which is
+    # exactly when we DON'T want to spam the provider with refresh
+    # calls on every beat.
+    qs = (
+        CrmConnection.objects.filter(enabled=True)
+        .exclude(provider="generic_webhook")
+        .filter(expires_at__isnull=False, expires_at__lt=cutoff)
+    )
+
     refreshed = 0
     failed = 0
     for conn in qs.iterator():
-        if conn.expires_at is None or conn.expires_at > cutoff:
-            continue
         try:
             _refresh_one(conn)
             refreshed += 1

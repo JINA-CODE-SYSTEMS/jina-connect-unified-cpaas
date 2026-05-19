@@ -206,7 +206,10 @@ class CtwaLead(BaseTenantModelForFilterUser):
         blank=True,
         related_name="claimed_ctwa_leads",
     )
-    crm_external_id = models.CharField(max_length=128, blank=True, default="")
+    # Indexed because the inbound CRM webhook handler filters on this
+    # field per event — full-table scan was the prior hot path at scale.
+    # (#201 second review Medium #4)
+    crm_external_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
     # Idempotency key for inbound CRM webhooks (#198). The last outbound
     # push stores its event id here; an inbound webhook carrying the
     # same id is dropped (it's our own push echoing back). Indexed
