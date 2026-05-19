@@ -124,11 +124,11 @@ INSTALLED_APPS = [
     "rcs",
     "voice",
     # ── CTWA initiative (#187) ──────────────────────────────────────────
-    "meta",         # #191 — Meta Business Login + system-user token store
-    "ads",          # #196 — Meta Marketing API client + creative/audience + BUC limiter
-    "ctwa",         # #194 — CTWA campaign + lead + ingestion
+    "meta",  # #191 — Meta Business Login + system-user token store
+    "ads",  # #196 — Meta Marketing API client + creative/audience + BUC limiter
+    "ctwa",  # #194 — CTWA campaign + lead + ingestion
     "attribution",  # #197 — Meta Conversions API push (CAPI)
-    "crm",          # #198 — HubSpot / Salesforce / generic-webhook connectors
+    "crm",  # #198 — HubSpot / Salesforce / generic-webhook connectors
     # ──────────────────────────────────────────────────────────────────
     "rest_framework",
     "rest_framework.authtoken",

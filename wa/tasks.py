@@ -587,9 +587,7 @@ def process_message_webhook(pk: str):
                         lead = handle_inbound_referral(conversation=conversation, referral=referral)
                         if lead is not None:
                             referral_extra["ctwa_lead_id"] = str(lead.id)
-                            referral_extra["campaign_id"] = (
-                                str(lead.campaign_id) if lead.campaign_id else ""
-                            )
+                            referral_extra["campaign_id"] = str(lead.campaign_id) if lead.campaign_id else ""
                             # Auto-apply a CTWA tag to the message so the
                             # inbox UI can render the "From CTWA Ad" badge.
                             try:

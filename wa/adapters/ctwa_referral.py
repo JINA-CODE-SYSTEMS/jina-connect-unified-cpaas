@@ -20,12 +20,12 @@ from dataclasses import dataclass
 class CtwaReferral:
     """Canonical CTWA referral payload."""
 
-    source_type: str           # "ad" | "post" | "unknown"
-    source_id: str             # Meta ad ID — required
+    source_type: str  # "ad" | "post" | "unknown"
+    source_id: str  # Meta ad ID — required
     source_url: str = ""
     headline: str = ""
     body: str = ""
-    media_type: str = ""       # "image" | "video" | ""
+    media_type: str = ""  # "image" | "video" | ""
     media_url: str = ""
     thumbnail_url: str = ""
-    ctwa_clid: str = ""        # critical for CAPI match quality; may be ""
+    ctwa_clid: str = ""  # critical for CAPI match quality; may be ""
