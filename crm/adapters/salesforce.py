@@ -50,16 +50,24 @@ class SalesforceConnector(CrmConnector):
         )
 
     def verify_inbound_signature(self, request) -> bool:
-        # Salesforce Outbound Messages don't sign — clients commonly
-        # gate via IP allowlist + mutual TLS. For Platform Events
-        # forwarded via Webhook Relay etc., the relay signs. Accept
-        # any request when ``webhook_secret`` is empty (trust IP),
-        # require HMAC match when it's set.
-        secret = (self.connection.webhook_secret or "").encode("utf-8")
-        if not secret:
-            return True
+        # Fail closed: Salesforce Outbound Messages aren't signed by
+        # SF itself, but the tenant MUST configure a shared secret
+        # used by the forwarding relay (Webhook Relay / Heroku / etc.)
+        # to sign requests. Without a secret, any caller could spoof
+        # a SF webhook and mutate CtwaLead.qualification_status, which
+        # in turn fires CAPI events. Earlier "trust the IP allowlist"
+        # default was unsafe for tenants without an IP-restricted
+        # gateway. (#201 review)
         import hashlib
         import hmac
+
+        secret = (self.connection.webhook_secret or "").encode("utf-8")
+        if not secret:
+            logger.warning(
+                "[crm.salesforce] connection %s rejected inbound: webhook_secret unset",
+                self.connection.id,
+            )
+            return False
 
         signature = request.META.get("HTTP_X_SF_SIGNATURE", "")
         if not signature:

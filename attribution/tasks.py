@@ -32,10 +32,15 @@ def _sha256_lower(s: str) -> str:
     return hashlib.sha256(s.strip().lower().encode("utf-8")).hexdigest()
 
 
-def _normalise_phone(phone: str) -> str:
-    """Per Meta spec: digits-only, no leading + or 00."""
-    digits = "".join(ch for ch in phone if ch.isdigit())
-    return digits
+def _normalise_phone(phone) -> str:
+    """Per Meta spec: digits-only, no leading + or 00.
+
+    Accepts ``str`` or a ``phonenumber_field.PhoneNumber`` (the type
+    ``TenantContact.phone`` uses) — the helper coerces via ``str()``
+    before scanning digits so callers don't need to remember which
+    flavour they're holding.
+    """
+    return "".join(ch for ch in str(phone) if ch.isdigit())
 
 
 def _synthesise_fbc(ctwa_clid: str, when=None) -> str:

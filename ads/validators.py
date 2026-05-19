@@ -8,6 +8,7 @@ tenants don't waste an API round-trip + an ad disapproval.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from django.core.exceptions import ValidationError
 
@@ -41,10 +42,14 @@ def validate_prefilled_message(text: str) -> None:
             {"prefilled_message": f"Must be ≤ {PREFILLED_MESSAGE_MAX_CHARS} chars (got {len(text)})."}
         )
 
+    # NFKC normalises Unicode width/compatibility variants so trivial
+    # homoglyph attacks (full-width Latin, etc.) don't slip past the
+    # denylist. Casefold replaces .lower() for Unicode-correct
+    # case-insensitive matching. (#201 review)
+    normalised = unicodedata.normalize("NFKC", text).casefold()
     violations: list[str] = []
-    lowered = text.lower()
     for pattern, explanation in DENYLIST_PATTERNS:
-        if re.search(pattern, lowered):
+        if re.search(pattern, normalised, flags=re.UNICODE):
             violations.append(explanation)
     if violations:
         raise ValidationError({"prefilled_message": violations})

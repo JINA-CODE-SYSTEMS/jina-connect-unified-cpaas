@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from abstract.models import BaseTenantModelForFilterUser
@@ -120,6 +121,34 @@ class CtwaCampaign(BaseTenantModelForFilterUser):
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["meta_ad_id"]),
         ]
+        constraints = [
+            # Partial unique: a given Meta ad id can map to at most one
+            # CtwaCampaign per tenant. Excludes draft-stage campaigns
+            # where ``meta_ad_id`` is still empty. Without this,
+            # duplicates silently mis-attribute inbound referrals.
+            # (#201 review)
+            models.UniqueConstraint(
+                fields=["tenant", "meta_ad_id"],
+                condition=~models.Q(meta_ad_id=""),
+                name="ctwa_campaign_unique_meta_ad_id_per_tenant",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        # Defence-in-depth against a DBA or admin form ever setting
+        # ``qualification_signal`` to ``first_message``. The enum
+        # already omits it but a raw SQL UPDATE or admin POST could
+        # still try. (#201 review)
+        if self.qualification_signal == "first_message":
+            raise ValidationError(
+                {
+                    "qualification_signal": (
+                        "'first_message' is forbidden — firing CAPI Lead on first "
+                        "inbound inflates lead count and ruins Meta optimization."
+                    )
+                }
+            )
 
     def __str__(self) -> str:
         return f"CtwaCampaign({self.id}, {self.status})"
@@ -180,8 +209,11 @@ class CtwaLead(BaseTenantModelForFilterUser):
     crm_external_id = models.CharField(max_length=128, blank=True, default="")
     # Idempotency key for inbound CRM webhooks (#198). The last outbound
     # push stores its event id here; an inbound webhook carrying the
-    # same id is dropped (it's our own push echoing back).
-    last_crm_external_event_id = models.CharField(max_length=128, blank=True, default="")
+    # same id is dropped (it's our own push echoing back). Indexed
+    # because the inbound dedup lookup filters on this field on every
+    # inbound CRM webhook — full-table scan was the v1 hot path.
+    # (#201 review)
+    last_crm_external_event_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
 
     class Meta:
         verbose_name = "CTWA lead"

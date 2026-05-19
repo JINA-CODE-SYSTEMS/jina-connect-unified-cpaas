@@ -54,6 +54,23 @@ def reconcile_orphans(batch_size: int = 200) -> dict:
         # See ads/ adapter once #190 is approved.
         still_orphan += 1
 
-    result = {"resolved_local": resolved_local, "still_orphan": still_orphan}
+    # Backlog alert. Strategy 2 (Meta Marketing API lookup) is
+    # stubbed until #190, so most orphans don't get resolved by this
+    # worker today — log a warning so ops can spot a growing backlog.
+    # (#201 review)
+    BACKLOG_ALERT_THRESHOLD = 100
+    total_orphan_backlog = CtwaLead.objects.filter(flagged_orphan_campaign=True).count()
+    if total_orphan_backlog >= BACKLOG_ALERT_THRESHOLD:
+        logger.warning(
+            "[ctwa.tasks.reconcile_orphans] orphan backlog above threshold: "
+            "%d leads unresolved (strategy 2 stubbed pending #190)",
+            total_orphan_backlog,
+        )
+
+    result = {
+        "resolved_local": resolved_local,
+        "still_orphan": still_orphan,
+        "total_backlog": total_orphan_backlog,
+    }
     logger.info("[ctwa.tasks.reconcile_orphans] %s", result)
     return result

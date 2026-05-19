@@ -106,10 +106,16 @@ class GupshupAdapter(BaseBSPAdapter):
             if not isinstance(ref, dict):
                 return None
             source_id = ref.get("source_id") or ref.get("source_ad_id") or ref.get("ad_id")
+            # Strip whitespace — Gupshup's envelope occasionally pads
+            # field values with leading/trailing whitespace, which
+            # would silently fail campaign matching by ``meta_ad_id``.
+            # (#201 review)
+            if isinstance(source_id, str):
+                source_id = source_id.strip()
             if not source_id:
                 return None
             return CtwaReferral(
-                source_type=str(ref.get("source_type") or "ad"),
+                source_type=str(ref.get("source_type") or "ad").strip(),
                 source_id=str(source_id),
                 source_url=str(ref.get("source_url") or ""),
                 headline=str(ref.get("headline") or ""),

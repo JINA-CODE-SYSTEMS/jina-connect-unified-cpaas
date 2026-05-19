@@ -18,6 +18,10 @@ from django.utils import timezone
 
 from wa.models import WaConversation
 
+# The 24h service window is always measured in UTC because Meta's
+# WhatsApp policy clock is UTC. ``timezone.now()`` returns a UTC-aware
+# datetime under Django's default ``USE_TZ=True``; if a tenant ever
+# disables ``USE_TZ`` they break this contract. (#201 review)
 SERVICE_WINDOW = timedelta(hours=24)
 
 

@@ -94,13 +94,32 @@ class CrmConnector(ABC):
 def push_lead_idempotent(*, connection: "CrmConnection", lead: "CtwaLead") -> str:
     """High-level entry point used by ``ctwa/`` signals.
 
-    Generates a fresh ``external_event_id``, calls the connector's
-    ``push_lead``, and stamps the id on the lead row so subsequent
-    inbound webhooks can recognise our own push and skip it.
+    Generates a fresh ``external_event_id``, **persists it on the lead
+    BEFORE the HTTP push** so an inbound webhook echo that arrives
+    while the push is in flight (HubSpot's create-confirmation webhook
+    often does this within milliseconds) is correctly deduped even if
+    our worker dies between push and post-push save. (#201 review)
+
+    The order of operations:
+
+      1. UUID generated, stamped on ``CtwaLead.last_crm_external_event_id``,
+         committed in its own transaction.
+      2. HTTP push to the CRM (long-running, fail-prone).
+      3. On success, record CRM-side id; on failure, the dedup stamp
+         persists so any echo still gets dropped.
     """
     from crm.models import CrmSyncEvent
 
     event_id = uuid.uuid4().hex
+
+    # ── (1) Stamp the dedup key in its own commit ────────────────────
+    # If we crash before reaching the push, the stamp is harmlessly
+    # orphaned — there's no echo to dedupe. If we crash *after* push
+    # but before the post-push save, the stamp still covers any echo.
+    lead.last_crm_external_event_id = event_id
+    lead.save(update_fields=["last_crm_external_event_id", "updated_at"])
+
+    # ── (2) HTTP push ────────────────────────────────────────────────
     connector = get_connector(connection)
     try:
         crm_id = connector.push_lead(lead, external_event_id=event_id)
@@ -116,13 +135,10 @@ def push_lead_idempotent(*, connection: "CrmConnection", lead: "CtwaLead") -> st
         )
         raise
 
-    # Stamp the id so an inbound echo within the next few seconds is
-    # recognised. The CtwaLead model has a ``last_crm_external_event_id``
-    # field exactly for this purpose.
-    lead.last_crm_external_event_id = event_id
+    # ── (3) Record the CRM-side id ───────────────────────────────────
     if crm_id:
         lead.crm_external_id = crm_id
-    lead.save(update_fields=["last_crm_external_event_id", "crm_external_id", "updated_at"])
+        lead.save(update_fields=["crm_external_id", "updated_at"])
 
     CrmSyncEvent.objects.create(
         connection=connection,

@@ -35,9 +35,12 @@ class HubSpotConnector(CrmConnector):
     def parse_inbound_status(self, payload: dict) -> Optional[CrmStatusEvent]:
         if not isinstance(payload, dict):
             return None
-        # HubSpot webhooks arrive as arrays of events; take the first
-        # status-change event we recognise. Production handles the full
-        # array + sub-types.
+        # HubSpot webhooks arrive in two shapes:
+        #   1. Subscription webhooks: {"events": [...]} with multiple
+        #      events per delivery — we walk the list.
+        #   2. Per-event delivery (e.g. via Workflow): payload IS the
+        #      event itself — wrap it as a one-element list so the
+        #      iteration below handles both. (#201 review)
         events = payload.get("events") or [payload]
         for event in events:
             if not isinstance(event, dict):
