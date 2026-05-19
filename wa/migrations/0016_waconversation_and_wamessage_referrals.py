@@ -16,6 +16,10 @@ class Migration(migrations.Migration):
     dependencies = [
         ("wa", "0015_backfill_watemplate_tenant"),
         ("contacts", "0001_initial"),
+        # WAApp in wa/models.py is a one-line alias for tenants.TenantWAApp
+        # — the real model lives in the tenants app, so we must depend on
+        # tenants' migration that creates it. (#189)
+        ("tenants", "0003_tenantwaapp_bsp_credentials_tenantwaapp_daily_limit_and_more"),
     ]
 
     operations = [
@@ -45,7 +49,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="conversations",
-                        to="wa.waapp",
+                        to="tenants.tenantwaapp",
                     ),
                 ),
                 (
