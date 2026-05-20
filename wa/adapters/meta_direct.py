@@ -64,8 +64,54 @@ class MetaDirectAdapter(BaseBSPAdapter):
         supports_template_buttons=True,
         supports_reactions=True,
         supports_typing_indicator=True,
+        # CTWA #192 — Meta Cloud surfaces the full referral payload
+        # including ctwa_clid, which is the highest-quality match key
+        # for Conversions API.
+        supports_ctwa_referral=True,
+        supports_ctwa_clid=True,
         extra=frozenset({"templates", "subscriptions"}),
     )
+
+    # ── CTWA referral parsing (#192) ─────────────────────────────────────
+
+    def parse_referral(self, raw_webhook_payload: dict):
+        """Extract CTWA referral from a Meta Cloud inbound webhook.
+
+        Field path: ``entry[].changes[].value.messages[].referral``.
+        Returns ``CtwaReferral`` or ``None``. Never raises.
+        """
+        from wa.adapters.ctwa_referral import CtwaReferral
+
+        if not isinstance(raw_webhook_payload, dict):
+            return None
+        try:
+            entries = raw_webhook_payload.get("entry") or []
+            for entry in entries:
+                changes = entry.get("changes") or []
+                for change in changes:
+                    value = change.get("value") or {}
+                    messages = value.get("messages") or []
+                    for msg in messages:
+                        ref = msg.get("referral")
+                        if not isinstance(ref, dict):
+                            continue
+                        source_id = ref.get("source_id") or ref.get("source_ad_id")
+                        if not source_id:
+                            continue
+                        return CtwaReferral(
+                            source_type=str(ref.get("source_type") or "ad"),
+                            source_id=str(source_id),
+                            source_url=str(ref.get("source_url") or ""),
+                            headline=str(ref.get("headline") or ""),
+                            body=str(ref.get("body") or ""),
+                            media_type=str(ref.get("media_type") or ""),
+                            media_url=str(ref.get("media_url") or ""),
+                            thumbnail_url=str(ref.get("thumbnail_url") or ""),
+                            ctwa_clid=str(ref.get("ctwa_clid") or ""),
+                        )
+        except Exception:  # noqa: BLE001 — never raise from parse_referral
+            return None
+        return None
 
     # ── credential helpers ────────────────────────────────────────────────
 

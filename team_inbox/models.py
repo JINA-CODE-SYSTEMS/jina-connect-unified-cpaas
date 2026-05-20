@@ -237,6 +237,59 @@ class Messages(BaseTenantModelForFilterUser):
         super().save(*args, **kwargs)
 
 
+# ============ Message tagging (#195) ============
+
+
+class MessageTag(BaseTenantModelForFilterUser):
+    """Link table between ``team_inbox.Messages`` and
+    ``tenants.TenantTags``.
+
+    Messages today carry only ``reactions`` (emoji). CTWA needs
+    first-class campaign / ad tagging that's queryable from the inbox
+    filter UI. Other features (priority routing, SLA tracking) will
+    consume the same table once they land.
+
+    ``auto=True`` rows are applied by ingestion (e.g. CTWA #194 sets
+    the campaign tag on the first message of each new lead);
+    ``auto=False`` are agent-applied. Both can be removed via the
+    same ``DELETE`` endpoint.
+    """
+
+    filter_by_user_tenant_fk = "message__tenant__tenant_users__user"
+
+    message = models.ForeignKey(
+        "team_inbox.Messages",
+        on_delete=models.CASCADE,
+        related_name="tags",
+    )
+    tag = models.ForeignKey(
+        "tenants.TenantTags",
+        on_delete=models.CASCADE,
+        related_name="message_tags",
+    )
+    attached_at = models.DateTimeField(auto_now_add=True)
+    attached_by = models.ForeignKey(
+        get_user_model(),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="message_tags_attached",
+    )
+    auto = models.BooleanField(default=False, help_text="True when applied by ingestion automation.")
+
+    name = None
+
+    class Meta:
+        verbose_name = "Message tag"
+        verbose_name_plural = "Message tags"
+        constraints = [
+            models.UniqueConstraint(fields=["message", "tag"], name="message_tag_unique"),
+        ]
+        indexes = [
+            models.Index(fields=["tag", "-attached_at"], name="message_tag_tag_attached_idx"),
+        ]
+
+
 # ============ Event Model ============
 
 

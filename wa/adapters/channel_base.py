@@ -64,6 +64,14 @@ class Capabilities:
     # ── Billing ──────────────────────────────────────────────────────────
     supports_provider_cost: bool = False
 
+    # ── CTWA — Click-to-WhatsApp Ads (#192) ──────────────────────────────
+    # Whether the adapter can parse the WhatsApp ``referral`` payload from
+    # inbound webhooks. ``supports_ctwa_clid`` further indicates whether the
+    # ``ctwa_clid`` field (critical for Meta Conversions API match quality)
+    # is present — not every BSP exposes it consistently.
+    supports_ctwa_referral: bool = False
+    supports_ctwa_clid: bool = False
+
     # Free-form extension slot for adapter-specific flags that don't warrant
     # a typed field yet.
     extra: frozenset[str] = field(default_factory=frozenset)

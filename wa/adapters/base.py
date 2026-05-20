@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from jina_connect.platform_choices import PlatformChoices
 from wa.adapters.channel_base import BaseChannelAdapter
+from wa.adapters.ctwa_referral import CtwaReferral  # noqa: F401 — re-export
 
 if TYPE_CHECKING:
     from wa.models import WAApp, WASubscription, WATemplate
@@ -266,6 +267,22 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
 
     def get_channel_name(self) -> str:
         return "WHATSAPP"
+
+    # ── CTWA (#192) ───────────────────────────────────────────────────────
+
+    def parse_referral(self, raw_webhook_payload: dict) -> "CtwaReferral | None":
+        """Return a normalised :class:`CtwaReferral` if the inbound webhook
+        carries a CTWA referral, or ``None`` if absent.
+
+        Default behaviour: return ``None`` (no CTWA support). BSPs that
+        expose the ``referral`` field override this and set
+        ``capabilities.supports_ctwa_referral=True``.
+
+        Never raise — missing fields are surfaced as empty strings on
+        the dataclass; the caller persists what's available and lets
+        downstream attribution downgrade match quality.
+        """
+        return None
 
     # ── Helpers ───────────────────────────────────────────────────────────
 

@@ -197,3 +197,5 @@ media/
 
 # Symlinked frontend repo (local dev only)
 jina-connect-web
+# Claude Code per-developer state (#201 review — never commit local allowlist / locks)
+.claude/

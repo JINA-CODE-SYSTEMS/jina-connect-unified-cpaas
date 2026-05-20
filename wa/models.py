@@ -1020,6 +1020,73 @@ class WATemplate(BaseTemplateMessages):
         super().save(*args, **kwargs)
 
 
+class WaConversation(BaseTenantModelForFilterUser):
+    """A single user-business WhatsApp conversation thread (#189).
+
+    Service window state, CTWA lead context, and (future) inbox
+    grouping all attach to a conversation, not to an individual
+    ``WAMessage`` row. The 24h service window is per-conversation —
+    a contact reaching out via two ads has two windows.
+
+    A new conversation row is created when:
+
+      * A contact sends their first inbound message, OR
+      * An inbound message arrives more than 24h after the previous
+        inbound on the existing conversation (window closed), OR
+      * (Future #194 logic) a CTWA referral arrives that doesn't
+        match the conversation's existing ad context.
+
+    The ``ctwa_lead`` FK is left null at creation; CTWA #194 ingestion
+    populates it on the first inbound carrying a referral payload.
+    """
+
+    filter_by_user_tenant_fk = "wa_app__tenant__tenant_users__user"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    wa_app = models.ForeignKey(WAApp, on_delete=models.CASCADE, related_name="conversations")
+    contact = models.ForeignKey(TenantContact, on_delete=models.CASCADE, related_name="wa_conversations")
+    first_message_at = models.DateTimeField()
+    last_inbound_at = models.DateTimeField()
+    service_window_expires_at = models.DateTimeField(db_index=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    # CTWA lead FK is set by ctwa/ingestion.py once a referral lands.
+    # ``string_default`` keeps the reverse-FK lookup cheap.
+    ctwa_lead = models.ForeignKey(
+        "ctwa.CtwaLead",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="wa_conversations",
+    )
+
+    name = None  # inherited but unused for conversations
+
+    class Meta:
+        verbose_name = "WA conversation"
+        verbose_name_plural = "WA conversations"
+        indexes = [
+            models.Index(fields=["wa_app", "contact", "-last_inbound_at"]),
+            models.Index(fields=["service_window_expires_at"]),  # closer worker
+        ]
+        constraints = [
+            # At most one OPEN conversation per (wa_app, contact). Two
+            # simultaneous first-inbound webhooks for the same contact
+            # would otherwise both see "no open conversation" and both
+            # INSERT — leaving two open rows that the inbox UI shows as
+            # split timeline. The partial index lets ``resolve_or_create``
+            # catch the loser's IntegrityError and re-read the winner.
+            # (#201 third review Blocker #2)
+            models.UniqueConstraint(
+                fields=["wa_app", "contact"],
+                condition=models.Q(closed_at__isnull=True),
+                name="waconversation_unique_open_per_app_contact",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"WaConversation({self.id})"
+
+
 class WAMessage(BaseTenantModelForFilterUser):
     """
     Canonical WhatsApp Message.
@@ -1036,6 +1103,15 @@ class WAMessage(BaseTenantModelForFilterUser):
     wa_app = models.ForeignKey(WAApp, on_delete=models.CASCADE, related_name="messages")
     contact = models.ForeignKey(
         TenantContact, on_delete=models.CASCADE, related_name="wa_messages", blank=True, null=True
+    )
+    # #189: every inbound message belongs to a WaConversation. Null on
+    # outbound rows and on rows pre-dating the backfill.
+    conversation = models.ForeignKey(
+        WaConversation,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="messages",
     )
 
     # Message identification
@@ -1099,6 +1175,19 @@ class WAMessage(BaseTenantModelForFilterUser):
 
     # Raw payload for debugging
     raw_payload = models.JSONField(blank=True, null=True)
+
+    # CTWA referral fields (#192). All optional. Populated by each
+    # BSP's ``parse_referral()`` during inbound webhook processing.
+    # Missing-field policy: never block ingestion — persist what's
+    # available, downstream attribution downgrades match quality.
+    referral_source_type = models.CharField(max_length=20, blank=True, default="")
+    referral_source_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    referral_source_url = models.TextField(blank=True, default="")
+    referral_headline = models.TextField(blank=True, default="")
+    referral_body = models.TextField(blank=True, default="")
+    referral_media_type = models.CharField(max_length=20, blank=True, default="")
+    referral_media_url = models.TextField(blank=True, default="")
+    referral_ctwa_clid = models.CharField(max_length=128, blank=True, default="")
 
     # Override name field - not needed for messages
     name = None
