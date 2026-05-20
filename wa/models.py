@@ -1068,6 +1068,20 @@ class WaConversation(BaseTenantModelForFilterUser):
             models.Index(fields=["wa_app", "contact", "-last_inbound_at"]),
             models.Index(fields=["service_window_expires_at"]),  # closer worker
         ]
+        constraints = [
+            # At most one OPEN conversation per (wa_app, contact). Two
+            # simultaneous first-inbound webhooks for the same contact
+            # would otherwise both see "no open conversation" and both
+            # INSERT — leaving two open rows that the inbox UI shows as
+            # split timeline. The partial index lets ``resolve_or_create``
+            # catch the loser's IntegrityError and re-read the winner.
+            # (#201 third review Blocker #2)
+            models.UniqueConstraint(
+                fields=["wa_app", "contact"],
+                condition=models.Q(closed_at__isnull=True),
+                name="waconversation_unique_open_per_app_contact",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"WaConversation({self.id})"

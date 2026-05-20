@@ -11,6 +11,14 @@ from abstract.models import BaseTenantModelForFilterUser
 
 class CapiStatus(models.TextChoices):
     PENDING = "pending", "Pending"
+    # IN_FLIGHT marks rows claimed by ``flush_capi_queue`` between the
+    # claim phase and the ``_send_one`` phase. Other workers see this
+    # status as "not due" so the row isn't double-claimed. The status
+    # is transient — every claimed row flips to SENT / FAILED /
+    # DEAD_LETTERED before the flush returns. A worker crash mid-batch
+    # leaves rows stuck in IN_FLIGHT; a sweeper Celery beat (#201
+    # third review Blocker #1) reclaims them after a stuck threshold.
+    IN_FLIGHT = "in_flight", "In flight (claimed by a flusher worker)"
     SENT = "sent", "Sent"
     FAILED = "failed", "Failed (retryable)"
     SKIPPED = "skipped", "Skipped (consent / disabled)"

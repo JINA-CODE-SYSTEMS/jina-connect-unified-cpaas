@@ -42,6 +42,14 @@ logger = logging.getLogger(__name__)
 # entries and risked collisions when ``id()`` was reused after GC).
 # (#201 second review Medium #7)
 #
+# Load-bearing assumption: ``CtwaLead`` instances are hashable AND
+# their hash is stable across the pre_save → post_save sequence.
+# Django model instances inherit ``object.__hash__`` (identity-based)
+# by default and the same Python object is passed to both signals —
+# so this holds. If anyone overrides ``CtwaLead.__hash__`` to vary
+# with field values, idempotency breaks because the post_save lookup
+# misses the pre_save entry. (#201 third review style nit #2)
+#
 # Workers MUST NOT hot-reload this module — doing so reinitialises
 # the table and breaks the pre/post pairing for any in-flight save.
 _PRESAVE_QUALIFICATION_STATUS: "weakref.WeakKeyDictionary[CtwaLead, str | None]" = weakref.WeakKeyDictionary()

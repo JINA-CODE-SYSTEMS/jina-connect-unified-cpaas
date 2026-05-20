@@ -85,30 +85,91 @@ def _build_capi_payload(event: AttributionEvent) -> dict:
 
 @shared_task
 def flush_capi_queue() -> dict:
-    """Pick up due ``AttributionEvent`` rows and push them to CAPI in
-    one batch per ad account. Retries on failure with exponential
-    backoff; DLQs after :data:`MAX_ATTEMPTS`.
+    """Pick up due ``AttributionEvent`` rows and push them to CAPI.
 
-    Multi-worker safety: rows are claimed inside ``transaction.atomic``
-    with ``select_for_update(skip_locked=True)`` so two concurrent
-    workers running this task don't both pick up the same event and
-    double-POST. (#201 second review High #3) Each event's lock is
-    released when the transaction commits below.
+    Two-phase to avoid holding row locks across HTTP latency:
+
+      1. **Short claim transaction.** Open ``transaction.atomic``,
+         ``select_for_update(skip_locked=True)`` the next
+         :data:`BATCH_SIZE` due rows, flip their ``capi_status`` to
+         ``IN_FLIGHT`` (a transient marker that excludes them from
+         other workers' due-set), commit.
+      2. **Per-row send.** For each claimed id, run ``_send_one``
+         which opens its own short transaction to record SENT /
+         FAILED / DEAD_LETTERED. The HTTP call runs OUTSIDE any
+         lock — multi-worker scale OK at real CAPI latency. (#201
+         third review Blocker #1)
 
     Scheduled via Celery beat: every 60s OR when queue depth crosses
-    1000 (driven by a separate signal that's added once volume warrants).
+    1000 (separate signal — added when volume warrants).
     """
-    from django.db import transaction
+
+    now = timezone.now()
+    claimed_ids = _claim_due_events(now)
 
     sent = 0
     failed = 0
     dlq = 0
-    now = timezone.now()
+    for event_id in claimed_ids:
+        # Re-fetch under fresh transaction; another worker can't
+        # touch it because capi_status=IN_FLIGHT was committed by
+        # the claim phase above.
+        try:
+            event = AttributionEvent.objects.get(pk=event_id)
+        except AttributionEvent.DoesNotExist:
+            # Extremely unlikely — only if a sibling task hard-deleted
+            # the row between claim and send. Skip and move on.
+            continue
+        result = _send_one(event)
+        if result == "sent":
+            sent += 1
+        elif result == "dlq":
+            dlq += 1
+        else:
+            failed += 1
+
+    summary = {"sent": sent, "failed": failed, "dlq": dlq}
+    logger.info("[attribution.flush] %s", summary)
+    return summary
+
+
+# Threshold for the IN_FLIGHT sweeper. A worker crash between claim
+# (status=IN_FLIGHT) and _send_one would otherwise pin events forever.
+# 10 minutes is generous — real CAPI calls finish in seconds; a stuck
+# IN_FLIGHT means the worker died.
+IN_FLIGHT_RECLAIM_AFTER = timedelta(minutes=10)
+
+
+@shared_task
+def reclaim_stuck_in_flight_events() -> dict:
+    """Sweep ``IN_FLIGHT`` events older than :data:`IN_FLIGHT_RECLAIM_AFTER`
+    back to ``PENDING`` so the normal flusher picks them up again.
+
+    Scheduled via Celery beat: every 5 minutes. Cheap query
+    (indexed on ``(capi_status, updated_at)``).
+    """
+    cutoff = timezone.now() - IN_FLIGHT_RECLAIM_AFTER
+    reclaimed = AttributionEvent.objects.filter(
+        capi_status=CapiStatus.IN_FLIGHT,
+        updated_at__lt=cutoff,
+    ).update(capi_status=CapiStatus.PENDING)
+    if reclaimed:
+        logger.warning("[attribution.reclaim] %d events back to PENDING", reclaimed)
+    return {"reclaimed": reclaimed}
+
+
+def _claim_due_events(now) -> list:
+    """Atomically claim up to :data:`BATCH_SIZE` due events for this
+    worker by flipping their ``capi_status`` to ``IN_FLIGHT``.
+
+    Lock is held only across the SELECT + UPDATE — no HTTP inside.
+    Returns the list of claimed ids in submission order. Other workers
+    see the IN_FLIGHT rows as excluded from their due-set (the filter
+    only matches PENDING / FAILED) so they pick disjoint batches.
+    """
+    from django.db import transaction
 
     with transaction.atomic():
-        # Materialise the locked IDs so the queryset that drives the
-        # iteration is bounded — and so SELECT FOR UPDATE actually
-        # holds the lock through the per-event _send_one calls below.
         due_ids = list(
             AttributionEvent.objects.select_for_update(skip_locked=True)
             .filter(capi_status__in=[CapiStatus.PENDING, CapiStatus.FAILED])
@@ -116,18 +177,16 @@ def flush_capi_queue() -> dict:
             .order_by("created_at")
             .values_list("id", flat=True)[:BATCH_SIZE]
         )
-        for event in AttributionEvent.objects.filter(id__in=due_ids).iterator():
-            result = _send_one(event)
-            if result == "sent":
-                sent += 1
-            elif result == "dlq":
-                dlq += 1
-            else:
-                failed += 1
-
-    summary = {"sent": sent, "failed": failed, "dlq": dlq}
-    logger.info("[attribution.flush] %s", summary)
-    return summary
+        if due_ids:
+            # Stamp IN_FLIGHT so the rows aren't picked up by another
+            # worker after this transaction commits and the row locks
+            # release. ``_send_one`` will flip them to SENT / FAILED /
+            # DEAD_LETTERED in its own short transaction.
+            AttributionEvent.objects.filter(id__in=due_ids).update(
+                capi_status=CapiStatus.IN_FLIGHT,
+                updated_at=now,
+            )
+    return due_ids
 
 
 def models_q_due(now):

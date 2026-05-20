@@ -37,6 +37,12 @@ def reconcile_orphans(batch_size: int = 200) -> dict:
 
     qs = CtwaLead.objects.filter(flagged_orphan_campaign=True).order_by("created_at")[:batch_size]
     for lead in qs.iterator():
+        # ── Strategy 1: local DB re-check ────────────────────────────
+        # Tenant-scoped lookup — strictly required because the
+        # partial unique constraint on CtwaCampaign is
+        # ``(tenant, meta_ad_id)``. Without tenant in the filter we
+        # could link a lead from tenant A to a campaign in tenant B.
+        # (#201 third review Blocker #3)
         campaign = (
             CtwaCampaign.objects.filter(tenant=lead.tenant, meta_ad_id=lead.meta_ad_id)
             .exclude(status="archived")
@@ -50,8 +56,15 @@ def reconcile_orphans(batch_size: int = 200) -> dict:
             resolved_local += 1
             continue
 
-        # Strategy 2 — Meta Marketing API lookup. Stubbed in this PR.
-        # See ads/ adapter once #190 is approved.
+        # ── Strategy 2: Meta Marketing API lookup (stubbed) ──────────
+        # Production fills in :func:`_resolve_via_meta_api` once #190
+        # is approved. The helper signature TAKES the lead so the
+        # tenant scoping is structural — there is no path to query
+        # Meta on tenant A's behalf and write a campaign under tenant
+        # B. (#201 third review Blocker #3)
+        if _resolve_via_meta_api(lead):
+            resolved_local += 1
+            continue
         still_orphan += 1
 
     # Backlog alert. Strategy 2 (Meta Marketing API lookup) is
@@ -74,3 +87,19 @@ def reconcile_orphans(batch_size: int = 200) -> dict:
     }
     logger.info("[ctwa.tasks.reconcile_orphans] %s", result)
     return result
+
+
+def _resolve_via_meta_api(lead) -> bool:
+    """Strategy 2 of orphan reconciliation. Currently a no-op stub.
+
+    Production replacement MUST query the Meta Marketing API using
+    *the lead's tenant's* ``MetaBusinessConnection`` only — never a
+    cross-tenant aggregate query. On hit, create a shadow
+    ``CtwaCampaign(tenant=lead.tenant, meta_ad_id=lead.meta_ad_id,
+    status='external')`` — the ``(tenant, meta_ad_id)`` partial
+    unique constraint enforces correctness if a parallel worker
+    raced; catch ``IntegrityError`` and re-read.
+
+    Returns True if the lead was resolved.
+    """
+    return False

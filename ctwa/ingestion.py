@@ -99,13 +99,21 @@ def handle_inbound_referral(
         return None
 
     # Stamp the FK on the conversation so the inbox + future inbound
-    # messages know they're in a CTWA-attributed thread.
+    # messages know they're in a CTWA-attributed thread. The lead row
+    # already exists at this point, so a failure here is an
+    # orphaned-FK scenario the operator should see in the logs rather
+    # than a silent ``pass``. (#201 third review style nit #1)
     if conversation.ctwa_lead_id is None:
         conversation.ctwa_lead = lead
         try:
             conversation.save(update_fields=["ctwa_lead", "updated_at"])
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[ctwa.ingestion] CtwaLead %s created but conversation %s FK update failed: %s",
+                lead.id,
+                conversation.id,
+                exc,
+            )
 
     return lead
 

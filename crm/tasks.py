@@ -76,14 +76,44 @@ def refresh_expiring_connections() -> dict:
 
 
 def _refresh_one(connection) -> None:
-    """Stub provider-agnostic refresh. Production fills in per-provider
-    HTTP. No-op today so worker loop is testable without external creds.
+    """Provider-dispatched refresh. Production fills in each branch.
+
+    Splitting by provider here (rather than waiting until #198 lands
+    live OAuth) means a future PR adds only an ``elif`` plus the HTTP
+    body — no risk of one provider's refresh code accidentally
+    running for another. (#201 third review style nit #5)
     """
-    logger.info(
-        "[crm.refresh] STUB refresh connection=%s provider=%s",
-        connection.id,
-        connection.provider,
-    )
+    provider = connection.provider
+    if provider == "hubspot":
+        _refresh_hubspot(connection)
+    elif provider == "salesforce":
+        _refresh_salesforce(connection)
+    elif provider == "generic_webhook":
+        # Generic webhook connectors don't have refresh semantics —
+        # the operator owns secret rotation out-of-band.
+        return
+    else:
+        logger.warning(
+            "[crm.refresh] unknown provider %s for connection=%s; skipping",
+            provider,
+            connection.id,
+        )
+
+
+def _refresh_hubspot(connection) -> None:
+    """Stub. Production: POST https://api.hubapi.com/oauth/v1/token with
+    grant_type=refresh_token + the stored refresh_token; update
+    access_token + expires_at on success; raise on 401 so the outer
+    loop can flag needs_reauth."""
+    logger.info("[crm.refresh] STUB refresh HubSpot connection=%s", connection.id)
+
+
+def _refresh_salesforce(connection) -> None:
+    """Stub. Production: POST {instance_url}/services/oauth2/token with
+    grant_type=refresh_token. If no refresh_token (legacy
+    password-flow connections), raise so the outer loop sets
+    needs_reauth and surfaces a re-auth prompt to the tenant."""
+    logger.info("[crm.refresh] STUB refresh Salesforce connection=%s", connection.id)
 
 
 __all__ = ["refresh_expiring_connections"]

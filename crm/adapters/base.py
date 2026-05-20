@@ -135,19 +135,27 @@ def push_lead_idempotent(*, connection: "CrmConnection", lead: "CtwaLead") -> st
         )
         raise
 
-    # ── (3) Record the CRM-side id ───────────────────────────────────
-    if crm_id:
-        lead.crm_external_id = crm_id
-        lead.save(update_fields=["crm_external_id", "updated_at"])
+    # ── (3) Record the CRM-side id + audit row in one transaction ───
+    # Two writes (lead update + audit row insert) — wrap so a crash
+    # between them doesn't leave a partial state. (#201 third review
+    # style nit #3 — Tapan flagged "saves the lead twice on the happy
+    # path"; the two saves are intentional (BEFORE / AFTER the push)
+    # but the post-push lead update + audit insert fold cleanly into
+    # one txn.)
+    from django.db import transaction
 
-    CrmSyncEvent.objects.create(
-        connection=connection,
-        direction="outbound",
-        external_event_id=event_id,
-        payload={"crm_external_id": crm_id},
-        processed=True,
-        lead=lead,
-    )
+    with transaction.atomic():
+        if crm_id:
+            lead.crm_external_id = crm_id
+            lead.save(update_fields=["crm_external_id", "updated_at"])
+        CrmSyncEvent.objects.create(
+            connection=connection,
+            direction="outbound",
+            external_event_id=event_id,
+            payload={"crm_external_id": crm_id},
+            processed=True,
+            lead=lead,
+        )
     return crm_id
 
 
