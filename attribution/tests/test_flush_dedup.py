@@ -84,33 +84,35 @@ class TestFlushCapiQueue:
         # Real-shape success.
         assert _extract_emq_score({"events_received": [{"matching_score": 7}]}) == 7
 
-    def test_select_for_update_present_in_query(self, pending_event):
-        """White-box: the flush_capi_queue implementation MUST use
-        ``select_for_update(skip_locked=True)``. Without it, two
-        workers double-POST. A unit test can't easily prove the
-        multi-connection scenario without integration scaffolding,
-        but we can assert the SQL contains ``FOR UPDATE SKIP LOCKED``
-        on Postgres. SQLite ignores the clause (it serialises writes
-        anyway), so just check the queryset's ``query.select_for_update``
-        wiring is on."""
-        from django.db import transaction
+    def test_select_for_update_clause_in_query(self, pending_event, settings):
+        """White-box: the flush implementation MUST issue a
+        ``SELECT ... FOR UPDATE SKIP LOCKED`` against the events
+        table inside the transaction. We inspect ``connection.queries``
+        under ``DEBUG=True`` rather than running real concurrent
+        workers (the cross-thread race is covered by
+        ``test_select_for_update_concurrent_workers`` below). This
+        keeps a hard-line regression: removing
+        ``select_for_update(skip_locked=True)`` from
+        ``flush_capi_queue`` fails this test. (#201 round-2 review
+        Low #2)
+        """
+        from django.db import connection
 
         from attribution.tasks import flush_capi_queue
 
-        # Monkey-patch transaction.atomic to peek at the queryset.
-        captured: dict = {}
-        real_atomic = transaction.atomic
-
-        def _capture(*args, **kw):
-            cm = real_atomic(*args, **kw)
-            return cm
+        settings.DEBUG = True
+        connection.queries_log.clear()
 
         with patch("attribution.tasks._post_to_capi", return_value={}):
-            # Just ensure the task runs cleanly with the new contract.
             flush_capi_queue()
 
-        # The runtime success above (zero exceptions) plus the unit
-        # tests above proving correct per-event behaviour is the
-        # smoke proof. The actual multi-worker race needs the
-        # integration suite (Tapan's "TODO" note in his review).
-        assert captured == {}  # placeholder — see above
+        sql_blob = "\n".join(q["sql"].lower() for q in connection.queries)
+        # On Postgres the clause is "for update skip locked". On
+        # SQLite Django strips select_for_update silently — so this
+        # test only asserts hard on Postgres but is harmless on
+        # SQLite (where the substring won't be present).
+        if connection.vendor == "postgresql":
+            assert "for update" in sql_blob and "skip locked" in sql_blob, (
+                "flush_capi_queue lost its select_for_update(skip_locked=True) — "
+                "concurrent workers will double-POST. See #201 review High #3."
+            )
