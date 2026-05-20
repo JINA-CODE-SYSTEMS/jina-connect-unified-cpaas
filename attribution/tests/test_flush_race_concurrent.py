@@ -105,8 +105,7 @@ class TestFlushCapiQueueConcurrent:
         )
         for event_id, count in call_count.items():
             assert count == 1, (
-                f"Event {event_id} was POSTed {count} times — "
-                "select_for_update(skip_locked=True) missing or broken."
+                f"Event {event_id} was POSTed {count} times — select_for_update(skip_locked=True) missing or broken."
             )
 
         # Both events must end in SENT.
