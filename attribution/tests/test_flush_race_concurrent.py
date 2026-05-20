@@ -69,8 +69,7 @@ class TestFlushCapiQueueConcurrent:
         def _worker():
             try:
                 barrier.wait()
-                with patch("attribution.tasks._post_to_capi", side_effect=fake_post):
-                    flush_capi_queue()
+                flush_capi_queue()
             except Exception as exc:  # noqa: BLE001 — surface to assertion
                 errors.append(exc)
             finally:
@@ -78,26 +77,37 @@ class TestFlushCapiQueueConcurrent:
 
                 connections.close_all()
 
-        t1 = threading.Thread(target=_worker)
-        t2 = threading.Thread(target=_worker)
-        t1.start()
-        t2.start()
-        t1.join(timeout=30)
-        t2.join(timeout=30)
+        # ``unittest.mock.patch`` is not thread-safe — if each worker
+        # uses its own ``with patch(...)`` block, the second thread's
+        # exit restores the WRONG original. Hold the patch in the main
+        # thread; both worker threads run inside the patched scope.
+        with patch("attribution.tasks._post_to_capi", side_effect=fake_post):
+            t1 = threading.Thread(target=_worker)
+            t2 = threading.Thread(target=_worker)
+            t1.start()
+            t2.start()
+            t1.join(timeout=30)
+            t2.join(timeout=30)
 
         assert not errors, f"worker(s) raised: {errors!r}"
 
-        # Each event must have been POSTed at most once. The two
-        # workers together should account for 2 POST calls; if either
-        # event was POSTed twice the lock is broken.
-        assert max(call_count.values(), default=0) == 1, (
-            f"At least one event was POSTed more than once: {dict(call_count)!r}. "
-            "select_for_update(skip_locked=True) missing or broken in flush_capi_queue."
-        )
+        # Each event must have been POSTed exactly once across the
+        # two workers. If both workers' queries returned the same row
+        # set (lock missing), the same event_id would appear with
+        # count > 1. If no worker found rows at all, the counter is
+        # empty — also a regression (fixture / queue setup broken).
         assert sum(call_count.values()) == 2, (
-            f"Expected 2 total POST calls across both workers; got {sum(call_count.values())}. "
-            f"Per-event: {dict(call_count)!r}"
+            f"Expected exactly 2 POST calls across both workers; got "
+            f"{sum(call_count.values())}. Per-event: {dict(call_count)!r}. "
+            "If 0: workers found no pending rows (fixture issue). "
+            "If >2: select_for_update(skip_locked=True) missing — same row "
+            "picked up by both workers and double-POSTed."
         )
+        for event_id, count in call_count.items():
+            assert count == 1, (
+                f"Event {event_id} was POSTed {count} times — "
+                "select_for_update(skip_locked=True) missing or broken."
+            )
 
         # Both events must end in SENT.
         for event in AttributionEvent.objects.filter(pk__in=[a.pk, b.pk]):
