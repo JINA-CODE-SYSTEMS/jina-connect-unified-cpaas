@@ -129,6 +129,7 @@ INSTALLED_APPS = [
     "ctwa",  # #194 — CTWA campaign + lead + ingestion
     "attribution",  # #197 — Meta Conversions API push (CAPI)
     "crm",  # #198 — HubSpot / Salesforce / generic-webhook connectors
+    "availability",  # Cl. 5.4 — SLA availability record and monthly report
     # ──────────────────────────────────────────────────────────────────
     "rest_framework",
     "rest_framework.authtoken",
@@ -329,6 +330,9 @@ DEFAULT_BRAND_COLOR = config("DEFAULT_BRAND_COLOR", "#465fff")
 # PLACEHOLDERS. Set PARTNER_NAME and PARTNER_REPORT_RECIPIENTS per deployment
 # before the first report goes out; the defaults deliberately do not point at a
 # real mailbox so an unconfigured deployment cannot silently email a stranger.
+# Contractual availability commitment, as a percentage (Cl. 5.4).
+AVAILABILITY_COMMITMENT_PERCENT = config("AVAILABILITY_COMMITMENT_PERCENT", "99.5")
+
 PARTNER_NAME = config("PARTNER_NAME", "Partner")
 PARTNER_REPORT_RECIPIENTS = [
     address.strip()
