@@ -469,6 +469,7 @@ class BrandingSettingsSerializer(serializers.ModelSerializer):
     effective_primary_logo_url = serializers.SerializerMethodField(read_only=True)
     effective_secondary_logo_url = serializers.SerializerMethodField(read_only=True)
     effective_product_name = serializers.CharField(read_only=True)
+    effective_primary_color = serializers.CharField(read_only=True)
 
     class Meta:
         model = None  # Will be set dynamically to avoid circular import
@@ -476,6 +477,8 @@ class BrandingSettingsSerializer(serializers.ModelSerializer):
             "id",
             "product_name",
             "effective_product_name",
+            "primary_color",
+            "effective_primary_color",
             "favicon",
             "favicon_url",
             "primary_logo",
