@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.db import models
 from django.utils import timezone
@@ -646,8 +647,11 @@ class TenantTags(BaseTenantModelForFilterUser):
 
 class BrandingSettings(models.Model):
     """
-    Singleton model to store branding assets for the application.
+    Singleton model to store branding for the application.
     Only admin users can modify these settings.
+
+    Text:
+    - Product name: shown in page titles and transactional copy
 
     Assets:
     - Favicon: PNG image, 583x583 px
@@ -675,6 +679,15 @@ class BrandingSettings(models.Model):
     )
     secondary_logo_url = models.URLField(
         max_length=500, null=True, blank=True, help_text="External URL for secondary logo"
+    )
+
+    # Product name shown in page titles, transactional copy and payment descriptors.
+    # Blank falls back to settings.DEFAULT_PRODUCT_NAME.
+    product_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Product name shown in the UI (e.g. page titles). Blank uses the deployment default.",
     )
 
     # Metadata
@@ -722,3 +735,8 @@ class BrandingSettings(models.Model):
         if self.secondary_logo:
             return self.secondary_logo.url
         return self.secondary_logo_url
+
+    @property
+    def effective_product_name(self):
+        """Return the configured product name, otherwise the deployment default."""
+        return self.product_name or settings.DEFAULT_PRODUCT_NAME
