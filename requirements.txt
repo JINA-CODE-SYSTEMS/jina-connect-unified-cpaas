@@ -1,10 +1,10 @@
-Django==5.1.15
+Django==5.2.16
 psycopg2-binary==2.9.10
 python-decouple==3.8
 pillow==12.3.0
 django-countries==7.6.1
 pycountry==24.6.1
-djangorestframework==3.15.2
+djangorestframework==3.17.2
 djangorestframework-simplejwt==5.5.1
 django-filter==24.3
 drf-yasg==1.21.8
