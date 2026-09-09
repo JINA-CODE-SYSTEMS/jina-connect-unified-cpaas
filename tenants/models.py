@@ -50,6 +50,17 @@ class Tenant(BaseEntity, BaseWallet, BaseTenantModelForFilterUser):
     """
 
     # Location fields (ISO 3166 codes)
+    # Set when the account is archived and its customer data purged. The row
+    # itself must survive: it is the billing record for the Active Customer
+    # Account report (Fabtary agreement Cl. 4.2), which is pro-rated by the
+    # days an account existed. A hard delete destroys that evidence.
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When this account was archived. Null means the account is live.",
+    )
+
     country = models.CharField(
         max_length=2, blank=True, null=True, help_text="ISO 3166-1 alpha-2 country code (e.g., IN, US)"
     )
@@ -92,6 +103,24 @@ class Tenant(BaseEntity, BaseWallet, BaseTenantModelForFilterUser):
         if hasattr(self, "contacts"):
             return self.contacts.count()
         return 0
+
+    @property
+    def is_archived(self):
+        """True once the account has been archived."""
+        return self.archived_at is not None
+
+    def archive(self, when=None):
+        """Mark the account archived.
+
+        Stamps archived_at so the Active Customer Account report can pro-rate
+        the month the account went away. Purging the account's customer data is
+        a separate concern; this row is retained deliberately as the billing
+        record. Re-archiving keeps the original timestamp.
+        """
+        if self.archived_at is None:
+            self.archived_at = when or timezone.now()
+            self.save(update_fields=["archived_at", "updated_at"])
+        return self.archived_at
 
 
 class BSPChoices(models.TextChoices):
