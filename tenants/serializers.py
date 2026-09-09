@@ -457,7 +457,8 @@ class BrandingSettingsSerializer(serializers.ModelSerializer):
     Serializer for BrandingSettings model.
     Admin-only access for managing branding assets.
 
-    Supports both file uploads and external URLs for:
+    Exposes the product name (with deployment-default fallback) and supports both
+    file uploads and external URLs for:
     - Favicon: PNG 583x583 px
     - Primary Logo: SVG 854x262 px (aspect ratio 3.26:1)
     - Secondary Logo: SVG 532x380 px (aspect ratio 1.4:1)
@@ -467,11 +468,14 @@ class BrandingSettingsSerializer(serializers.ModelSerializer):
     effective_favicon_url = serializers.SerializerMethodField(read_only=True)
     effective_primary_logo_url = serializers.SerializerMethodField(read_only=True)
     effective_secondary_logo_url = serializers.SerializerMethodField(read_only=True)
+    effective_product_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = None  # Will be set dynamically to avoid circular import
         fields = [
             "id",
+            "product_name",
+            "effective_product_name",
             "favicon",
             "favicon_url",
             "primary_logo",

@@ -314,6 +314,10 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
+# Product name used when BrandingSettings.product_name is blank.
+# White-label deployments override this via env.
+DEFAULT_PRODUCT_NAME = config("DEFAULT_PRODUCT_NAME", "Jina Connect")
+
 BASE_URL = config("BASE_URL", "http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_WEBHOOK_BASE_URL = config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))
