@@ -30,7 +30,11 @@ There is no formal application process. If your contributions are consistently s
 
 ## Commercial Relationship
 
-Jina Code Systems operates a hosted version of this software. The open-source edition and the hosted product share the same core codebase. Features developed commercially that benefit the community will be contributed back under the same AGPL-3.0 license.
+Jina Code Systems operates a hosted version of this software and licenses white-labelled deployments to partners. This repository is the backend platform — the API, channel adapters, flows, and MCP server — and the hosted product builds on it.
+
+Some things are not in this repository and are not planned to be: the web dashboard, partner provisioning and white-label tooling, and partner billing. That is how the company funds the work on the open core.
+
+Features developed commercially that make sense in the core get contributed back under AGPL-3.0. Recent examples are the branding settings and the availability reporting. Where a feature exists only to serve a commercial arrangement, it stays out.
 
 The company's commercial interests do not override community contributions — if you submit a good PR, it gets merged regardless of whether the feature competes with a paid offering.
 
