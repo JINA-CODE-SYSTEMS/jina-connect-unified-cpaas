@@ -30,7 +30,11 @@ jobs:
           cache: pip
 
       - name: Install lint tools
-        run: pip install ruff bandit
+        # Pinned deliberately. Unpinned linters change behaviour on release and
+        # fail CI on files nobody touched: ruff 0.16.6 formats Python blocks
+        # inside Markdown, which broke main on chat_flow/triggers/README.md.
+        # 0.15.11 matches what developers run locally. Bump on purpose.
+        run: pip install ruff==0.15.11 bandit==1.9.4
 
       - name: Ruff lint
         run: ruff check . --output-format=github

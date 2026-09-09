@@ -1,7 +1,8 @@
 """
 Viewset for BrandingSettings - Admin only access.
 
-Provides endpoints to manage branding assets:
+Provides endpoints to manage branding:
+- Product name: text, shown in page titles and transactional copy
 - Favicon: PNG 583x583 px
 - Primary Logo: SVG 854x262 px (aspect ratio 3.26:1)
 - Secondary Logo: SVG 532x380 px (aspect ratio 1.4:1)
@@ -9,7 +10,7 @@ Provides endpoints to manage branding assets:
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from typing_extensions import override
@@ -35,7 +36,8 @@ class BrandingSettingsViewSet(viewsets.ViewSet):
     """
 
     permission_classes = [IsAdminUser, TenantRolePermission]
-    parser_classes = [MultiPartParser, FormParser]
+    # JSON is accepted so text-only fields (product_name) can be set without multipart.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     required_permissions = {
         "list": "tenant.view",
         "retrieve": "tenant.view",

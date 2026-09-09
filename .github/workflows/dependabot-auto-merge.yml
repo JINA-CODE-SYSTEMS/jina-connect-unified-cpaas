@@ -1,0 +1,46 @@
+name: Dependabot auto-merge
+
+# Approves and enables auto-merge for low-risk Dependabot updates.
+#
+# Auto-merge does NOT bypass branch protection: GitHub still waits for every
+# required check (lint, secret scan, Django checks, tests on 3.11 and 3.12)
+# before merging. A red CI leaves the PR sitting open, exactly as today.
+#
+# Major version bumps are deliberately excluded and stay manual.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Approve and auto-merge safe updates
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The approval is what satisfies "required approving reviews: 1".
+      # Scoped to patch and minor so a major bump always gets human eyes.
+      - name: Approve and enable auto-merge
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Leave major bumps for manual review
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: |
+          echo "::notice::Major bump (${{ steps.metadata.outputs.dependency-names }}) needs manual review; auto-merge not enabled."
