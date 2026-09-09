@@ -318,6 +318,10 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static")
 # White-label deployments override this via env.
 DEFAULT_PRODUCT_NAME = config("DEFAULT_PRODUCT_NAME", "Jina Connect")
 
+# Primary brand colour used when BrandingSettings.primary_color is blank.
+# Matches --color-brand-500 in the web app's default palette.
+DEFAULT_BRAND_COLOR = config("DEFAULT_BRAND_COLOR", "#465fff")
+
 BASE_URL = config("BASE_URL", "http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_WEBHOOK_BASE_URL = config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))

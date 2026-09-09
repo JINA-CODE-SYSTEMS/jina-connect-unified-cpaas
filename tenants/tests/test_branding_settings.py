@@ -4,6 +4,7 @@ Tests for BrandingSettings product name and singleton behaviour.
 Run with: python manage.py test tenants.tests.test_branding_settings
 """
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 
 from tenants.models import BrandingSettings
@@ -41,3 +42,35 @@ class BrandingSettingsProductNameTestCase(TestCase):
 
         self.assertEqual(BrandingSettings.objects.count(), 1)
         self.assertEqual(BrandingSettings.objects.first().product_name, "Two")
+
+
+class BrandingSettingsPrimaryColorTestCase(TestCase):
+    """primary_color falls back to the deployment default and rejects junk."""
+
+    @override_settings(DEFAULT_BRAND_COLOR="#465fff")
+    def test_blank_colour_falls_back_to_setting(self):
+        branding = BrandingSettings.get_instance()
+        self.assertEqual(branding.primary_color, "")
+        self.assertEqual(branding.effective_primary_color, "#465fff")
+
+    @override_settings(DEFAULT_BRAND_COLOR="#465fff")
+    def test_set_colour_overrides_setting(self):
+        branding = BrandingSettings.get_instance()
+        branding.primary_color = "#ff6b00"
+        branding.save()
+
+        self.assertEqual(BrandingSettings.get_instance().effective_primary_color, "#ff6b00")
+
+    def test_shorthand_hex_is_accepted(self):
+        branding = BrandingSettings.get_instance()
+        branding.primary_color = "#f60"
+        branding.full_clean()
+
+    def test_non_hex_values_are_rejected(self):
+        branding = BrandingSettings.get_instance()
+
+        for bad in ["red", "465fff", "#12345", "#gggggg", "rgb(1,2,3)"]:
+            with self.subTest(value=bad):
+                branding.primary_color = bad
+                with self.assertRaises(ValidationError):
+                    branding.full_clean()
