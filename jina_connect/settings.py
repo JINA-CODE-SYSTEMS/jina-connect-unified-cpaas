@@ -252,7 +252,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
     "PAGE_SIZE_QUERY_PARAM": "page_size",
-    "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.coreapi.AutoSchema",
+    # DRF 3.17 removed rest_framework.schemas.coreapi entirely. The CoreAPI
+    # schema class was vestigial here anyway: drf-yasg generates its own schema
+    # and does not require it, and coreapi was never an installed dependency.
+    "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.BasicAuthentication",
