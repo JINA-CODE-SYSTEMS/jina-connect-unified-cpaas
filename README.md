@@ -31,7 +31,7 @@ We're building the open-source alternative that solves all of this at once:
 - **Every customer channel, one stack.** WhatsApp, Telegram, SMS, RCS, and Voice all ship today on the same primitives — send, broadcast, flow, inbox, analytics, MCP — so once you wire one channel the rest are configuration, not code.
 - **Multi-provider by design.** For each channel, swap providers without rewriting code. WhatsApp already routes across Meta Cloud API and Gupshup; more channels and providers land the same way.
 - **AI-native from day one.** The MCP server lets any AI agent operate your channels the way a human would — create templates, send campaigns, query analytics — without glue code.
-- **Self-hostable.** `docker-compose up` and you have a full Jina Connect instance. Keep it on your own infrastructure, forever.
+- **Self-hostable.** `docker-compose up` and you have the full backend — every channel, the API, and the MCP server — on your own infrastructure, forever. The web dashboard is a separate commercial product; self-hosters drive the platform through the API.
 - **AGPL v3.** Fork it, audit it, extend it. Commercial license available for enterprises whose legal teams require it.
 
 ---
@@ -223,11 +223,11 @@ Twilio is the most direct comparison on breadth (they also do multi-channel CPaa
 
 You have two ways to run Jina Connect:
 
-**Self-hosted (free forever).** Clone this repo, `docker-compose up`, and you have a complete Jina Connect instance. You own the infrastructure, the data, and the operations. Licensed under AGPL v3 — use it however you want within the license terms. This path is best for technical teams who want full control.
+**Self-hosted (free forever).** Clone this repo, `docker-compose up`, and you have the complete backend platform: every channel, the full API, and the MCP server. You own the infrastructure, the data, and the operations. Licensed under AGPL v3 — use it however you want within the license terms. Note that the web dashboard is not part of this repository; self-hosting means integrating against the API or building your own front end. This path is best for technical teams who want full control.
 
 **Hosted (Jina Connect SaaS).** We run Jina Connect for you. Managed infrastructure, SLA, automatic upgrades, priority support, and extensions that aren't yet in the open-source repo (including some Voice AI capabilities currently in private development, and the WhatsApp Commerce catalog). Pricing starts at ₹2,000/month. Best for agencies and D2C brands who want to ship faster without infrastructure work.
 
-Both paths use the same core. Self-hosted users can migrate to hosted (or vice versa) without data loss.
+Both paths run the same core backend, so self-hosted users can migrate to hosted (or vice versa) without data loss. The difference is what surrounds it: the hosted product adds the web dashboard, managed infrastructure and support.
 
 ---
 
@@ -251,6 +251,8 @@ AGPL v3. See [LICENSE](LICENSE) for the full text.
 **Why AGPL?** Because we want this to stay open. AGPL's network-use clause prevents well-funded competitors from running our code as a hosted service without contributing back, while keeping the code fully free for developers, agencies, and self-hosted users. It's the same license Grafana, Mastodon, and Nextcloud use for the same reason.
 
 **For enterprises whose legal teams can't accept AGPL:** a commercial license is available. Email tapan@jinacode.systems with your use case.
+
+**Trademarks.** The AGPL covers the code, not the name. "Jina Connect", "Jina Code Systems" and the Jina logo are trademarks of Jina Code Systems. You may run, fork and modify the software freely; you may not use the name or logo to identify your fork or a service built on it. See [TRADEMARK.md](TRADEMARK.md).
 
 ---
 

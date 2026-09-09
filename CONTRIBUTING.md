@@ -92,6 +92,8 @@ Additional rules:
    - `docs: update MCP server setup guide`
    - `test: add carousel template edge cases`
    - `refactor: extract adapter registry`
+6. **Sign off your commits** with `git commit -s` — see
+   [Licensing Your Contribution](#licensing-your-contribution)
 
 ## What We Accept
 
@@ -237,6 +239,36 @@ before starting.
 - `bug` — confirmed bugs
 - `enhancement` — feature requests
 - `adapter` — new provider/channel adapter work
+
+## Licensing Your Contribution
+
+By opening a pull request you agree that your contribution is licensed under
+**AGPL-3.0**, the same licence as this project. This is the usual
+"inbound equals outbound" arrangement and needs no separate paperwork for
+ordinary contributions.
+
+**Sign off each commit.** Use `git commit -s`, which appends:
+
+```
+Signed-off-by: Your Name <your@email.com>
+```
+
+That line certifies the [Developer Certificate of Origin](https://developercertificate.org/):
+that you wrote the contribution, or have the right to submit it under this
+licence. It is a statement about provenance, not a transfer of ownership — you
+keep the copyright in your work.
+
+**If you are contributing on behalf of an employer**, make sure you have their
+permission first. In most jurisdictions code written in the course of employment
+belongs to the employer, not to you, so a sign-off you are not entitled to give
+creates a problem for everyone.
+
+**Substantial contributions may be asked to sign a CLA.** Jina Code Systems
+offers commercial licences to organisations that cannot accept AGPL, and
+granting one requires holding the necessary rights across the whole codebase. For
+a small fix, the DCO sign-off is enough. For a large feature, we may ask you to
+sign a Contributor Licence Agreement first — we will say so early in review, not
+after you have done the work.
 
 ## Response Time
 
