@@ -725,6 +725,10 @@ class BrandingSettings(models.Model):
             # Update existing instance instead of creating new one
             existing = BrandingSettings.objects.first()
             self.pk = existing.pk
+            # Adopting a pk turns this into an UPDATE, and auto_now_add only
+            # populates created_at on INSERT. Without carrying the original
+            # value across, the UPDATE writes NULL into a NOT NULL column.
+            self.created_at = existing.created_at
         super().save(*args, **kwargs)
 
     @classmethod
