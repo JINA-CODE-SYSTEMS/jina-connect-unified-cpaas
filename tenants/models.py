@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, RegexValidator
 from django.db import models
 from django.utils import timezone
 from djmoney.models.fields import MoneyField
@@ -653,6 +653,9 @@ class BrandingSettings(models.Model):
     Text:
     - Product name: shown in page titles and transactional copy
 
+    Colour:
+    - Primary colour: hex triplet the UI derives its brand ramp from
+
     Assets:
     - Favicon: PNG image, 583x583 px
     - Primary Logo: SVG, 854x262 px (aspect ratio ~3.26:1)
@@ -688,6 +691,21 @@ class BrandingSettings(models.Model):
         blank=True,
         default="",
         help_text="Product name shown in the UI (e.g. page titles). Blank uses the deployment default.",
+    )
+
+    # Primary brand colour as a hex triplet. The UI derives its full brand
+    # ramp from this; blank falls back to settings.DEFAULT_BRAND_COLOR.
+    primary_color = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        validators=[
+            RegexValidator(
+                regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+                message="Enter a hex colour such as #465fff.",
+            )
+        ],
+        help_text="Primary brand colour, e.g. #465fff. Blank uses the deployment default.",
     )
 
     # Metadata
@@ -744,3 +762,8 @@ class BrandingSettings(models.Model):
     def effective_product_name(self):
         """Return the configured product name, otherwise the deployment default."""
         return self.product_name or settings.DEFAULT_PRODUCT_NAME
+
+    @property
+    def effective_primary_color(self):
+        """Return the configured brand colour, otherwise the deployment default."""
+        return self.primary_color or settings.DEFAULT_BRAND_COLOR
