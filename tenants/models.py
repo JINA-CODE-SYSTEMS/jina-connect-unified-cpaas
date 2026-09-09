@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, RegexValidator
 from django.db import models
 from django.utils import timezone
 from djmoney.models.fields import MoneyField
@@ -50,6 +50,17 @@ class Tenant(BaseEntity, BaseWallet, BaseTenantModelForFilterUser):
     """
 
     # Location fields (ISO 3166 codes)
+    # Set when the account is archived and its customer data purged. The row
+    # itself must survive: it is the billing record for the Active Customer
+    # Account report (Fabtary agreement Cl. 4.2), which is pro-rated by the
+    # days an account existed. A hard delete destroys that evidence.
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When this account was archived. Null means the account is live.",
+    )
+
     country = models.CharField(
         max_length=2, blank=True, null=True, help_text="ISO 3166-1 alpha-2 country code (e.g., IN, US)"
     )
@@ -92,6 +103,24 @@ class Tenant(BaseEntity, BaseWallet, BaseTenantModelForFilterUser):
         if hasattr(self, "contacts"):
             return self.contacts.count()
         return 0
+
+    @property
+    def is_archived(self):
+        """True once the account has been archived."""
+        return self.archived_at is not None
+
+    def archive(self, when=None):
+        """Mark the account archived.
+
+        Stamps archived_at so the Active Customer Account report can pro-rate
+        the month the account went away. Purging the account's customer data is
+        a separate concern; this row is retained deliberately as the billing
+        record. Re-archiving keeps the original timestamp.
+        """
+        if self.archived_at is None:
+            self.archived_at = when or timezone.now()
+            self.save(update_fields=["archived_at", "updated_at"])
+        return self.archived_at
 
 
 class BSPChoices(models.TextChoices):
@@ -653,6 +682,9 @@ class BrandingSettings(models.Model):
     Text:
     - Product name: shown in page titles and transactional copy
 
+    Colour:
+    - Primary colour: hex triplet the UI derives its brand ramp from
+
     Assets:
     - Favicon: PNG image, 583x583 px
     - Primary Logo: SVG, 854x262 px (aspect ratio ~3.26:1)
@@ -690,6 +722,21 @@ class BrandingSettings(models.Model):
         help_text="Product name shown in the UI (e.g. page titles). Blank uses the deployment default.",
     )
 
+    # Primary brand colour as a hex triplet. The UI derives its full brand
+    # ramp from this; blank falls back to settings.DEFAULT_BRAND_COLOR.
+    primary_color = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        validators=[
+            RegexValidator(
+                regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+                message="Enter a hex colour such as #465fff.",
+            )
+        ],
+        help_text="Primary brand colour, e.g. #465fff. Blank uses the deployment default.",
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -707,6 +754,10 @@ class BrandingSettings(models.Model):
             # Update existing instance instead of creating new one
             existing = BrandingSettings.objects.first()
             self.pk = existing.pk
+            # Adopting a pk turns this into an UPDATE, and auto_now_add only
+            # populates created_at on INSERT. Without carrying the original
+            # value across, the UPDATE writes NULL into a NOT NULL column.
+            self.created_at = existing.created_at
         super().save(*args, **kwargs)
 
     @classmethod
@@ -740,3 +791,8 @@ class BrandingSettings(models.Model):
     def effective_product_name(self):
         """Return the configured product name, otherwise the deployment default."""
         return self.product_name or settings.DEFAULT_PRODUCT_NAME
+
+    @property
+    def effective_primary_color(self):
+        """Return the configured brand colour, otherwise the deployment default."""
+        return self.primary_color or settings.DEFAULT_BRAND_COLOR

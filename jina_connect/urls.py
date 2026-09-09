@@ -27,6 +27,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 # URL tracking redirect
 from broadcast.url_tracker.views import TrackedURLRedirectView
+from jina_connect.health import healthz
 
 # Import version info for Swagger
 from jina_connect.version import BUILD_DATE, BUILD_NUMBER, GIT_COMMIT, VERSION, get_full_version, get_version_string
@@ -102,6 +103,9 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    # Unauthenticated liveness probe for external uptime monitoring (Cl. 5.4).
+    # Kept first so it is never shadowed by a broader pattern.
+    path("healthz", healthz, name="healthz"),
     # =========================================================================
     # DEEP LINKING - WELL-KNOWN FILES (Must be at root level)
     # These endpoints serve verification files for iOS Universal Links and
