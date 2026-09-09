@@ -325,6 +325,17 @@ DEFAULT_PRODUCT_NAME = config("DEFAULT_PRODUCT_NAME", "Jina Connect")
 # Matches --color-brand-500 in the web app's default palette.
 DEFAULT_BRAND_COLOR = config("DEFAULT_BRAND_COLOR", "#465fff")
 
+# --- Partner reporting (Fabtary agreement Cl. 4.2 / 5.4) ---------------------
+# PLACEHOLDERS. Set PARTNER_NAME and PARTNER_REPORT_RECIPIENTS per deployment
+# before the first report goes out; the defaults deliberately do not point at a
+# real mailbox so an unconfigured deployment cannot silently email a stranger.
+PARTNER_NAME = config("PARTNER_NAME", "Partner")
+PARTNER_REPORT_RECIPIENTS = [
+    address.strip()
+    for address in config("PARTNER_REPORT_RECIPIENTS", "reports@example.invalid").split(",")
+    if address.strip()
+]
+
 BASE_URL = config("BASE_URL", "http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_WEBHOOK_BASE_URL = config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))
@@ -540,6 +551,12 @@ CELERY_RESULT_SERIALIZER = "json"
 
 # Celery beat — periodic tasks
 CELERY_BEAT_SCHEDULE = {
+    "partner-active-account-report": {
+        # Cl. 4.2: email the previous month's Active Customer Account report on
+        # the 1st at 06:00 local. Runs after the month has ended, never during.
+        "task": "tenants.tasks.send_monthly_active_account_report",
+        "schedule": __import__("celery.schedules", fromlist=["crontab"]).crontab(day_of_month=1, hour=6, minute=0),
+    },
     "voice-enforce-recording-retention": {
         # Hard-delete expired recordings nightly at 02:30 in the
         # configured CELERY_TIMEZONE (Asia/Kolkata).
