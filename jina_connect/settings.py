@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -145,8 +146,20 @@ if DEBUG:
     SILKY_MAX_RECORDED_REQUESTS = 5_000  # auto-purge after this many
     SILKY_MAX_RECORDED_REQUESTS_CHECK_PERCENT = 10
     SILKY_META = True  # adds silk overhead info
-    # Ensure media/ exists for Silk .prof file storage (CI has no pre-existing media dir)
-    os.makedirs(os.path.join(BASE_DIR, "media"), exist_ok=True)
+
+    # Where the binary profiles go. django-silk defaults this to MEDIA_ROOT,
+    # which put profiler output in the uploads directory — and served it,
+    # since nginx aliases /media/. SILKY_MAX_RECORDED_REQUESTS purges silk's
+    # database rows but never the files, so they accumulated without bound:
+    # 65,613 files and 7.2 GB on one box before anyone looked.
+    #
+    # Profiles are disposable debug artefacts, so they belong in a temp
+    # directory, not beside user data and not inside the code tree.
+    SILKY_PYTHON_PROFILER_RESULT_PATH = config(
+        "SILKY_PYTHON_PROFILER_RESULT_PATH",
+        os.path.join(tempfile.gettempdir(), "jina-connect-silk"),
+    )
+    os.makedirs(SILKY_PYTHON_PROFILER_RESULT_PATH, exist_ok=True)
 
 # CSRF_TRUSTED_ORIGINS = [
 #     "*"
@@ -390,7 +403,16 @@ EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", "Jina Connect <noreply@jinaconnect.com>")
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+# Local-storage upload directory. Ignored when STORAGE_BACKEND is s3 or gcs,
+# which is what production uses.
+#
+# The default stays inside BASE_DIR so existing installs keep finding their
+# files — moving it silently would make uploads disappear on upgrade. But it
+# is a poor place for runtime state: a deploy-time `git clean -xfd` will take
+# uploads with it. Any deployment relying on local storage should point this
+# somewhere durable, e.g. MEDIA_ROOT=/var/lib/jina-connect/media.
+MEDIA_ROOT = config("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 
 # Cloud Storage Configuration
 # Set STORAGE_BACKEND to 's3', 'gcs', or 'local' (default)
