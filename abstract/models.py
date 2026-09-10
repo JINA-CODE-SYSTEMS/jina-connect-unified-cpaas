@@ -205,9 +205,49 @@ class BaseWallet(BaseModelWithOwner):
     threshold_alert = MoneyField(max_digits=15, decimal_places=6, default_currency="USD", default=Money(10, "USD"))
     history = HistoricalRecords(inherit=True)
 
+    # The three money fields above are declared in USD because a MoneyField's
+    # default_currency is fixed at class-definition time and frozen into the
+    # migration — it cannot follow a per-deployment setting. A new wallet is
+    # given its currency here instead, at creation.
+    #
+    # A wallet holds exactly one currency. total_balance adds balance and
+    # credit_line, and is_below_threshold compares the result against
+    # threshold_alert; django-money raises on arithmetic across currencies,
+    # so a wallet holding a mix is unusable — it throws the first time it is
+    # saved or checked.
+    #
+    # The caller wins. If they passed any field in a non-default currency
+    # that is what the wallet uses, and the remaining fields are brought onto
+    # it with their amounts preserved. Otherwise the platform currency
+    # applies. Amounts are never converted, only carried across, so this
+    # cannot change what a wallet is worth — at creation every amount is
+    # either zero or a nominal default.
+    _PLATFORM_STAMPED_FIELDS = ("balance", "credit_line", "threshold_alert")
+    _DECLARED_CURRENCY = "USD"
+
+    def _stamp_platform_currency(self):
+        from django.conf import settings
+
+        target = str(getattr(settings, "PLATFORM_DEFAULT_CURRENCY", self._DECLARED_CURRENCY))
+
+        for name in self._PLATFORM_STAMPED_FIELDS:
+            value = getattr(self, name, None)
+            if value is not None and str(value.currency) != self._DECLARED_CURRENCY:
+                target = str(value.currency)
+                break
+
+        for name in self._PLATFORM_STAMPED_FIELDS:
+            value = getattr(self, name, None)
+            if value is not None and str(value.currency) != target:
+                setattr(self, name, Money(value.amount, target))
+
     @property
     def is_overdrawn(self):
-        return self.balance < 0
+        # Money cannot be compared to a bare int — moneyed raises
+        # MoneyComparisonError — so this property threw for every wallet,
+        # in every currency, whenever it was read. It has no callers outside
+        # the docstring, which is why nobody noticed.
+        return self.balance < Money(0, self.balance.currency)
 
     @property
     def total_balance(self):
@@ -236,6 +276,8 @@ class BaseWallet(BaseModelWithOwner):
         abstract = True
 
     def save(self, *args, **kwargs):
+        if self._state.adding:
+            self._stamp_platform_currency()
         if self.total_balance < Money(0, self.balance.currency):
             raise ValueError("Total balance (balance + credit_line) cannot be negative")
         super().save(*args, **kwargs)
