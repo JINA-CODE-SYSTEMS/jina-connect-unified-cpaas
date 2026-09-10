@@ -30,7 +30,7 @@ from broadcast.url_tracker.views import TrackedURLRedirectView
 from jina_connect.health import healthz
 
 # Import version info for Swagger
-from jina_connect.version import BUILD_DATE, BUILD_NUMBER, GIT_COMMIT, VERSION, get_full_version, get_version_string
+from jina_connect.version import BUILD_NUMBER, VERSION, get_full_version, get_version_string
 
 # Deep linking views
 from users.views import (
@@ -48,6 +48,10 @@ def version_info(request):
     return JsonResponse(get_full_version())
 
 
+# Resolved once at import; the same values /version/ reports, so the schema
+# header cannot drift from what is actually deployed.
+_build = get_full_version()
+
 schema_view = get_schema_view(
     openapi.Info(
         title=f"JINA-CONNECT API - {get_version_string()}",
@@ -55,7 +59,7 @@ schema_view = get_schema_view(
         description=f"""
         # JINA-CONNECT API Documentation
 
-        **Version:** {VERSION} | **Build:** #{BUILD_NUMBER} | **Commit:** {GIT_COMMIT} | **Date:** {BUILD_DATE}
+        **Version:** {VERSION} | **Build:** #{BUILD_NUMBER} | **Commit:** {_build["git_commit"]} | **Date:** {_build["build_date"]}
 
         ## 🌐 REST APIs
         Complete REST API documentation for JINA-CONNECT platform.

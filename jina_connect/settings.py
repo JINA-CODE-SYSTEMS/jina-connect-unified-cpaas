@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import tempfile
 import warnings
 from datetime import timedelta
 from pathlib import Path
@@ -180,8 +181,20 @@ if DEBUG:
     SILKY_MAX_RECORDED_REQUESTS = 5_000  # auto-purge after this many
     SILKY_MAX_RECORDED_REQUESTS_CHECK_PERCENT = 10
     SILKY_META = True  # adds silk overhead info
-    # Ensure media/ exists for Silk .prof file storage (CI has no pre-existing media dir)
-    os.makedirs(os.path.join(BASE_DIR, "media"), exist_ok=True)
+
+    # Where the binary profiles go. django-silk defaults this to MEDIA_ROOT,
+    # which put profiler output in the uploads directory — and served it,
+    # since nginx aliases /media/. SILKY_MAX_RECORDED_REQUESTS purges silk's
+    # database rows but never the files, so they accumulated without bound:
+    # 65,613 files and 7.2 GB on one box before anyone looked.
+    #
+    # Profiles are disposable debug artefacts, so they belong in a temp
+    # directory, not beside user data and not inside the code tree.
+    SILKY_PYTHON_PROFILER_RESULT_PATH = config(
+        "SILKY_PYTHON_PROFILER_RESULT_PATH",
+        os.path.join(tempfile.gettempdir(), "jina-connect-silk"),
+    )
+    os.makedirs(SILKY_PYTHON_PROFILER_RESULT_PATH, exist_ok=True)
 
 # CSRF_TRUSTED_ORIGINS = [
 #     "*"
@@ -339,8 +352,8 @@ SIMPLE_JWT = {
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
 # Per-deployment locale. These are env-driven because the platform is
-# white-labelled: the Fabtary deployment is South African (SAST), while the
-# JCS deployment is Indian (IST). Defaults preserve the existing behaviour.
+# white-labelled and deployments do not all sit in the same country as the
+# default. Defaults preserve the existing behaviour.
 #
 # TIME_ZONE is not cosmetic. Both contractual reports — the Cl. 4.2 Active
 # Account Report and the Cl. 5.4 availability report — compute their periods
@@ -354,8 +367,24 @@ TIME_ZONE = config("TIME_ZONE", "Asia/Kolkata")
 USE_TZ = True
 
 # Assumed country for phone numbers entered in national rather than E.164
-# format. Set per deployment (ZA for Fabtary) so local numbers validate.
+# format. Set per deployment so local numbers validate.
 PHONENUMBER_DEFAULT_REGION = config("PHONENUMBER_DEFAULT_REGION", "IN")
+
+# ── Platform currency ────────────────────────────────────────────────────────
+# One currency per deployment, set at provisioning and changed almost never.
+# It lives here rather than in the database deliberately: it is deployment
+# configuration, and keeping it out of the database means no UI can edit it.
+#
+# Changing this does NOT convert existing rows. Use the set_platform_currency
+# management command, which reports what it would touch and refuses to run
+# once transactions exist unless forced.
+PLATFORM_DEFAULT_CURRENCY = config("PLATFORM_DEFAULT_CURRENCY", "USD")
+
+# Bound django-money's choice list. Left unset it offers the whole of
+# ISO 4217 — about 300 entries including obsolete currencies — wherever it
+# renders a choice field. A short list is fewer ways to pick something the
+# payment provider cannot settle.
+CURRENCIES = ("USD", "INR", "EUR", "GBP", "AED", "SGD", "AUD", "ZAR")
 
 
 # Static files (CSS, JavaScript, Images)
@@ -409,7 +438,16 @@ EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", "Jina Connect <noreply@jinaconnect.com>")
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+# Local-storage upload directory. Ignored when STORAGE_BACKEND is s3 or gcs,
+# which is what production uses.
+#
+# The default stays inside BASE_DIR so existing installs keep finding their
+# files — moving it silently would make uploads disappear on upgrade. But it
+# is a poor place for runtime state: a deploy-time `git clean -xfd` will take
+# uploads with it. Any deployment relying on local storage should point this
+# somewhere durable, e.g. MEDIA_ROOT=/var/lib/jina-connect/media.
+MEDIA_ROOT = config("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 
 # Cloud Storage Configuration
 # Set STORAGE_BACKEND to 's3', 'gcs', or 'local' (default)
