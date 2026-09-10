@@ -80,11 +80,22 @@ class WalletCreditPermissionTestCase(TestCase):
         """The fix must not take away the read access viewers legitimately have."""
         self.assertEqual(_client(self.viewer).get(TXN_URL).status_code, 200)
 
-    def test_billing_manage_role_can_still_create(self):
-        """Closing the hole must not block the role that is supposed to do this."""
+    def test_the_endpoint_does_not_accept_writes_at_all(self):
+        """Even an owner cannot POST: every real transaction is written server-side.
+
+        The permission mappings remain as defence in depth if the methods are
+        ever re-enabled, but the surface itself is closed.
+        """
+        before = Tenant.objects.get(pk=self.tenant.pk).balance
+
         resp = _client(self.owner).post(TXN_URL, _recharge_payload(self.tenant.pk, "10.00"), format="json")
 
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 405)
+        self.assertEqual(Tenant.objects.get(pk=self.tenant.pk).balance, before)
+
+    def test_patch_is_also_closed(self):
+        """PATCH could promote a PENDING row to SUCCESS RECHARGE, crediting the wallet."""
+        self.assertEqual(_client(self.owner).patch(f"{TXN_URL}1/", {}, format="json").status_code, 405)
 
 
 class WriteFallbackRuleTestCase(TestCase):

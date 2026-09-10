@@ -24,6 +24,17 @@ class TenantTransactionViewSet(BaseModelViewSet):
     - /transactions/?broadcast_platform=WHATSAPP  (platform at transaction time)
     """
 
+    # Read-only over the API. Every legitimate TenantTransaction is written
+    # server-side — the Razorpay order signal (transaction/signals.py), the
+    # voice rater and billing tasks, and broadcast credit_manager. No client
+    # has ever created one: the web app calls this endpoint with GET only.
+    #
+    # Leaving POST and PATCH exposed is what made the wallet reachable at all,
+    # since a SUCCESS RECHARGE row is applied to the balance by the
+    # update_tenant_balance receiver. Operator-driven crediting gets its own
+    # audited, host-only path in #233 rather than a raw row endpoint.
+    http_method_names = ["get"]
+
     queryset = TenantTransaction.objects.all()
     serializer_class = TenantTransactionSerializer
     filterset_class = TenantTransactionFilter
