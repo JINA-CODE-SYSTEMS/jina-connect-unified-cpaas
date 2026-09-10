@@ -4,6 +4,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db import transaction as db_transaction
 from djmoney.models.fields import MoneyField
 from djmoney.money import Money
 from phonenumber_field.modelfields import PhoneNumberField
@@ -163,7 +164,15 @@ class BaseTransaction(BaseModelWithOwner):
             else:
                 # Fallback to UUID if unable to generate unique ID after max attempts
                 self.system_transaction_id = f"{prefix}_{str(uuid.uuid4())}"
-        super().save(*args, **kwargs)
+
+        # The row and its side effects must commit together. post_save
+        # receivers fire inside super().save(), and update_tenant_balance
+        # adjusts the wallet from there. Without this atomic block, an
+        # autocommit save commits the INSERT first, so a failure while
+        # applying the balance leaves a recorded payment with no credit —
+        # money taken, wallet unchanged, and nothing to show it went wrong.
+        with db_transaction.atomic():
+            super().save(*args, **kwargs)
 
     class Meta:
         abstract = True
