@@ -1,5 +1,5 @@
 """
-Tests for the Active Customer Account report (Fabtary agreement Cl. 4.2).
+Tests for the Active Customer Account report (partner agreement Cl. 4.2).
 
 Run with: python manage.py test tenants.tests.test_active_account_report
 
@@ -147,16 +147,16 @@ class ActiveAccountReportTestCase(TestCase):
         The same instant lands on different calendar days depending on the
         deployment, and the invoice is read against the local calendar.
         2026-09-10 21:00 UTC is 02:30 on the 11th in Asia/Kolkata but 23:00 on
-        the 10th in Africa/Johannesburg, so an Indian deployment bills one more
-        day than a South African one for the identical archive instant.
+        the 10th in America/Sao_Paulo, so a UTC+5:30 deployment bills one more
+        day than a UTC-3 one for the identical archive instant.
 
         Parameterised rather than pinned to IST: TIME_ZONE is per-deployment
-        (#229) and the Fabtary white-label is South African, so the report has
-        to follow the setting instead of assuming where it is running.
+        (#229), so the report has to follow the setting instead of assuming
+        where it happens to be running.
         """
         archived_at = datetime(2026, 9, 10, 21, 0, tzinfo=UTC)
 
-        for tz_name, expected_day in (("Asia/Kolkata", 11), ("Africa/Johannesburg", 10)):
+        for tz_name, expected_day in (("Asia/Kolkata", 11), ("America/Sao_Paulo", 10)):
             with self.subTest(deployment_timezone=tz_name), override_settings(TIME_ZONE=tz_name):
                 Tenant.objects.all().delete()
                 _make_tenant("TZ", _local(2026, 1, 1), archived=archived_at)

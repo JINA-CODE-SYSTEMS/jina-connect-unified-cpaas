@@ -4,9 +4,11 @@ import os
 from django.conf import settings
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from djmoney.contrib.exchange.exceptions import MissingRate
 from djmoney.contrib.exchange.models import convert_money
 from djmoney.money import Money
 
+from abstract.exceptions import MissingExchangeRate
 from abstract.models import TransactionTypeChoices
 from transaction.models import TenantTransaction
 
@@ -138,8 +140,24 @@ def update_tenant_balance(sender, instance, created, **kwargs):
 
 
 def money_currency_converter_and_adder(balance: Money, recharge: Money, add: bool = True) -> Money:
+    """Apply *recharge* to *balance*, converting first if the currencies differ.
+
+    A missing exchange rate is turned into a domain error rather than being
+    allowed to escape as ``MissingRate`` from inside a signal handler. The
+    caller's transaction then rolls back cleanly, which for a payment path is
+    the only acceptable failure: recording a payment without crediting the
+    wallet is worse than failing outright.
+    """
     if balance.currency != recharge.currency:
-        recharge_converted = convert_money(recharge, balance.currency)
+        try:
+            recharge_converted = convert_money(recharge, balance.currency)
+        except MissingRate as exc:
+            raise MissingExchangeRate(
+                f"No exchange rate {recharge.currency} -> {balance.currency}. "
+                f"The transaction was not applied. Load rates with "
+                f"`manage.py update_rates` (requires OPEN_EXCHANGE_RATES_APP_ID), "
+                f"or record the transaction in the wallet's own currency."
+            ) from exc
     else:
         recharge_converted = recharge
     if add:

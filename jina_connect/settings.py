@@ -304,8 +304,8 @@ SIMPLE_JWT = {
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
 # Per-deployment locale. These are env-driven because the platform is
-# white-labelled: the Fabtary deployment is South African (SAST), while the
-# JCS deployment is Indian (IST). Defaults preserve the existing behaviour.
+# white-labelled and deployments do not all sit in the same country as the
+# default. Defaults preserve the existing behaviour.
 #
 # TIME_ZONE is not cosmetic. Both contractual reports — the Cl. 4.2 Active
 # Account Report and the Cl. 5.4 availability report — compute their periods
@@ -319,8 +319,24 @@ TIME_ZONE = config("TIME_ZONE", "Asia/Kolkata")
 USE_TZ = True
 
 # Assumed country for phone numbers entered in national rather than E.164
-# format. Set per deployment (ZA for Fabtary) so local numbers validate.
+# format. Set per deployment so local numbers validate.
 PHONENUMBER_DEFAULT_REGION = config("PHONENUMBER_DEFAULT_REGION", "IN")
+
+# ── Platform currency ────────────────────────────────────────────────────────
+# One currency per deployment, set at provisioning and changed almost never.
+# It lives here rather than in the database deliberately: it is deployment
+# configuration, and keeping it out of the database means no UI can edit it.
+#
+# Changing this does NOT convert existing rows. Use the set_platform_currency
+# management command, which reports what it would touch and refuses to run
+# once transactions exist unless forced.
+PLATFORM_DEFAULT_CURRENCY = config("PLATFORM_DEFAULT_CURRENCY", "USD")
+
+# Bound django-money's choice list. Left unset it offers the whole of
+# ISO 4217 — about 300 entries including obsolete currencies — wherever it
+# renders a choice field. A short list is fewer ways to pick something the
+# payment provider cannot settle.
+CURRENCIES = ("USD", "INR", "EUR", "GBP", "AED", "SGD", "AUD", "ZAR")
 
 
 # Static files (CSS, JavaScript, Images)
