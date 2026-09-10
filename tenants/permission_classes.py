@@ -91,6 +91,15 @@ class TenantRolePermission(BasePermission):
         if not required_perms:
             return True
 
+        # If the view does not support this method at all, permissions are
+        # not the reason the request fails. Let it through so DRF returns
+        # 405 Method Not Allowed rather than a 403 that misdescribes why —
+        # DRF runs check_permissions before it resolves the handler, so
+        # denying here would mask the real answer.
+        supported = [m.lower() for m in getattr(view, "http_method_names", [])]
+        if supported and request.method.lower() not in supported:
+            return True
+
         explicit = required_perms.get(action)
 
         # A write must be mapped explicitly. The "default" key exists so a
