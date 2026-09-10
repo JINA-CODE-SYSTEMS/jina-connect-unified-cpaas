@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 
 from djmoney.contrib.django_rest_framework import MoneyField
 from rest_framework import serializers, status
@@ -990,3 +991,26 @@ class UpdateRoleSerializer(serializers.Serializer):
             self.context["request"],
             self.context["tenant"],
         )
+
+
+class WalletMovementSerializer(serializers.Serializer):
+    """Input for an operator-applied wallet movement (#233).
+
+    Validation here is deliberately thin. The service in
+    ``tenants.services.wallet`` owns the rules that matter — currency match,
+    duplicate reference, positive amount — because they must hold however the
+    movement is applied, not only when it arrives over HTTP.
+    """
+
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
+    currency = serializers.CharField(
+        max_length=3,
+        help_text="Must match the tenant's wallet currency; the amount is never converted.",
+    )
+    reference = serializers.CharField(max_length=128, help_text="Invoice or bank reference being settled.")
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    direction = serializers.ChoiceField(
+        choices=("credit", "debit"),
+        default="credit",
+        help_text="'debit' reverses or corrects an earlier credit.",
+    )

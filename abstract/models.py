@@ -122,6 +122,11 @@ class TransactionTypeChoices(models.TextChoices):
     FAILED_RECHARGE = "FAILED RECHARGE", "FAILED RECHARGE"
     CONSUMPTION = "CONSUMPTION", "CONSUMPTION"
     REFUND = "REFUND", "REFUND"
+    # Operator-applied, for deployments that invoice and settle offline.
+    # These are never produced by a payment gateway: an operator records
+    # them against a settled invoice. See tenants/services/wallet.py.
+    MANUAL_CREDIT = "MANUAL CREDIT", "Manual credit (offline settlement)"
+    MANUAL_DEBIT = "MANUAL DEBIT", "Manual debit (correction)"
     VOICE_OUTBOUND = "VOICE_OUTBOUND", "Voice Outbound Call"
     VOICE_INBOUND = "VOICE_INBOUND", "Voice Inbound Call"
     VOICE_NUMBER_RENT = "VOICE_NUMBER_RENT", "Voice Number Rental"
