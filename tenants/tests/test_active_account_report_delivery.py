@@ -53,7 +53,7 @@ class ReportPdfTestCase(TestCase):
         self.assertTrue(pdf.startswith(b"%PDF-"))
 
 
-@override_settings(PARTNER_NAME="Fabtary", PARTNER_REPORT_RECIPIENTS=["ops@example.invalid"])
+@override_settings(PARTNER_NAME="Example Partner", PARTNER_REPORT_RECIPIENTS=["ops@example.invalid"])
 class ReportEmailTestCase(TestCase):
     def test_sends_the_report_with_a_pdf_attachment(self):
         _make_tenant("Acme", _local(2026, 1, 1))

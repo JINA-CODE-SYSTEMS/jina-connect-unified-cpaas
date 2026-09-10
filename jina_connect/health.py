@@ -1,7 +1,7 @@
 """Health probe for external uptime monitoring.
 
 This endpoint's output is what an SLA availability figure is computed from
-(Fabtary agreement Cl. 5.4), so two properties matter more than thoroughness:
+(partner agreement Cl. 5.4), so two properties matter more than thoroughness:
 
 Deliberately shallow. It checks only the dependencies whose absence makes the
 product genuinely unusable — the database and Redis. A probe that reaches

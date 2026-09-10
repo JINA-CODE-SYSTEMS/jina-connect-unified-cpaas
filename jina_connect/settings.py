@@ -326,7 +326,7 @@ DEFAULT_PRODUCT_NAME = config("DEFAULT_PRODUCT_NAME", "Jina Connect")
 # Matches --color-brand-500 in the web app's default palette.
 DEFAULT_BRAND_COLOR = config("DEFAULT_BRAND_COLOR", "#465fff")
 
-# --- Partner reporting (Fabtary agreement Cl. 4.2 / 5.4) ---------------------
+# --- Partner reporting (partner agreement Cl. 4.2 / 5.4) ---------------------
 # PLACEHOLDERS. Set PARTNER_NAME and PARTNER_REPORT_RECIPIENTS per deployment
 # before the first report goes out; the defaults deliberately do not point at a
 # real mailbox so an unconfigured deployment cannot silently email a stranger.

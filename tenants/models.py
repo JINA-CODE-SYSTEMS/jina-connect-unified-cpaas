@@ -52,7 +52,7 @@ class Tenant(BaseEntity, BaseWallet, BaseTenantModelForFilterUser):
     # Location fields (ISO 3166 codes)
     # Set when the account is archived and its customer data purged. The row
     # itself must survive: it is the billing record for the Active Customer
-    # Account report (Fabtary agreement Cl. 4.2), which is pro-rated by the
+    # Account report (partner agreement Cl. 4.2), which is pro-rated by the
     # days an account existed. A hard delete destroys that evidence.
     archived_at = models.DateTimeField(
         null=True,

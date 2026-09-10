@@ -1,4 +1,4 @@
-"""Scheduled partner reporting tasks (Fabtary agreement Cl. 4.2)."""
+"""Scheduled partner reporting tasks (partner agreement Cl. 4.2)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Active Customer Account report — Fabtary agreement Cl. 4.2.
+"""Active Customer Account report — partner agreement Cl. 4.2.
 
 An "active customer account" is any account onboarded on the deployment,
 regardless of whether it sends messages. Accounts are counted pro rata by the

@@ -1,4 +1,4 @@
-"""Availability records for the monthly SLA report (Fabtary agreement Cl. 5.4).
+"""Availability records for the monthly SLA report (partner agreement Cl. 5.4).
 
 External synthetic monitoring is the measurement instrument; these tables are
 the record. Two reasons the data is copied here rather than queried live:

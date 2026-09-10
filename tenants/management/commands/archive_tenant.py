@@ -6,7 +6,7 @@ Usage:
     python manage.py archive_tenant 42 --dry-run
 
 Archiving stamps ``Tenant.archived_at`` and keeps the row. That row is the
-billing record the Active Customer Account report (Fabtary agreement Cl. 4.2)
+billing record the Active Customer Account report (partner agreement Cl. 4.2)
 pro-rates against, so it must survive even when the account's customer data is
 purged. Purging that data is a separate operation.
 
