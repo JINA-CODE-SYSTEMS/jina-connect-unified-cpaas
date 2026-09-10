@@ -20,6 +20,7 @@ class RazorPayViewSet(BaseModelViewSet):
     serializer_class = RazorPayOrderSerializer
     permission_classes = [IsAuthenticated, TenantRolePermission]
     required_permissions = {
+        "partial_update": "billing.manage",
         "list": "billing.view",
         "retrieve": "billing.view",
         "create": "billing.manage",

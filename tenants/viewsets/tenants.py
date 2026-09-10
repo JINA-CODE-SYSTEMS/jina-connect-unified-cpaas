@@ -62,7 +62,20 @@ class TenantViewSet(BaseTenantModelViewSet):
         """
         if self.action == "create":
             self.permission_classes = [IsAdminUser]
-        elif self.action in ["register", "verify_email", "resend_verification", "forgot_password", "reset_password"]:
+        elif self.action in [
+            "register",
+            "verify_email",
+            "resend_verification",
+            "forgot_password",
+            "reset_password",
+            # These two validate a token *before* the user can possibly be
+            # signed in — you cannot authenticate while resetting a password
+            # you have forgotten. They were inheriting the viewset default of
+            # [IsAuthenticated, TenantRolePermission], which made them
+            # unreachable in the flow they exist to serve.
+            "validate_reset_token",
+            "validate_verification_token",
+        ]:
             self.permission_classes = [AllowAny]
         elif self.action == "my_permissions":
             self.permission_classes = [IsAuthenticated]

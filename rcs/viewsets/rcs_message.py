@@ -35,6 +35,8 @@ class RCSOutboundMessageViewSet(BaseTenantModelViewSet):
     serializer_class = RCSOutboundMessageSerializer
     http_method_names = ["get", "post"]
     required_permissions = {
+        # Creating an outbound message sends it.
+        "create": "inbox.reply",
         "list": "inbox.view",
         "retrieve": "inbox.view",
         "revoke": "inbox.reply",
