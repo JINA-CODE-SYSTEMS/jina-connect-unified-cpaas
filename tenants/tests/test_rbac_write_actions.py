@@ -61,11 +61,18 @@ class WalletCreditPermissionTestCase(TestCase):
         )
 
     def test_viewer_cannot_credit_its_own_wallet(self):
+        """405 rather than 403: the endpoint accepts no writes from anyone.
+
+        Before the fix this returned 201 and moved the balance. The status is
+        405 because the write surface is closed outright — the role check
+        never gets a say. The permission rule itself is pinned separately in
+        WriteFallbackRuleTestCase.
+        """
         before = Tenant.objects.get(pk=self.tenant.pk).balance
 
         resp = _client(self.viewer).post(TXN_URL, _recharge_payload(self.tenant.pk), format="json")
 
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 405)
         self.assertEqual(Tenant.objects.get(pk=self.tenant.pk).balance, before)
 
     def test_viewer_cannot_credit_another_tenants_wallet(self):
@@ -73,7 +80,7 @@ class WalletCreditPermissionTestCase(TestCase):
 
         resp = _client(self.viewer).post(TXN_URL, _recharge_payload(self.other.pk), format="json")
 
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 405)
         self.assertEqual(Tenant.objects.get(pk=self.other.pk).balance, before)
 
     def test_viewer_can_still_read_transactions(self):
@@ -109,7 +116,7 @@ class WriteFallbackRuleTestCase(TestCase):
             tenant=cls.tenant, user=cls.viewer, role=TenantRole.objects.get(tenant=cls.tenant, slug="viewer")
         )
 
-    def _check(self, method, action, required_permissions):
+    def _check(self, method, action, required_permissions, http_method_names=None):
         from unittest.mock import Mock
 
         from tenants.permission_classes import TenantRolePermission
@@ -120,7 +127,16 @@ class WriteFallbackRuleTestCase(TestCase):
         view = Mock()
         view.action = action
         view.required_permissions = required_permissions
+        # Must be a real list: the class consults it to avoid masking a 405
+        # with a 403, and a bare Mock is not iterable.
+        view.http_method_names = http_method_names or ["get", "post", "put", "patch", "delete"]
         return TenantRolePermission().has_permission(request, view)
+
+    def test_an_unsupported_method_is_left_to_drf(self):
+        """A 405 must not be reported as 403 — DRF checks permissions first."""
+        self.assertTrue(
+            self._check("DELETE", "destroy", {"default": "billing.view"}, http_method_names=["get", "post"])
+        )
 
     def test_unmapped_write_is_denied_even_with_a_permissive_default(self):
         self.assertFalse(self._check("POST", "create", {"list": "billing.view", "default": "billing.view"}))
