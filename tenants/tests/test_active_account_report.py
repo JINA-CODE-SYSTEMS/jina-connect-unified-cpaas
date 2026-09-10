@@ -1,5 +1,5 @@
 """
-Tests for the Active Customer Account report (Fabtary agreement Cl. 4.2).
+Tests for the Active Customer Account report (the partner agreement Cl. 4.2).
 
 Run with: python manage.py test tenants.tests.test_active_account_report
 
@@ -11,7 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from tenants.models import Tenant
@@ -144,16 +144,27 @@ class ActiveAccountReportTestCase(TestCase):
     def test_day_boundaries_follow_the_deployment_timezone(self):
         """Which day an account is billed for is decided in local time.
 
-        2026-09-10 23:00 UTC is 04:30 on the 11th in Asia/Kolkata, so the
-        account counts through the 11th. The invoice is read against the local
-        calendar, so that is the boundary that matters.
+        The same instant lands on different calendar days depending on the
+        deployment, and the invoice is read against the local calendar.
+        2026-09-10 21:00 UTC is 02:30 on the 11th in Asia/Kolkata but 18:00 on
+        the 10th in America/Sao_Paulo, so a UTC+5:30 deployment bills one more
+        day than a UTC-3 one for the identical archive instant.
+
+        Parameterised rather than pinned to IST: TIME_ZONE is per-deployment
+        (#229), so the report has to follow the setting instead of assuming
+        where it happens to be running.
         """
-        _make_tenant("TZ", _local(2026, 1, 1), archived=datetime(2026, 9, 10, 23, 0, tzinfo=UTC))
+        archived_at = datetime(2026, 9, 10, 21, 0, tzinfo=UTC)
 
-        report = build_active_account_report(2026, 9)
+        for tz_name, expected_day in (("Asia/Kolkata", 11), ("America/Sao_Paulo", 10)):
+            with self.subTest(deployment_timezone=tz_name), override_settings(TIME_ZONE=tz_name):
+                Tenant.objects.all().delete()
+                _make_tenant("TZ", _local(2026, 1, 1), archived=archived_at)
 
-        self.assertEqual(report.lines[0].archived_on.day, 11)
-        self.assertEqual(report.lines[0].active_days, 11)
+                report = build_active_account_report(2026, 9)
+
+                self.assertEqual(report.lines[0].archived_on.day, expected_day)
+                self.assertEqual(report.lines[0].active_days, expected_day)
 
     def test_label_names_the_period(self):
         self.assertEqual(build_active_account_report(2026, 9).label, "September 2026")
