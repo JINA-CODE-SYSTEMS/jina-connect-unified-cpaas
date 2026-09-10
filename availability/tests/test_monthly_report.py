@@ -9,6 +9,7 @@ data-integrity cases are tested explicitly.
 
 from datetime import date, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -19,6 +20,8 @@ from availability.services.monthly_report import build_availability_report
 # 2-minute probes: 720 per target per day, one failure = 120 seconds.
 CHECKS_PER_DAY = 720
 INTERVAL = 120
+
+UTC = ZoneInfo("UTC")
 
 
 def _local(year, month, day, hour=0, minute=0):
@@ -163,6 +166,34 @@ class AvailabilityReportTestCase(TestCase):
         self.assertEqual(build_availability_report(2026, 2).days_expected, 28)
         self.assertEqual(build_availability_report(2024, 2).days_expected, 29)
         self.assertEqual(build_availability_report(2026, 1).days_expected, 31)
+
+    def test_period_bounds_follow_the_deployment_timezone(self):
+        """The month is bounded in local time, so the same instant can fall
+        inside or outside the period depending on where the deployment runs.
+
+        September 2026 begins at 18:30 UTC on 31 August in Asia/Kolkata but at
+        22:00 UTC in Africa/Johannesburg. A maintenance window running 19:00 to
+        21:00 UTC on 31 August is therefore inside September for an Indian
+        deployment and entirely before it for a South African one.
+
+        TIME_ZONE is per-deployment (#229) and the Fabtary white-label is South
+        African, so the report must follow the setting rather than assume IST.
+        """
+        window_start = datetime(2026, 8, 31, 19, 0, tzinfo=UTC)
+        window_end = datetime(2026, 8, 31, 21, 0, tzinfo=UTC)
+
+        for tz_name, expected_seconds in (("Asia/Kolkata", 2 * 3600), ("Africa/Johannesburg", 0)):
+            with self.subTest(deployment_timezone=tz_name), override_settings(TIME_ZONE=tz_name):
+                MaintenanceWindow.objects.all().delete()
+                MaintenanceWindow.objects.create(
+                    starts_at=window_start,
+                    ends_at=window_end,
+                    reason="Straddles the month boundary in one timezone only",
+                )
+
+                report = build_availability_report(2026, 9)
+
+                self.assertEqual(report.maintenance_seconds, expected_seconds)
 
     def test_label_names_the_period(self):
         self.assertEqual(build_availability_report(2026, 9).label, "September 2026")
