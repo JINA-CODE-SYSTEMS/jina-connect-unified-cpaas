@@ -28,11 +28,18 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The approval is what satisfies "required approving reviews: 1".
-      # Scoped to patch and minor so a major bump always gets human eyes.
+      #
+      # Patch only. "Minor" is not a small change for a framework: the pip
+      # group in #213 carried Django 5.1 -> 5.2 and DRF 3.15 -> 3.17, and DRF
+      # 3.17 removed rest_framework.schemas.coreapi, which settings.py still
+      # referenced. That took main red along with every management command
+      # (fixed in #216).
+      #
+      # That PR was merged by hand, not by this workflow — its checks were
+      # already failing. The automation behaved correctly. But it shows what
+      # a semver-minor bump can contain, and next time it could merge itself.
       - name: Approve and enable auto-merge
-        if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
         run: |
           gh pr review --approve "$PR_URL"
           gh pr merge --auto --squash "$PR_URL"
@@ -40,7 +47,9 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Leave major bumps for manual review
-        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+      - name: Leave minor and major bumps for manual review
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-major'
         run: |
-          echo "::notice::Major bump (${{ steps.metadata.outputs.dependency-names }}) needs manual review; auto-merge not enabled."
+          echo "::notice::${{ steps.metadata.outputs.update-type }} bump (${{ steps.metadata.outputs.dependency-names }}) needs manual review; auto-merge not enabled."

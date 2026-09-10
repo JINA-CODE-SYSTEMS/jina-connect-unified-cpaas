@@ -199,3 +199,8 @@ media/
 jina-connect-web
 # Claude Code per-developer state (#201 review — never commit local allowlist / locks)
 .claude/
+
+# Per-trunk Asterisk endpoint configs, written at runtime (and by the voice
+# test suite) from a UUID per trunk. Generated state, not source — 19 of
+# these were committed by accident before this rule existed.
+asterisk-config/pjsip.d/voice-*.conf

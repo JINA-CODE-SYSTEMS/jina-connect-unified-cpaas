@@ -11,13 +11,48 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import warnings
 from datetime import timedelta
 from pathlib import Path
 
-from decouple import config
+from decouple import Config, RepositoryEnv
+from decouple import config as _auto_config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# ── Which .env is actually read ──────────────────────────────────────────────
+# python-decouple's AutoConfig searches upward from the module that calls
+# config() — this file — so it finds jina_connect/.env before the project-root
+# .env. On one deployment both existed, the root file had ten keys, and it was
+# ignored in its entirety. The failure surfaced as a confusing
+# "FIELD_ENCRYPTION_KEY defined incorrectly" rather than "wrong file".
+#
+# The precedence below is the same one AutoConfig already applied, made
+# explicit so it can be read rather than inferred. Deployments keep working
+# unchanged; what is new is that a shadowed root .env now says so out loud
+# instead of failing obscurely later.
+_APP_ENV = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+_ROOT_ENV = os.path.join(BASE_DIR, ".env")
+
+if os.path.isfile(_APP_ENV):
+    config = Config(RepositoryEnv(_APP_ENV))
+    ACTIVE_ENV_FILE = _APP_ENV
+    if os.path.isfile(_ROOT_ENV):
+        warnings.warn(
+            f"Two .env files are present. Reading {_APP_ENV} and IGNORING {_ROOT_ENV} — "
+            f"edits to the root file will have no effect. Keep one.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+elif os.path.isfile(_ROOT_ENV):
+    config = Config(RepositoryEnv(_ROOT_ENV))
+    ACTIVE_ENV_FILE = _ROOT_ENV
+else:
+    # No file at all: fall back to environment variables only, which is how
+    # CI and container deployments supply configuration.
+    config = _auto_config
+    ACTIVE_ENV_FILE = None
 
 
 # Quick-start development settings - unsuitable for production
