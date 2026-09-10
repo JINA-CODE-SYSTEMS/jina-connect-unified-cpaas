@@ -171,18 +171,19 @@ class AvailabilityReportTestCase(TestCase):
         """The month is bounded in local time, so the same instant can fall
         inside or outside the period depending on where the deployment runs.
 
-        September 2026 begins at 18:30 UTC on 31 August in Asia/Kolkata but at
-        22:00 UTC in Africa/Johannesburg. A maintenance window running 19:00 to
-        21:00 UTC on 31 August is therefore inside September for an Indian
-        deployment and entirely before it for a South African one.
+        September 2026 begins at 18:30 UTC on 31 August in Asia/Kolkata but not
+        until 03:00 UTC on 1 September in America/Sao_Paulo. A maintenance
+        window running 19:00 to 21:00 UTC on 31 August is therefore inside
+        September for a UTC+5:30 deployment and entirely before it for a UTC-3
+        one.
 
-        TIME_ZONE is per-deployment (#229) and the Fabtary white-label is South
-        African, so the report must follow the setting rather than assume IST.
+        TIME_ZONE is per-deployment (#229), so the report must follow the
+        setting rather than assume IST.
         """
         window_start = datetime(2026, 8, 31, 19, 0, tzinfo=UTC)
         window_end = datetime(2026, 8, 31, 21, 0, tzinfo=UTC)
 
-        for tz_name, expected_seconds in (("Asia/Kolkata", 2 * 3600), ("Africa/Johannesburg", 0)):
+        for tz_name, expected_seconds in (("Asia/Kolkata", 2 * 3600), ("America/Sao_Paulo", 0)):
             with self.subTest(deployment_timezone=tz_name), override_settings(TIME_ZONE=tz_name):
                 MaintenanceWindow.objects.all().delete()
                 MaintenanceWindow.objects.create(

@@ -1,6 +1,6 @@
 """Add archived_at to Tenant (and its historical model).
 
-The Active Customer Account report (Fabtary agreement Cl. 4.2) pro-rates each
+The Active Customer Account report (partner agreement Cl. 4.2) pro-rates each
 account by the days it existed in the month, so it needs the date an account
 was archived. archived_at records that as an explicit business state rather
 than inferring it from the simple_history audit trail, which is a log subject
