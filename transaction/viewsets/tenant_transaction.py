@@ -29,6 +29,9 @@ class TenantTransactionViewSet(BaseModelViewSet):
     filterset_class = TenantTransactionFilter
     permission_classes = [IsAuthenticated, TenantRolePermission]
     required_permissions = {
+        # A SUCCESS RECHARGE row credits the wallet — never a view-level permission.
+        "create": "billing.manage",
+        "partial_update": "billing.manage",
         "list": "billing.view",
         "retrieve": "billing.view",
         "transaction_status": "billing.view",

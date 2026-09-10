@@ -24,6 +24,8 @@ class BroadcastViewSet(BaseTenantModelViewSet):
     serializer_class = BroadcastSerializer
     http_method_names = ["get", "post"]
     required_permissions = {
+        # Creating a broadcast spends wallet balance.
+        "create": "broadcast.create",
         "list": "broadcast.view",
         "retrieve": "broadcast.view",
         "reserve_keyword_list": "broadcast.view",

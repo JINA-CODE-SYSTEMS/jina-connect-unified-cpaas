@@ -19,7 +19,7 @@ Usage on a viewset::
 Reference: docs/PRD_RBAC.md — Section 4.2
 """
 
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from tenants.permissions import has_permission as _check_permission
 
@@ -55,10 +55,17 @@ class TenantRolePermission(BasePermission):
     declared on the viewset for the current action.
 
     The viewset must define a ``required_permissions`` dict that maps DRF
-    action names to permission keys from ``ALL_PERMISSIONS``.  If a
-    ``"default"`` key is present it is used as fallback for unmapped
-    actions.  If no mapping is found at all, access is granted (the
-    viewset chose not to restrict that action).
+    action names to permission keys from ``ALL_PERMISSIONS``.
+
+    **Reads may fall back to "default"; writes may not.** A request using an
+    unsafe method (POST, PUT, PATCH, DELETE) must have an explicit entry for
+    its action, or it is denied. The ``"default"`` key exists so a viewset
+    need not enumerate every read action, and in practice it is always a
+    ``*.view`` permission — allowing it to cover writes as well grants write
+    access to every role that can read.
+
+    A viewset that declares no ``required_permissions`` at all is treated as
+    having opted out of RBAC entirely and is allowed.
 
     Superusers always pass.
     """
@@ -79,18 +86,39 @@ class TenantRolePermission(BasePermission):
         # Determine the permission key for the current action
         action = getattr(view, "action", None) or request.method.lower()
         required_perms = getattr(view, "required_permissions", {})
-        perm_key = required_perms.get(action) or required_perms.get("default")
 
-        # Deny-by-default: if viewset declares required_permissions but
-        # this action has no mapping (and no "default" fallback), block.
-        if not perm_key:
-            if required_perms:
+        # Viewset has no required_permissions at all → it chose not to restrict.
+        if not required_perms:
+            return True
+
+        explicit = required_perms.get(action)
+
+        # A write must be mapped explicitly. The "default" key exists so a
+        # viewset does not have to enumerate every read action, and it is
+        # almost always a *.view permission — letting it also authorise POST,
+        # PATCH, PUT or DELETE silently grants write access to every role that
+        # can read. That is how a read-only viewer came to be able to credit
+        # any tenant's wallet through the transactions endpoint.
+        #
+        # So: reads may fall back to "default"; writes may not. An unmapped
+        # write is denied, which fails closed — a new viewset that forgets to
+        # map its writes returns 403 rather than quietly exposing them.
+        if request.method not in SAFE_METHODS:
+            if not explicit:
+                self.message = (
+                    f"Permission denied: action '{action}' modifies data but has no explicit "
+                    f"permission mapping on {view.__class__.__name__}. Writes are never covered "
+                    f"by the 'default' key; add an entry to required_permissions."
+                )
+                return False
+            perm_key = explicit
+        else:
+            perm_key = explicit or required_perms.get("default")
+            if not perm_key:
                 self.message = (
                     f"Permission denied: no permission mapping for action '{action}'. Access denied by default."
                 )
                 return False
-            # Viewset has no required_permissions at all → allow
-            return True
 
         # Resolve user's role within their tenant
         tenant_user = _resolve_tenant_user(request)

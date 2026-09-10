@@ -20,6 +20,8 @@ class SMSOutboundMessageViewSet(BaseTenantModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ["get", "post"]
     required_permissions = {
+        # Creating an outbound message sends it.
+        "create": "inbox.reply",
         "list": "inbox.view",
         "retrieve": "inbox.view",
         "send": "inbox.reply",
