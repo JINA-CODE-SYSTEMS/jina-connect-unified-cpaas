@@ -44,6 +44,9 @@ class MemberManagementViewSet(BaseTenantModelViewSet):
         "user__username",
     ]
     required_permissions = {
+        "create": "users.invite",
+        # Changing a member's role is privilege assignment.
+        "partial_update": "users.change_role",
         "list": "users.view",
         "retrieve": "users.view",
         "add_member": "users.invite",

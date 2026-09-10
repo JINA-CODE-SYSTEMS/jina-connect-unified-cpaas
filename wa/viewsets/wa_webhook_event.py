@@ -61,6 +61,7 @@ class WAWebhookEventViewSet(BaseTenantModelViewSet):
     ordering = ["-created_at"]
     http_method_names = ["get", "post"]  # POST only for retry action
     required_permissions = {
+        "create": "webhook.manage",
         "list": "webhook.view",
         "retrieve": "webhook.view",
         "retry": "webhook.manage",

@@ -54,6 +54,8 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
 
     http_method_names = ["post"]
     required_permissions = {
+        # Creating an outbound message sends it.
+        "create": "inbox.reply",
         "send": "inbox.reply",
         "default": "inbox.reply",
     }

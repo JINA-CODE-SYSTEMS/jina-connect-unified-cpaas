@@ -303,13 +303,24 @@ SIMPLE_JWT = {
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
-LANGUAGE_CODE = "en-us"
+# Per-deployment locale. These are env-driven because the platform is
+# white-labelled: the Fabtary deployment is South African (SAST), while the
+# JCS deployment is Indian (IST). Defaults preserve the existing behaviour.
+#
+# TIME_ZONE is not cosmetic. Both contractual reports — the Cl. 4.2 Active
+# Account Report and the Cl. 5.4 availability report — compute their periods
+# in local time, so this decides which month an event is billed in.
+LANGUAGE_CODE = config("LANGUAGE_CODE", "en-us")
 
-TIME_ZONE = "Asia/Kolkata"
+TIME_ZONE = config("TIME_ZONE", "Asia/Kolkata")
 
 # USE_I18N = True
 
 USE_TZ = True
+
+# Assumed country for phone numbers entered in national rather than E.164
+# format. Set per deployment (ZA for Fabtary) so local numbers validate.
+PHONENUMBER_DEFAULT_REGION = config("PHONENUMBER_DEFAULT_REGION", "IN")
 
 
 # Static files (CSS, JavaScript, Images)

@@ -59,7 +59,12 @@ class User(AbstractUser):
             Returns the full name of the user by combining first name and last name.
     """
 
-    mobile = PhoneNumberField(unique=True, region="IN")
+    # The region is deliberately not pinned here. It comes from
+    # settings.PHONENUMBER_DEFAULT_REGION so a white-label deployment can
+    # accept local numbers in national format. Keeping it as a field kwarg
+    # would bake it into the migration, and any deployment with a different
+    # region would then fail `makemigrations --check`.
+    mobile = PhoneNumberField(unique=True)
     image = models.ImageField(upload_to="user_images/", blank=True, null=True)
     birth_date = models.DateField(blank=True, null=True)
     address = models.JSONField(
