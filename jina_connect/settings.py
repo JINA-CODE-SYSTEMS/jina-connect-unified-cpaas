@@ -322,6 +322,22 @@ USE_TZ = True
 # format. Set per deployment so local numbers validate.
 PHONENUMBER_DEFAULT_REGION = config("PHONENUMBER_DEFAULT_REGION", "IN")
 
+# ── Platform currency ────────────────────────────────────────────────────────
+# One currency per deployment, set at provisioning and changed almost never.
+# It lives here rather than in the database deliberately: it is deployment
+# configuration, and keeping it out of the database means no UI can edit it.
+#
+# Changing this does NOT convert existing rows. Use the set_platform_currency
+# management command, which reports what it would touch and refuses to run
+# once transactions exist unless forced.
+PLATFORM_DEFAULT_CURRENCY = config("PLATFORM_DEFAULT_CURRENCY", "USD")
+
+# Bound django-money's choice list. Left unset it offers the whole of
+# ISO 4217 — about 300 entries including obsolete currencies — wherever it
+# renders a choice field. A short list is fewer ways to pick something the
+# payment provider cannot settle.
+CURRENCIES = ("USD", "INR", "EUR", "GBP", "AED", "SGD", "AUD", "ZAR")
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
