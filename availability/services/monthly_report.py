@@ -1,4 +1,4 @@
-"""Monthly availability report (Fabtary agreement Cl. 5.4).
+"""Monthly availability report (partner agreement Cl. 5.4).
 
 Availability is computed against a period with planned maintenance removed from
 both sides of the fraction:

@@ -22,10 +22,10 @@ class BrandingSettingsProductNameTestCase(TestCase):
     @override_settings(DEFAULT_PRODUCT_NAME="Jina Connect")
     def test_set_product_name_overrides_setting(self):
         branding = BrandingSettings.get_instance()
-        branding.product_name = "Fabtary Connect"
+        branding.product_name = "Partner Connect"
         branding.save()
 
-        self.assertEqual(BrandingSettings.get_instance().effective_product_name, "Fabtary Connect")
+        self.assertEqual(BrandingSettings.get_instance().effective_product_name, "Partner Connect")
 
     @override_settings(DEFAULT_PRODUCT_NAME="White Label CPaaS")
     def test_fallback_tracks_the_deployment_setting(self):
