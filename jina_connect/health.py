@@ -21,7 +21,7 @@ from django.conf import settings
 from django.db import connection
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_http_methods
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,10 @@ def _check_redis():
         client.close()
 
 
-@require_GET
+# HEAD is allowed as well as GET: plenty of uptime monitors probe with
+# HEAD by default, and rejecting it would report a false outage on the
+# very SLA figure this endpoint exists to measure.
+@require_http_methods(["GET", "HEAD"])
 @never_cache
 def healthz(request):
     """Return 200 when every critical dependency responds, 503 otherwise."""

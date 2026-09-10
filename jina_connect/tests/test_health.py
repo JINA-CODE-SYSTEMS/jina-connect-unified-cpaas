@@ -74,6 +74,13 @@ class HealthzTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_head_is_allowed(self):
+        """Uptime monitors commonly probe with HEAD; rejecting it is a false outage."""
+        with patch("jina_connect.health._check_redis"):
+            response = self.client.head(self.url)
+
+        self.assertEqual(response.status_code, 200)
+
     def test_rejects_non_get_methods(self):
         """require_GET rejects a POST.
 
