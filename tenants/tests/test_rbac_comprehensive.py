@@ -2434,6 +2434,32 @@ class RoleAwareSerializerTests(RBACIntegrationBase):
         for key in self._TENANT_FINANCIAL_KEYS:
             self.assertIn(key, data, f"ADMIN should see '{key}'")
 
+    def test_platform_staff_see_tenant_financial_fields(self):
+        """The host operator is not a TenantUser, and must not be treated as unprivileged.
+
+        The host dashboard is the only place a tenant's balance, credit line
+        and threshold can be edited. Platform staff have no TenantUser row, so
+        a tenant-role check alone returned the limited serializer and stripped
+        exactly the fields the operator is there to manage — the grid then
+        showed every tenant as zero and the edit control crashed on the
+        missing values.
+        """
+        resp = _api_client(self.superuser).get("/tenants/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        results = resp.data if isinstance(resp.data, list) else resp.data.get("results", [])
+        self.assertTrue(len(results) > 0, "staff should see at least 1 tenant")
+
+        for key in self._TENANT_FINANCIAL_KEYS:
+            self.assertIn(key, results[0], f"platform staff should see '{key}'")
+
+    def test_staff_see_the_real_values_not_placeholders(self):
+        """Absent fields read as zero in the host grid, so presence is not enough."""
+        resp = _api_client(self.superuser).get("/tenants/")
+        row = next(r for r in (resp.data if isinstance(resp.data, list) else resp.data["results"]))
+
+        self.assertEqual(str(row["threshold_alert"]), "10.00")
+        self.assertEqual(str(row["balance"]), "500.00")
+
     def test_manager_cannot_see_tenant_financial_fields(self):
         """#251: MANAGER (priority 60) cannot see balance/credit/threshold."""
         data = self._tenant_data("manager")
