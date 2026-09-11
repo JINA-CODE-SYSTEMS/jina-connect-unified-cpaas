@@ -58,6 +58,26 @@ class TriggerEvent:
     received_at: str  # ISO8601; used inside the idempotency key
     extra: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Enforce ``body_text``'s annotation, which the dataclass does not.
+
+        #270 shipped a ``dict`` here for every WhatsApp inbound. Nothing
+        objected: a non-empty dict is truthy, so it cleared the keyword
+        trigger's own empty-check, and then either raised ``AttributeError``
+        inside a deliberately broad handler or — with ``case_sensitive`` set —
+        quietly tested membership against the dict's *keys* and returned
+        ``False``. Either way the flow never spawned and nothing surfaced.
+
+        Emitters already wrap ``emit()`` in try/except so ingestion cannot
+        break, which means raising here converts a silent non-match into one
+        logged error naming the offending type, at the site that built it.
+        """
+        if self.body_text is not None and not isinstance(self.body_text, str):
+            raise TypeError(
+                "TriggerEvent.body_text must be str | None, got "
+                f"{type(self.body_text).__name__}"
+            )
+
 
 class BaseTrigger:
     """Abstract base for every registered trigger type.

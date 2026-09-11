@@ -604,11 +604,7 @@ def process_message_webhook(pk: str):
                 try:
                     from chat_flow.triggers import TriggerEvent, emit
 
-                    body_text = None
-                    try:
-                        body_text = content.get("body") if isinstance(content, dict) else None
-                    except Exception:  # noqa: BLE001
-                        body_text = None
+                    body_text = _trigger_body_text(content)
 
                     extra = {
                         "wa_webhook_event_id": str(instance.pk),
@@ -1021,6 +1017,43 @@ def _parse_meta_message_payload(payload: dict, wa_app=None) -> dict:
         extracted_data["text"] = f"[{msg_type} message]"
 
     return extracted_data
+
+
+def _trigger_body_text(content: dict | None) -> str | None:
+    """The text a keyword trigger should match against, or ``None``.
+
+    ``_build_team_inbox_content`` stores what the customer actually wrote in
+    two different places. Conversational types (text, button reply, order)
+    use ``content["body"]["text"]``; media types put the words in a
+    ``caption`` inside the media object and set no ``body`` at all.
+
+    Reading ``content["body"]`` directly therefore handed the trigger
+    subsystem a *dict* for the first group and ``None`` for the second, so no
+    WhatsApp inbound has ever matched a keyword trigger (#270). A non-empty
+    dict is truthy, which is why it cleared the trigger's own empty-check
+    before failing further in.
+
+    Empty text returns ``None`` rather than ``""`` — the fallback branch of
+    ``_build_team_inbox_content`` writes ``{"text": ""}`` for message types it
+    does not understand, and that is an absence, not a body worth matching.
+    """
+    if not isinstance(content, dict):
+        return None
+
+    body = content.get("body")
+    if isinstance(body, dict):
+        text = body.get("text")
+        if isinstance(text, str) and text:
+            return text
+
+    # Media: the caption lives under the type's own key (image/video/document).
+    media = content.get(content.get("type") or "")
+    if isinstance(media, dict):
+        caption = media.get("caption")
+        if isinstance(caption, str) and caption:
+            return caption
+
+    return None
 
 
 def _build_team_inbox_content(extracted_data: dict, instance) -> dict:
