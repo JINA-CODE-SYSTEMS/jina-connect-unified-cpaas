@@ -92,9 +92,14 @@ class BroadcastCreditManager:
                 description=f"Broadcast credit deduction for '{broadcast.name}' ({broadcast.recipients.count()} recipients)",
             )
 
-            # Mark broadcast as credit deducted
+            # Mark broadcast as credit deducted, and record the rates that
+            # produced this figure so the refund path can return the same
+            # money instead of recomputing it from the flat price (#262).
             Broadcast.objects.filter(pk=broadcast.pk).update(
-                credit_deducted=True, refund_processed=False, initial_cost=Decimal(str(initial_cost))
+                credit_deducted=True,
+                refund_processed=False,
+                initial_cost=Decimal(str(initial_cost)),
+                charged_rates=getattr(broadcast, "_charged_rates", {}) or {},
             )
 
             logger.info("[CREDIT] Deducted %s credits for broadcast %s", initial_cost, broadcast.id)
