@@ -45,7 +45,22 @@ class TenantViewSet(BaseTenantModelViewSet):
         """
         #251: ADMIN/OWNER (priority >= 80) get full financial fields.
         Everyone else gets TenantLimitedSerializer.
+
+        Platform staff are checked first and separately. They operate the host
+        dashboard, which is the only place a tenant's balance, credit line and
+        threshold can be edited — but they are not a ``TenantUser`` of any
+        tenant, so a tenant-role check alone returns the limited serializer and
+        strips exactly the fields the operator is there to manage. The host
+        grid then reads them as absent and shows every tenant as zero.
+
+        ``is_staff`` is the same test ``get_permissions`` already uses to
+        recognise a host operation on this viewset, so the two agree on who the
+        host is.
         """
+        user = getattr(self.request, "user", None)
+        if user is not None and user.is_authenticated and user.is_staff:
+            return TenantSerializer
+
         tu = self._get_tenant_user()
         if tu and tu.role and tu.role.priority >= 80:
             return TenantSerializer
