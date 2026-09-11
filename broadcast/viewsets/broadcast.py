@@ -123,6 +123,7 @@ class BroadcastViewSet(BaseTenantModelViewSet):
             read_count=Count("broadcasts", filter=Q(broadcasts__status=MessageStatusChoices.READ)),
             failed_count=Count("broadcasts", filter=Q(broadcasts__status=MessageStatusChoices.FAILED)),
             blocked_count=Count("broadcasts", filter=Q(broadcasts__status=MessageStatusChoices.BLOCKED)),
+            suppressed_count=Count("broadcasts", filter=Q(broadcasts__status=MessageStatusChoices.SUPPRESSED)),
             success_count=Count(
                 "broadcasts",
                 filter=Q(

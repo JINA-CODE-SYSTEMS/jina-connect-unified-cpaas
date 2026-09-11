@@ -31,6 +31,9 @@ class TenantContactFilter(django_filters.FilterSet):
             "last_name": ["exact", "in", "icontains", "istartswith"],
             "tag": ["exact", "in", "icontains", "istartswith"],
             "source": ["exact", "in"],
+            # So an audience can be checked before it is sent to, rather than
+            # only after the dispatch loop has already dropped it (#276).
+            "marketing_opt_out": ["exact"],
         }
 
     def filter_search(self, queryset, name, value):

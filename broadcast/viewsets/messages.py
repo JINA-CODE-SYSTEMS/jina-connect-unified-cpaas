@@ -64,6 +64,7 @@ class BroadcastMessageViewSet(BaseTenantModelViewSet):
             MessageStatusChoices.READ: 0,
             MessageStatusChoices.FAILED: 0,
             MessageStatusChoices.BLOCKED: 0,
+            MessageStatusChoices.SUPPRESSED: 0,
         }
 
         # Update with actual counts
@@ -114,6 +115,10 @@ class BroadcastMessageViewSet(BaseTenantModelViewSet):
                     "read": status_counts[MessageStatusChoices.READ],
                     "failed": status_counts[MessageStatusChoices.FAILED],
                     "blocked": status_counts[MessageStatusChoices.BLOCKED],
+                    # Neither sent nor failed: the recipient had opted out of
+                    # marketing, so nothing was attempted and nothing charged
+                    # (#276).
+                    "suppressed": status_counts[MessageStatusChoices.SUPPRESSED],
                 },
             },
             status=200,

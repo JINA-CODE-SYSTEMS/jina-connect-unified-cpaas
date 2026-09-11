@@ -635,6 +635,17 @@ def _ingest_inbound_message(instance, extracted_data: dict, pk: str) -> None:
 
     logger.debug("Created team_inbox Message %s for webhook %s", message.pk, instance.pk)
 
+    # Honour STOP / START before anything downstream acts on this message
+    # (#276). It runs after the inbox row is written so the contact's own
+    # request stays on the record, and inside try/except like the additive
+    # steps below — a failure here must not cost us the message.
+    try:
+        from contacts.opt_out import apply_inbound_keyword
+
+        apply_inbound_keyword(contact, _trigger_body_text(content))
+    except Exception as exc:  # noqa: BLE001 — never break inbound
+        logger.warning("[wa.tasks] opt-out keyword handling failed for msg %s: %s", message.pk, exc)
+
     # Route to ChatFlow if contact is assigned to a ChatFlow
     _handle_chatflow_routing(contact, instance, content)
 
