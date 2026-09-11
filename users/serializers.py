@@ -1,5 +1,6 @@
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from tenants.models import DefaultRoleSlugs, TenantRole, TenantUser
@@ -116,6 +117,33 @@ class JwtUserSerializer(TokenObtainPairSerializer):
 
     class Meta:
         fields = ["username", "password"]
+
+    def validate(self, attrs):
+        """Authenticate, then refuse a token while a temporary password stands.
+
+        An operator sets the first password when onboarding a tenant (#221),
+        so until the holder replaces it the operator knows their credentials.
+        Blocking token issuance is what stops "temporary" becoming permanent.
+
+        The check runs after super().validate(), so a wrong password still
+        fails as a wrong password and this never reveals that an account
+        exists or is in a pending state.
+        """
+        data = super().validate(attrs)
+
+        if getattr(self.user, "must_change_password", False):
+            raise AuthenticationFailed(
+                detail={
+                    "detail": (
+                        "This password was set by an operator and must be replaced before "
+                        "the account can be used. Set a new one at /users/set-initial-password/."
+                    ),
+                    "code": "password_change_required",
+                },
+                code="password_change_required",
+            )
+
+        return data
 
     def get_token(self, user):
         token = super().get_token(user)
