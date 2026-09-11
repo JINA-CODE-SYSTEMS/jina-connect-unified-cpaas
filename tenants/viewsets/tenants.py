@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count
 from djmoney.money import Money
 from rest_framework import status
@@ -12,12 +13,14 @@ from tenants.models import RolePermission, Tenant, TenantRole, TenantUser
 from tenants.permissions import ALL_PERMISSIONS
 from tenants.serializers import (
     MyPermissionsSerializer,
+    TenantAdminCreateSerializer,
     TenantLimitedSerializer,
     TenantRegistrationSerializer,
     TenantSerializer,
     TransferOwnershipSerializer,
     WalletMovementSerializer,
 )
+from tenants.services.onboarding import create_tenant_with_owner
 from tenants.services.wallet import credit_tenant_wallet, debit_tenant_wallet
 
 
@@ -64,10 +67,11 @@ class TenantViewSet(BaseTenantModelViewSet):
         """
         Get permissions for the viewset.
         """
-        if self.action in ("create", "wallet_movement"):
-            # Crediting a wallet is a host operation. It is explicitly not a
-            # tenant role permission — a tenant must never be able to credit
-            # itself, which is what jain-t/jina-connect#613 was about.
+        if self.action in ("create", "admin_create", "wallet_movement"):
+            # All three are host operations, deliberately not tenant role
+            # permissions. Crediting in particular: a tenant must never be
+            # able to credit itself, which is what
+            # jain-t/jina-connect#613 was about.
             self.permission_classes = [IsAdminUser]
         elif self.action in [
             "register",
@@ -734,6 +738,54 @@ class TenantViewSet(BaseTenantModelViewSet):
         user.save()
 
         return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="admin-create", url_name="admin-create")
+    def admin_create(self, request):
+        """Create a tenant together with a usable owner login.
+
+        POST /tenants/ makes only the Tenant row, and self-service
+        registration asks the customer for a password an operator does not
+        have. This is the operator path: staff only, atomic, and backed by
+        the same service the Django admin uses (#221) so the two cannot
+        diverge.
+        """
+        serializer = TenantAdminCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            result = create_tenant_with_owner(
+                name=data["name"],
+                description=data.get("description", ""),
+                owner_email=data["owner_email"],
+                owner_mobile=data.get("owner_mobile", ""),
+                temporary_password=data.get("temporary_password", ""),
+                first_name=data.get("first_name", ""),
+                last_name=data.get("last_name", ""),
+            )
+        except DjangoValidationError as exc:
+            # Duplicate name, a mobile belonging to someone else, a missing
+            # password — all operator-fixable, so they read as field errors
+            # rather than a 500.
+            detail = exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages}
+            return Response(detail, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "tenant": {"id": result.tenant.id, "name": result.tenant.name},
+                "owner": {
+                    "id": result.owner.id,
+                    "email": result.owner.email,
+                    # The caller needs to know which happened: a new owner
+                    # must be given the temporary password and will be forced
+                    # to replace it, a linked one keeps the login they have.
+                    "created": result.created_owner,
+                    "must_change_password": result.owner.must_change_password,
+                },
+                "detail": result.summary,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["post"], url_path="wallet-movement", url_name="wallet-movement")
     def wallet_movement(self, request, pk=None):

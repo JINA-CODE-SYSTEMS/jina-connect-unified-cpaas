@@ -993,6 +993,37 @@ class UpdateRoleSerializer(serializers.Serializer):
         )
 
 
+class TenantAdminCreateSerializer(serializers.Serializer):
+    """Input for operator-driven tenant onboarding (#220).
+
+    Thin on purpose. The rules — duplicate name, a mobile belonging to
+    somebody else, whether an existing email links or is rejected — live in
+    tenants.services.onboarding, because the Django admin applies exactly the
+    same ones and the two must not drift.
+    """
+
+    name = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    owner_email = serializers.EmailField(
+        help_text="If this address already has an account it is linked as owner and keeps its own password."
+    )
+    owner_mobile = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="International format. Required for a new account; unique across all users.",
+    )
+    temporary_password = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        write_only=True,
+        help_text="Required for a new account. The owner must replace it before they can sign in.",
+    )
+    first_name = serializers.CharField(required=False, allow_blank=True, default="")
+    last_name = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class WalletMovementSerializer(serializers.Serializer):
     """Input for an operator-applied wallet movement (#233).
 

@@ -623,6 +623,26 @@ CRONJOBS = [
         "rcs.cron.reset_daily_rcs_counters",
         ">> " + os.path.join(BASE_DIR, "jina_cron_rcs_daily_reset.log 2>&1"),
     ),
+    # Active Customer Account report (partner agreement Cl. 4.2) — 06:00 on
+    # the 1st, covering the month that just ended. Scheduled here rather than
+    # with celery beat because this deployment has no beat process: every
+    # periodic job runs through django-crontab, and a Celery task alone would
+    # never fire (#230). Delivery is recorded, so a duplicate schedule cannot
+    # send a partner the same statement twice.
+    (
+        "0 6 1 * *",
+        "tenants.cron.send_monthly_active_account_report",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_partner_report.log 2>&1"),
+    ),
+    # Service availability report (partner agreement Cl. 5.4) — 06:30 on the
+    # 1st, half an hour after the account report so the two do not contend.
+    # Refuses to send when the month has no monitoring data rather than
+    # emailing a figure computed from nothing.
+    (
+        "30 6 1 * *",
+        "availability.cron.send_monthly_availability_report",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_availability_report.log 2>&1"),
+    ),
     # Example: Uncomment below to sync gupshup auth templates every 15 minutes
     # ("*/15 * * * *", "gupshup.cron.sync_gupshup_auth_templates", ">> " + os.path.join(BASE_DIR, "gupshup_sync.log 2>&1")),
 ]

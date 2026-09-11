@@ -796,3 +796,42 @@ class BrandingSettings(models.Model):
     def effective_primary_color(self):
         """Return the configured brand colour, otherwise the deployment default."""
         return self.primary_color or settings.DEFAULT_BRAND_COLOR
+
+
+class SentPartnerReport(models.Model):
+    """One row per partner report actually delivered (#230).
+
+    The contractual reports are emailed on a schedule. A schedule can fire
+    twice — on this deployment it did, for months, because django-crontab
+    entries were installed in two crontabs (jain-t/jina-connect#612). A
+    partner receiving the same statement twice is a credibility problem, and
+    "we fixed the crontab" is not a guarantee.
+
+    So delivery is recorded, and a second attempt for the same period is a
+    no-op unless explicitly forced.
+    """
+
+    KIND_ACTIVE_ACCOUNTS = "active_accounts"
+    KIND_AVAILABILITY = "availability"
+    KIND_CHOICES = (
+        (KIND_ACTIVE_ACCOUNTS, "Active Customer Account report"),
+        (KIND_AVAILABILITY, "Service availability report"),
+    )
+
+    kind = models.CharField(max_length=32, choices=KIND_CHOICES)
+    year = models.PositiveIntegerField()
+    month = models.PositiveSmallIntegerField()
+
+    recipients = models.TextField(help_text="Who it went to, as sent.")
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["kind", "year", "month"], name="unique_partner_report_per_period"),
+        ]
+        ordering = ["-year", "-month"]
+        verbose_name = "Sent partner report"
+        verbose_name_plural = "Sent partner reports"
+
+    def __str__(self):
+        return f"{self.get_kind_display()} {self.year}-{self.month:02d}"
