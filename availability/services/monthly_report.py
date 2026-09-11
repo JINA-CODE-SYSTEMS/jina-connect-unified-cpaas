@@ -18,7 +18,10 @@ company is held to, the bias belongs against ourselves.
 **Missing days are reported, never assumed healthy.** If the monitor or the
 nightly aggregation failed, those days have no rows. Treating absent data as
 100% uptime would quietly inflate the figure, so coverage is tracked and the
-report says plainly when it is incomplete.
+report says plainly when it is incomplete. A day that reported only a handful
+of its checks is counted the same way: a row holding five of 720 intervals is
+a monitoring gap wearing the shape of a measurement, and admitting it to the
+coverage count would let a near-total absence of evidence read as a full day.
 """
 
 from calendar import monthrange
@@ -33,12 +36,25 @@ from availability.models import DailyAvailability, MaintenanceWindow, ProbeTarge
 
 PERCENT_PRECISION = Decimal("0.001")
 
+# Nominal day length for judging whether a row holds enough checks. A DST day
+# is 23 or 25 hours, but the coverage threshold is a floor well below either,
+# so the nominal figure never decides a borderline case.
+SECONDS_PER_DAY = 86400
+
 
 def _percent(numerator: int, denominator: int) -> Decimal:
     if denominator <= 0:
         return Decimal("0.000")
     value = Decimal(numerator) * Decimal(100) / Decimal(denominator)
     return value.quantize(PERCENT_PRECISION, rounding=ROUND_HALF_UP)
+
+
+def _is_measured(row: DailyAvailability) -> bool:
+    """Whether a row holds enough checks to stand as a measured day."""
+    if row.probe_interval_seconds <= 0:
+        return False
+    expected = SECONDS_PER_DAY / row.probe_interval_seconds
+    return row.total_checks >= expected * float(settings.AVAILABILITY_MIN_DAY_COVERAGE)
 
 
 @dataclass(frozen=True)
@@ -133,10 +149,12 @@ def build_availability_report(year: int, month: int) -> AvailabilityReport:
             )
         )
 
-    # A day counts as covered only when every target reported for it.
+    # A day counts as covered only when every target reported for it, and each
+    # reported enough of the day to be evidence rather than a trace.
     by_day: dict[date, set[str]] = {}
     for row in rows:
-        by_day.setdefault(row.date, set()).add(row.target)
+        if _is_measured(row):
+            by_day.setdefault(row.date, set()).add(row.target)
     expected_targets = {value for value, _ in ProbeTarget.choices}
     days_covered = sum(1 for reported in by_day.values() if reported >= expected_targets)
 

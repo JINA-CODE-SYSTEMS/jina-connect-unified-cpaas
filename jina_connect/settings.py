@@ -408,6 +408,38 @@ DEFAULT_BRAND_COLOR = config("DEFAULT_BRAND_COLOR", "#465fff")
 # Contractual availability commitment, as a percentage (Cl. 5.4).
 AVAILABILITY_COMMITMENT_PERCENT = config("AVAILABILITY_COMMITMENT_PERCENT", "99.5")
 
+# --- Synthetic monitoring (the instrument behind the Cl. 5.4 figure) ---------
+# Grafana Cloud Synthetic Monitoring probes the platform; the nightly
+# `aggregate_availability` command copies its counts into DailyAvailability,
+# because Grafana's free tier retains metrics for 14 days and a calendar-month
+# report needs 31. Unset here on purpose: a deployment with no credentials must
+# record no availability rather than invent them. See availability/README.md.
+GRAFANA_PROM_URL = config("GRAFANA_PROM_URL", "")
+GRAFANA_PROM_USER = config("GRAFANA_PROM_USER", "")
+GRAFANA_PROM_TOKEN = config("GRAFANA_PROM_TOKEN", "")
+
+# Must match the interval the synthetic checks actually run at: a failed check
+# is counted as exactly this much downtime.
+AVAILABILITY_PROBE_INTERVAL_SECONDS = config("AVAILABILITY_PROBE_INTERVAL_SECONDS", 120, cast=int)
+
+# PromQL label selectors identifying each check, e.g. job="jina-connect-api".
+AVAILABILITY_PROBE_SELECTORS = {
+    "api": config("AVAILABILITY_PROBE_SELECTOR_API", ""),
+    "ui": config("AVAILABILITY_PROBE_SELECTOR_UI", ""),
+}
+
+# A check interval counts as failed when fewer than this fraction of probe
+# locations succeeded. At the 0.5 default a majority must fail, so one flaky
+# location cannot report the platform down — and a two-location check needs
+# both to fail, which is the conservative reading.
+AVAILABILITY_FAILURE_THRESHOLD = config("AVAILABILITY_FAILURE_THRESHOLD", 0.5, cast=float)
+
+# A day counts towards coverage only once it holds at least this fraction of
+# the checks it should. Without it a day holding five of 720 intervals would
+# read as fully covered and its near-total absence of evidence would be
+# averaged in as though it were a measurement.
+AVAILABILITY_MIN_DAY_COVERAGE = config("AVAILABILITY_MIN_DAY_COVERAGE", 0.9, cast=float)
+
 PARTNER_NAME = config("PARTNER_NAME", "Partner")
 PARTNER_REPORT_RECIPIENTS = [
     address.strip()
@@ -622,6 +654,14 @@ CRONJOBS = [
         "0 0 * * *",
         "rcs.cron.reset_daily_rcs_counters",
         ">> " + os.path.join(BASE_DIR, "jina_cron_rcs_daily_reset.log 2>&1"),
+    ),
+    # Copy yesterday's synthetic-monitoring results into DailyAvailability —
+    # 01:30 daily, late enough that the day is closed in local time and early
+    # enough that the 1st-of-month report at 06:30 has the final day's row.
+    (
+        "30 1 * * *",
+        "availability.cron.aggregate_daily_availability",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_availability_aggregate.log 2>&1"),
     ),
     # Active Customer Account report (partner agreement Cl. 4.2) — 06:00 on
     # the 1st, covering the month that just ended. Scheduled here rather than
