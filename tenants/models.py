@@ -461,6 +461,59 @@ class WABAInfo(BaseTenantModelForFilterUser):
     def __str__(self):
         return f"WABA Info: {self.wa_app.app_name} - {self.account_status}"
 
+    #: Fields ``update_from_adapter_data`` is willing to write. Anything else in
+    #: the payload is ignored rather than set, so a provider cannot reach
+    #: arbitrary columns.
+    _ADAPTER_WRITABLE_FIELDS = (
+        "account_status",
+        "docker_status",
+        "messaging_limit",
+        "mm_lite_status",
+        "ownership_type",
+        "phone",
+        "phone_quality",
+        "throughput",
+        "verified_name",
+        "waba_id",
+        "can_send_message",
+        "errors",
+        "additional_info",
+    )
+
+    @classmethod
+    def update_from_adapter_data(cls, wa_app, data: dict):
+        """
+        Write normalised WABA state from a BSP adapter's ``fetch_waba_info``.
+
+        The provider-agnostic counterpart to
+        :meth:`update_from_api_response`, which parses Gupshup's camelCase
+        envelope and is therefore unusable on Meta Direct — the reason
+        ``messaging_limit`` stayed NULL there and every broadcast was capped at
+        the conservative 50-recipient fallback (#267).
+
+        Only keys actually present are written. A provider that does not report
+        a field leaves the stored value alone, which matters because the two
+        providers report overlapping but different sets: ``docker_status`` is a
+        Gupshup concept and has no Meta equivalent, so a Meta sync must not
+        blank it.
+
+        Args:
+            wa_app: TenantWAApp instance
+            data: normalised ``{WABAInfo field: value}`` mapping
+
+        Returns:
+            tuple: (WABAInfo instance, None)
+        """
+        waba_info, _ = cls.objects.get_or_create(wa_app=wa_app)
+
+        for field in cls._ADAPTER_WRITABLE_FIELDS:
+            if field in data:
+                setattr(waba_info, field, data[field])
+
+        waba_info.last_sync_error = None
+        waba_info.save()
+        return waba_info, None
+
     @classmethod
     def update_from_api_response(cls, wa_app, api_response):
         """

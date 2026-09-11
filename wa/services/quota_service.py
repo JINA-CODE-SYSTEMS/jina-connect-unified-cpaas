@@ -263,6 +263,15 @@ class QuotaService:
                 f"but only {effective_remaining} available (Tier limit: {self.tier_limit}, "
                 f"overflow by {overflow_by})"
             )
+            # An unsynced tier scores the same 50 as a genuine TIER_50, and the
+            # message read identically — so an operator on a real TIER_100K
+            # number had no way to tell a quota from a missing sync (#267).
+            if self.tier_name == WABAInfo.MessagingLimit.TIER_NOT_SET:
+                error += (
+                    ". This app's messaging tier has never been synced from the provider, "
+                    "so the conservative default is being applied — sync WABA info to read "
+                    "the real tier."
+                )
 
         return {
             "is_valid": is_valid,
