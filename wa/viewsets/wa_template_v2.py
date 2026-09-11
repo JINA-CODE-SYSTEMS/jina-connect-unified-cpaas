@@ -88,6 +88,11 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
     queryset = WATemplate.objects.select_related("wa_app").all()
     serializer_class = WATemplateV2Serializer
     filterset_class = WATemplateV2Filter
+    # The shared base allows get/post/patch only, so there was no way to
+    # retire a template through the API at all — it could only be dropped in
+    # the admin, which leaves it live on the WABA (#272). ``destroy`` below
+    # deletes it at the BSP first.
+    http_method_names = ["get", "post", "patch", "delete"]
     search_fields = ["name", "element_name", "content", "header", "footer"]
     ordering_fields = ["created_at", "updated_at", "name", "element_name", "status"]
     ordering = ["-created_at"]
@@ -96,6 +101,7 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
         "retrieve": "template.view",
         "create": "template.create",
         "partial_update": "template.edit",
+        "destroy": "template.delete",
         "sync": "template.submit",
         "sync_from_bsp": "template.submit",
         "upload_media": "template.create",
@@ -344,6 +350,61 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
             serializer.save()
 
         return Response(serializer.data)
+
+    @swagger_auto_schema(
+        operation_description=(
+            "Delete a template at the BSP **and** locally.\n\n"
+            "A template that was never submitted (no provider ID) is simply "
+            "removed. One the BSP holds is deleted there first — if that "
+            "fails the local row is kept, so the two never silently diverge."
+        ),
+        operation_summary="Delete Template",
+        operation_id="destroy_wa_template_v2",
+        tags=["WhatsApp Templates (v2)"],
+        responses={
+            204: openapi.Response(description="Template deleted at the BSP and locally"),
+            401: openapi.Response(description="Authentication required"),
+            404: openapi.Response(description="Template not found"),
+            501: openapi.Response(description="BSP does not support template deletion"),
+            502: openapi.Response(description="BSP delete failed — the local template was kept"),
+        },
+    )
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete the template at the BSP before dropping the local row.
+
+        Dropping the row on its own — which is all the admin can do, and all
+        DRF's default ``destroy`` would have done — leaves the template live
+        on the WABA: still sendable, still holding its name, and back again
+        on the next sync-from-bsp (#272).
+        """
+        template = self.get_object()
+
+        # Nothing was ever submitted, so there is nothing at the provider.
+        if template.wa_app and (template.meta_template_id or template.bsp_template_id):
+            try:
+                result = get_bsp_adapter(template.wa_app).delete_template(template)
+            except NotImplementedError as exc:
+                return Response(
+                    {"message": str(exc)},
+                    status=status.HTTP_501_NOT_IMPLEMENTED,
+                )
+            except Exception as exc:
+                return Response(
+                    {"message": f"Adapter error: {exc}"},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+            if not result.success:
+                return Response(
+                    {
+                        "message": f"Deleting from {result.provider} failed — the template was kept.",
+                        "error": result.error_message,
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+        return super().destroy(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Trigger sync of template to BSP",

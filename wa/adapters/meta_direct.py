@@ -334,14 +334,56 @@ class MetaDirectAdapter(BaseBSPAdapter):
 
     # ── Template operations ───────────────────────────────────────────────
 
+    # META's template lifecycle is wider than the six states the model was
+    # built for, and the unmapped ones used to fall through to "keep the
+    # current status": a DELETED template stayed APPROVED and kept being
+    # offered to chat flows, an IN_APPEAL one stayed PENDING and was re-polled
+    # every two minutes forever (#272). Mapped onto the nearest canonical
+    # state rather than new enum values — DELETED already maps to DISABLED in
+    # the sync service, so follow that.
+    LIFECYCLE_STATUS_MAP = {
+        "APPROVED": TemplateStatus.APPROVED,
+        "PENDING": TemplateStatus.PENDING,
+        "REJECTED": TemplateStatus.REJECTED,
+        "PAUSED": TemplateStatus.PAUSED,
+        "DISABLED": TemplateStatus.DISABLED,
+        # Appeal of a rejection — genuinely back under review, so PENDING
+        # (and polled) is right; it just was not being said out loud.
+        "IN_APPEAL": TemplateStatus.PENDING,
+        # Gone, or going. Either way it must stop being used to send.
+        "PENDING_DELETION": TemplateStatus.DISABLED,
+        "DELETED": TemplateStatus.DISABLED,
+        "ARCHIVED": TemplateStatus.DISABLED,
+        # The WABA is at its template ceiling — this one was never created,
+        # so it is a failure to submit, not a review outcome.
+        "LIMIT_EXCEEDED": TemplateStatus.FAILED,
+    }
+
+    # Pages of 100 templates. The cap only exists so a cursor that never
+    # advances cannot spin forever; a WABA at META's own ceiling fits well
+    # inside it.
+    _TEMPLATE_PAGE_SIZE = 100
+    _MAX_TEMPLATE_PAGES = 50
+
+    # Fragment META's create error carries when the (name, language) pair is
+    # already taken on the WABA.
+    _DUPLICATE_NAME_FRAGMENT = "already exists"
+
     @silk_profile(name="adapter.submit_template")
     def submit_template(self, template: "WATemplate") -> AdapterResult:
         """
         Submit *template* to META's Graph API for review.
 
-        On success the template is moved to ``PENDING`` and
-        ``meta_template_id`` is stored.  On failure ``error_message`` is
-        populated and the status stays unchanged.
+        A template META has never seen is **created**
+        (``POST /{waba_id}/message_templates``).  One that already carries a
+        ``meta_template_id`` is **edited in place** (``POST /{template_id}``),
+        because META holds the name: re-POSTing create after an edit fails as
+        a duplicate, which is what left a rejected template unfixable (#272).
+
+        On success the template is moved to ``PENDING`` — an edit re-opens
+        review just as a create does — and ``meta_template_id`` is stored.
+        On failure ``error_message`` is populated and the status stays
+        unchanged.
         """
         self._log(
             "info",
@@ -386,10 +428,16 @@ class MetaDirectAdapter(BaseBSPAdapter):
                 error_message=error_msg,
             )
 
-        # Step 4: Call META API
+        # Step 4: Call META API — create if META has never seen this
+        # template, edit in place if it has.
+        is_edit = bool(template.meta_template_id)
         try:
-            self._log("info", f"[STEP 4/5] Calling META Graph API — POST /{api.waba_id}/message_templates")
-            response = api.apply_for_template(payload)
+            if is_edit:
+                self._log("info", f"[STEP 4/5] Calling META Graph API — POST /{template.meta_template_id} (edit)")
+                response = api.edit_template(template.meta_template_id, payload)
+            else:
+                self._log("info", f"[STEP 4/5] Calling META Graph API — POST /{api.waba_id}/message_templates")
+                response = api.apply_for_template(payload)
             self._log(
                 "info",
                 f"[STEP 4/5] META responded — keys={list(response.keys()) if isinstance(response, dict) else type(response)}",
@@ -410,6 +458,17 @@ class MetaDirectAdapter(BaseBSPAdapter):
         meta_error = response.get("error")
         if meta_error:
             error_msg = meta_error.get("message", str(meta_error))
+            if not is_edit and self._DUPLICATE_NAME_FRAGMENT in error_msg.lower():
+                # META holds this name but we hold no id for it — the template
+                # was created on the dashboard, or the id was lost. Unlike
+                # Gupshup we do not bump the name to ``_v2``: that would leave
+                # two live templates on the WABA when one only needs adopting.
+                error_msg = (
+                    f"META already has a template named '{template.element_name}' "
+                    f"({template.language_code}) but this record has no meta_template_id. "
+                    f"Run sync-from-bsp to adopt it, then edit and submit again. "
+                    f"META said: {error_msg}"
+                )
             self._log("warning", f"[STEP 5/5] META REJECTED — code={meta_error.get('code')}, msg={error_msg}")
             template.error_message = error_msg
             template.save(update_fields=["error_message"])
@@ -420,8 +479,9 @@ class MetaDirectAdapter(BaseBSPAdapter):
                 raw_response=response,
             )
 
-        # Success path
-        meta_template_id = response.get("id")
+        # Success path. An edit answers ``{"success": true}`` with no id, so
+        # keep the one we already hold rather than blanking it.
+        meta_template_id = response.get("id") or template.meta_template_id
         template.meta_template_id = meta_template_id
         template.status = TemplateStatus.PENDING
         template.needs_sync = False
@@ -496,23 +556,29 @@ class MetaDirectAdapter(BaseBSPAdapter):
             )
 
         # Map META status string to our canonical TemplateStatus
-        meta_status = response.get("status", "").upper()
-        status_map = {
-            "APPROVED": TemplateStatus.APPROVED,
-            "PENDING": TemplateStatus.PENDING,
-            "REJECTED": TemplateStatus.REJECTED,
-            "PAUSED": TemplateStatus.PAUSED,
-            "DISABLED": TemplateStatus.DISABLED,
-        }
-        canonical_status = status_map.get(meta_status, template.status)
-        self._log("info", f"[STEP 3/4] Status mapped — meta_status={meta_status} → canonical={canonical_status}")
+        meta_status = (response.get("status") or "").upper()
+        canonical_status = self.LIFECYCLE_STATUS_MAP.get(meta_status)
+        if canonical_status is None:
+            # Falling back to the current status without saying so is how a
+            # template META has moved on from stays PENDING and gets re-polled
+            # every two minutes for ever (#272).
+            self._log("warning", f"[STEP 3/4] Unmapped META status {meta_status!r} — keeping {template.status}")
+            canonical_status = template.status
+        else:
+            self._log("info", f"[STEP 3/4] Status mapped — meta_status={meta_status} → canonical={canonical_status}")
 
         # Persist the refreshed status
         template.status = canonical_status
         if meta_status == "REJECTED":
-            template.rejection_reason = response.get(
-                "rejected_reason", response.get("quality_score", {}).get("reasons")
-            )
+            # ``quality_score`` can come back null, and the old lookup asked
+            # it for ``reasons`` before checking. META also says "NONE" when
+            # it declines to give a reason — that is no reason, not a reason
+            # reading "NONE".
+            quality_score = response.get("quality_score") or {}
+            reason = response.get("rejected_reason") or quality_score.get("reasons")
+            if isinstance(reason, str) and reason.upper() == "NONE":
+                reason = None
+            template.rejection_reason = reason
             self._log("warning", f"[STEP 4/4] Template REJECTED — reason={template.rejection_reason}")
         template.last_synced_at = timezone.now()
         template.save(update_fields=["status", "rejection_reason", "last_synced_at"])
@@ -534,6 +600,12 @@ class MetaDirectAdapter(BaseBSPAdapter):
         Delete a template from META.
 
         META Graph API: ``DELETE /{waba_id}/message_templates?name={element_name}``
+
+        ``name`` alone deletes **every language version** of the template.
+        We hold one row per language, so when the row carries a
+        ``meta_template_id`` it is passed as ``hsm_id`` and only that
+        language goes — otherwise deleting the English row would silently
+        take the others with it.
         """
         self._log("info", f"[STEP 1/4] delete_template START — element_name={template.element_name}")
 
@@ -549,14 +621,17 @@ class MetaDirectAdapter(BaseBSPAdapter):
             )
 
         url = f"{api.BASE_URL}{api.waba_id}/message_templates"
+        params = {"name": template.element_name}
+        if template.meta_template_id:
+            params["hsm_id"] = template.meta_template_id
         try:
             import requests as http
 
-            self._log("info", f"[STEP 3/4] Calling META — DELETE {url}?name={template.element_name}")
+            self._log("info", f"[STEP 3/4] Calling META — DELETE {url} params={params}")
             resp = http.delete(
                 url,
                 headers=api.json_headers,
-                params={"name": template.element_name},
+                params=params,
                 timeout=30,
             )
             response = resp.json()
@@ -597,9 +672,15 @@ class MetaDirectAdapter(BaseBSPAdapter):
     @silk_profile(name="adapter.meta.list_templates")
     def list_templates(self) -> AdapterResult:
         """
-        List all message templates from the META Graph API.
+        List **all** message templates from the META Graph API.
 
         Endpoint: ``GET /{waba_id}/message_templates``
+
+        Every page is followed. Asking for one page and calling it the whole
+        list is worse than failing: sync-from-bsp imported META's first 25
+        templates and reported success, so the rest looked like templates
+        that do not exist (#272). A page that fails fails the whole call for
+        the same reason — a short list must never pass for a complete one.
 
         Returns ``data={"templates": [...]}`` with the raw META template
         objects on success.
@@ -616,37 +697,63 @@ class MetaDirectAdapter(BaseBSPAdapter):
                 error_message=str(exc),
             )
 
+        import requests as http
+
         url = f"{api.BASE_URL}{api.waba_id}/message_templates"
-        try:
-            import requests as http
+        # Only the first request needs parameters — META's ``paging.next``
+        # is a full URL that already carries the fields, the limit and the
+        # cursor.
+        params = {"fields": api.TEMPLATE_FIELDS, "limit": self._TEMPLATE_PAGE_SIZE}
+        templates: list = []
+        last_response: dict = {}
+        page = 0
 
-            resp = http.get(url, headers=api.json_headers, timeout=30)
-            response = resp.json()
-        except Exception as exc:
-            self._log("error", f"list_templates API call FAILED — {exc}", exc_info=True)
+        while url and page < self._MAX_TEMPLATE_PAGES:
+            page += 1
+            try:
+                resp = http.get(url, headers=api.json_headers, params=params, timeout=30)
+                response = resp.json()
+            except Exception as exc:
+                self._log("error", f"list_templates API call FAILED on page {page} — {exc}", exc_info=True)
+                return AdapterResult(
+                    success=False,
+                    provider=self.PROVIDER_NAME,
+                    error_message=f"META API call failed: {exc}",
+                )
+
+            if response.get("error"):
+                self._log("warning", f"list_templates META error on page {page} — {response['error']}")
+                return AdapterResult(
+                    success=False,
+                    provider=self.PROVIDER_NAME,
+                    error_message=response["error"].get("message", str(response["error"])),
+                    raw_response=response,
+                )
+
+            templates.extend(response.get("data", []))
+            last_response = response
+            url = (response.get("paging") or {}).get("next")
+            params = None
+
+        if url:
+            self._log("warning", f"list_templates stopped at the {self._MAX_TEMPLATE_PAGES}-page cap")
             return AdapterResult(
                 success=False,
                 provider=self.PROVIDER_NAME,
-                error_message=f"META API call failed: {exc}",
+                error_message=(
+                    f"META returned more than {self._MAX_TEMPLATE_PAGES} pages of templates; "
+                    f"refusing to report a truncated list as complete."
+                ),
+                raw_response=last_response,
             )
 
-        if response.get("error"):
-            self._log("warning", f"list_templates META error — {response['error']}")
-            return AdapterResult(
-                success=False,
-                provider=self.PROVIDER_NAME,
-                error_message=response["error"].get("message", str(response["error"])),
-                raw_response=response,
-            )
-
-        templates = response.get("data", [])
-        self._log("info", f"list_templates SUCCESS — count={len(templates)}")
+        self._log("info", f"list_templates SUCCESS — count={len(templates)}, pages={page}")
 
         return AdapterResult(
             success=True,
             provider=self.PROVIDER_NAME,
             data={"templates": templates},
-            raw_response=response,
+            raw_response=last_response,
         )
 
     # ── Webhook Subscription operations ───────────────────────────────────
