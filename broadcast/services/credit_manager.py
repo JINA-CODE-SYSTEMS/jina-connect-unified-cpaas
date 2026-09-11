@@ -98,7 +98,13 @@ class BroadcastCreditManager:
             Broadcast.objects.filter(pk=broadcast.pk).update(
                 credit_deducted=True,
                 refund_processed=False,
-                initial_cost=Decimal(str(initial_cost)),
+                # As Money, not a bare Decimal. Written bare, the
+                # initial_cost_currency column kept the field default "USD"
+                # while the debit two lines above used the wallet's currency —
+                # so one row carried two currencies for the same money, and
+                # refund_amount (already written as Money) disagreed with it
+                # (#263).
+                initial_cost=Money(initial_cost, tenant.balance.currency),
                 charged_rates=getattr(broadcast, "_charged_rates", {}) or {},
             )
 

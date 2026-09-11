@@ -164,6 +164,10 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         validators=[validate_phone_with_series],
         help_text="Enter in international format, e.g., +14155552671. Do not include spaces or dashes.",
     )
+    # Declared in USD because a MoneyField's default_currency is fixed at
+    # class-definition time and frozen into the migration — it cannot follow a
+    # per-deployment setting. A new app is given its currency at creation
+    # instead, exactly as BaseWallet does for wallets (#228, #263).
     authentication_message_price = MoneyField(decimal_places=2, max_digits=15, default=0.1, default_currency="USD")
     marketing_message_price = MoneyField(decimal_places=2, max_digits=15, default=0.1, default_currency="USD")
     utility_message_price = MoneyField(decimal_places=2, max_digits=15, default=0.1, default_currency="USD")
@@ -274,6 +278,46 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         except WABAInfo.DoesNotExist:
             pass
         return False
+
+    # ── Price currency ───────────────────────────────────────────────────
+    # Mirrors BaseWallet._stamp_platform_currency. The three prices are
+    # charged against a tenant wallet, so they have to be denominated in the
+    # same currency as that wallet or the number means nothing (#263).
+    _PLATFORM_STAMPED_PRICE_FIELDS = (
+        "authentication_message_price",
+        "marketing_message_price",
+        "utility_message_price",
+    )
+    _DECLARED_PRICE_CURRENCY = "USD"
+
+    def _stamp_platform_currency(self):
+        """Give a new app's prices the deployment's currency.
+
+        The caller wins: a price passed in some other currency sets the
+        currency for all three, with amounts carried across unchanged. That is
+        safe at creation, where every amount is a nominal default — it is not
+        a conversion and must never become one.
+        """
+        from django.conf import settings
+        from djmoney.money import Money
+
+        target = str(getattr(settings, "PLATFORM_DEFAULT_CURRENCY", self._DECLARED_PRICE_CURRENCY))
+
+        for name in self._PLATFORM_STAMPED_PRICE_FIELDS:
+            value = getattr(self, name, None)
+            if value is not None and str(value.currency) != self._DECLARED_PRICE_CURRENCY:
+                target = str(value.currency)
+                break
+
+        for name in self._PLATFORM_STAMPED_PRICE_FIELDS:
+            value = getattr(self, name, None)
+            if value is not None and str(value.currency) != target:
+                setattr(self, name, Money(value.amount, target))
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            self._stamp_platform_currency()
+        super().save(*args, **kwargs)
 
 
 class TenantVoiceApp(BaseTenantModelForFilterUser):

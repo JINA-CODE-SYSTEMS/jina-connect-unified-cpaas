@@ -352,6 +352,17 @@ class Broadcast(BaseTenantModelForFilterUser):
     def _get_whatsapp_message_price(self) -> Decimal:
         """
         Get WhatsApp message price based on template category.
+
+        Returns a bare ``Decimal`` because every caller charges it against the
+        tenant's wallet, which supplies the currency. That is only sound while
+        the two agree — so the currency is checked here rather than discarded.
+
+        It used to be discarded. ``.amount`` was taken off the Money and the
+        resulting total relabelled with the wallet's currency, so a price
+        configured as ``$0.10`` was charged as ``0.10`` of whatever the wallet
+        held. The number was **reinterpreted, never converted**: no FX step, no
+        error, and an operator reading "0.10 USD" in the admin got something
+        else entirely (#263).
         """
         if not self.template_number or not self.template_number.gupshup_template:
             return Decimal("0")
@@ -363,15 +374,26 @@ class Broadcast(BaseTenantModelForFilterUser):
 
         # Map category to price field (Money objects)
         category_price_map = {
-            TemplateCategory.AUTHENTICATION: wa_app.authentication_message_price.amount,
-            TemplateCategory.MARKETING: wa_app.marketing_message_price.amount,
-            TemplateCategory.UTILITY: wa_app.utility_message_price.amount,
+            TemplateCategory.AUTHENTICATION: wa_app.authentication_message_price,
+            TemplateCategory.MARKETING: wa_app.marketing_message_price,
+            TemplateCategory.UTILITY: wa_app.utility_message_price,
         }
 
         price = category_price_map.get(template.category, None)
         if price is None:
             return Decimal("0")
-        return price
+
+        wallet_currency = str(self.tenant.balance.currency)
+        price_currency = str(price.currency)
+        if price_currency != wallet_currency:
+            raise ValueError(
+                f"WhatsApp {template.category} price for app {wa_app.pk} is in {price_currency} "
+                f"but tenant {self.tenant_id}'s wallet holds {wallet_currency}. Charging the amount "
+                f"as-is would silently reprice the message. Set the app's prices in "
+                f"{wallet_currency}, or move the wallet, before sending."
+            )
+
+        return price.amount
 
     def _get_sms_message_price(self):
         """
