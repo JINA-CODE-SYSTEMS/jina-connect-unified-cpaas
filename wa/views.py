@@ -58,18 +58,36 @@ def _classify_cloud_api_event(payload: Dict[str, Any]) -> str:
         messages                           -> MESSAGE
         message_template_status_update     -> TEMPLATE
         template_category_update           -> TEMPLATE
+        message_template_quality_update    -> TEMPLATE
         statuses                           -> STATUS
         billing                            -> BILLING
-        account_update                     -> ACCOUNT
+        account_update / account_alerts    -> ACCOUNT
+        phone_number_quality_update        -> ACCOUNT
+        phone_number_name_update           -> ACCOUNT
     """
     try:
         field = payload.get("entry", [{}])[0].get("changes", [{}])[0].get("field", "")
     except (IndexError, AttributeError):
         field = ""
 
-    if field in ("message_template_status_update", "template_category_update"):
+    if field in (
+        "message_template_status_update",
+        "template_category_update",
+        # Quality is how a template dies: META drops it to RED and then pauses
+        # it. Unclassified, this landed in UNKNOWN and was discarded, so the
+        # first visible sign was the pause itself (#267).
+        "message_template_quality_update",
+    ):
         return "TEMPLATE"
-    if field in ("account_update", "account_alerts"):
+    if field in (
+        "account_update",
+        "account_alerts",
+        # Tier and quality changes for a *number* arrive on their own field,
+        # which was not classified at all — so the one push channel reporting
+        # them was thrown away.
+        "phone_number_quality_update",
+        "phone_number_name_update",
+    ):
         return "ACCOUNT"
     if field == "billing":
         return "BILLING"

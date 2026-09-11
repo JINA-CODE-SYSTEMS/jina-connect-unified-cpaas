@@ -308,6 +308,18 @@ class WATemplate(BaseTemplateMessages):
     error_message = models.TextField(blank=True, null=True)
     rejection_reason = models.TextField(blank=True, null=True)
 
+    # Quality, as META reports it on message_template_quality_update. This is
+    # how a template dies: the score falls to RED and META pauses it. Without
+    # somewhere to record it, the pause was the first visible sign (#267).
+    quality_rating = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=[("GREEN", "Green"), ("YELLOW", "Yellow"), ("RED", "Red"), ("UNKNOWN", "Unknown")],
+        help_text="Latest quality score reported by META for this template.",
+    )
+    quality_rating_updated_at = models.DateTimeField(blank=True, null=True)
+
     # Sync tracking
     last_synced_at = models.DateTimeField(blank=True, null=True)
     needs_sync = models.BooleanField(default=True, db_index=True)
