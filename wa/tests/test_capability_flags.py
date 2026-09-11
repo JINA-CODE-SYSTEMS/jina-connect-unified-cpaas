@@ -10,6 +10,12 @@ The mapping ``CAPABILITY_TO_METHOD`` is intentionally explicit so a future
 adapter that lies about its capabilities (e.g. declares ``supports_media=True``
 without overriding ``send_media``) fails this test.
 
+``EXTRA_CAPABILITY_TO_METHOD`` does the same job for the BSP-level strings in
+``capabilities.extra``, which ``BaseBSPAdapter.supports()`` consults and which
+nothing previously checked. That gap is what let #266 ship: ``MetaDirectAdapter``
+implemented ``upload_media`` in full and simply never listed ``"media_upload"``,
+so the viewset returned 501 for every media template.
+
 HOW TO RUN:
     DJANGO_SETTINGS_MODULE=jina_connect.settings python -m pytest wa/tests/test_capability_flags.py -v
 """
@@ -206,3 +212,103 @@ class AdapterDeclarationsTests(TestCase):
                     cls.platform,
                     f"{cls.__name__}.get_channel_name() does not match .platform",
                 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BSP-level capability strings (``capabilities.extra``)
+#
+# These gate whole endpoints through ``BaseBSPAdapter.supports(name)``, so a
+# declaration that disagrees with the implementation is a user-visible bug in
+# either direction:
+#
+#   declared, not implemented → the endpoint 500s at the provider call
+#   implemented, not declared → the endpoint 501s while the code works (#266)
+#
+# ``None`` means the capability is backed by several methods rather than one.
+# ─────────────────────────────────────────────────────────────────────────────
+
+EXTRA_CAPABILITY_TO_METHOD: dict[str, str | None] = {
+    "media_upload": "upload_media",
+    "subscriptions": "register_webhook",
+    # Templates span submit / status / list / delete — no single method.
+    "templates": None,
+}
+
+
+def _bsp_adapter_classes() -> list[type]:
+    """Concrete ``BaseBSPAdapter`` subclasses — the ones with ``extra``."""
+    from wa.adapters.gupshup import GupshupAdapter
+    from wa.adapters.meta_direct import MetaDirectAdapter
+
+    return [MetaDirectAdapter, GupshupAdapter]
+
+
+def _overrides(cls: type, method_name: str) -> bool:
+    """True if ``cls`` supplies its own ``method_name`` rather than the base's.
+
+    Compares against ``BaseBSPAdapter`` directly instead of checking
+    ``__isabstractmethod__``: several send-side methods on the base are
+    *concrete* stubs that raise ``NotImplementedError``, and those must not
+    count as implementations.
+    """
+    from wa.adapters.base import BaseBSPAdapter
+
+    own = getattr(cls, method_name, None)
+    base = getattr(BaseBSPAdapter, method_name, None)
+    return own is not None and own is not base
+
+
+class ExtraCapabilityTests(TestCase):
+    def test_every_declared_extra_is_mapped(self):
+        """No adapter may invent an ``extra`` string this file does not know about.
+
+        Forces a deliberate decision — which method backs it, or ``None`` —
+        rather than a silent new capability nothing verifies.
+        """
+        mapped = set(EXTRA_CAPABILITY_TO_METHOD)
+        for cls in _bsp_adapter_classes():
+            with self.subTest(adapter=cls.__name__):
+                unknown = set(cls.capabilities.extra) - mapped
+                self.assertFalse(
+                    unknown,
+                    f"{cls.__name__} declares unmapped extra capabilities: {sorted(unknown)}. "
+                    f"Add them to EXTRA_CAPABILITY_TO_METHOD.",
+                )
+
+    def test_extra_declaration_matches_implementation(self):
+        """A declared extra must be implemented, and an implemented one declared.
+
+        The second half is the direction that bit us: ``supports()`` is a pure
+        lookup in ``extra``, so an unlisted capability is unreachable however
+        complete the method behind it is.
+        """
+        for cls in _bsp_adapter_classes():
+            for capability, method_name in EXTRA_CAPABILITY_TO_METHOD.items():
+                if method_name is None:
+                    continue
+                with self.subTest(adapter=cls.__name__, capability=capability):
+                    declared = capability in cls.capabilities.extra
+                    implemented = _overrides(cls, method_name)
+                    self.assertEqual(
+                        declared,
+                        implemented,
+                        f"{cls.__name__}: capabilities.extra "
+                        f"{'declares' if declared else 'omits'} {capability!r} but "
+                        f"{method_name}() is {'implemented' if implemented else 'not implemented'}",
+                    )
+
+    def test_meta_direct_supports_media_upload(self):
+        """#266 regression: the media-template endpoint is gated on exactly this.
+
+        Named separately from the generic check so a failure points straight at
+        the symptom — ``POST /wa/v2/templates/{id}/upload-media/`` returning 501
+        on a Meta Direct app.
+        """
+        from wa.adapters.meta_direct import MetaDirectAdapter
+
+        adapter = MetaDirectAdapter.__new__(MetaDirectAdapter)
+        self.assertTrue(
+            adapter.supports("media_upload"),
+            "MetaDirectAdapter must advertise media_upload; without it no IMAGE, "
+            "VIDEO, DOCUMENT or CAROUSEL template can be created.",
+        )
