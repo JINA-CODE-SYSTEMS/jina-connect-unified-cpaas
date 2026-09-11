@@ -633,6 +633,56 @@ class TestTemplateDestroyEndpoint:
         assert resp.status_code == 502
         assert WATemplate.objects.filter(pk=template.pk).exists()
 
+    def _broadcast_using(self, template, status_value):
+        """A broadcast pointed at ``template`` through its TemplateNumber."""
+        from broadcast.models import Broadcast
+        from message_templates.models import TemplateNumber
+
+        number = TemplateNumber.objects.create()
+        template.number = number
+        template.save(update_fields=["number"])
+        return Broadcast.objects.create(
+            tenant=self.tenant,
+            name=f"Campaign {uuid.uuid4().hex[:4]}",
+            status=status_value,
+            template_number=number,
+        )
+
+    def test_a_template_a_live_broadcast_still_needs_is_not_deleted(self):
+        """``broadcast.models`` reads the template off a *reverse* one-to-one,
+        so a deleted row makes an already-charged broadcast raise while
+        rendering rather than fail one message."""
+        from wa.models import WATemplate
+
+        template = _template(self.wa_app)
+        broadcast = self._broadcast_using(template, "SCHEDULED")
+        adapter = MagicMock()
+
+        with patch("wa.viewsets.wa_template_v2.get_bsp_adapter", return_value=adapter):
+            resp = self.client.delete(self._url(template))
+
+        assert resp.status_code == 409
+        assert resp.json()["broadcasts"][0]["id"] == broadcast.id
+        # Refused before the provider was touched — un-deleting at META costs
+        # a round trip that refusing does not.
+        adapter.delete_template.assert_not_called()
+        assert WATemplate.objects.filter(pk=template.pk).exists()
+
+    def test_a_template_only_finished_broadcasts_used_is_deleted(self):
+        """A terminal broadcast has already rendered whatever it was going to."""
+        from wa.models import WATemplate
+
+        template = _template(self.wa_app)
+        self._broadcast_using(template, "SENT")
+        adapter = MagicMock()
+        adapter.delete_template.return_value = AdapterResult(success=True, provider="meta_direct", data={})
+
+        with patch("wa.viewsets.wa_template_v2.get_bsp_adapter", return_value=adapter):
+            resp = self.client.delete(self._url(template))
+
+        assert resp.status_code == 204
+        assert not WATemplate.objects.filter(pk=template.pk).exists()
+
     def test_a_draft_that_was_never_submitted_needs_no_provider_call(self):
         from wa.models import WATemplate
 

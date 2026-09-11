@@ -365,6 +365,7 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
             204: openapi.Response(description="Template deleted at the BSP and locally"),
             401: openapi.Response(description="Authentication required"),
             404: openapi.Response(description="Template not found"),
+            409: openapi.Response(description="A live broadcast still needs this template"),
             501: openapi.Response(description="BSP does not support template deletion"),
             502: openapi.Response(description="BSP delete failed — the local template was kept"),
         },
@@ -379,6 +380,19 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
         on the next sync-from-bsp (#272).
         """
         template = self.get_object()
+
+        blocking = self._live_broadcasts_using(template)
+        if blocking:
+            return Response(
+                {
+                    "message": (
+                        "This template is still needed by a broadcast that has not finished. "
+                        "Cancel or delete the broadcast first."
+                    ),
+                    "broadcasts": blocking,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         # Nothing was ever submitted, so there is nothing at the provider.
         if template.wa_app and (template.meta_template_id or template.bsp_template_id):
@@ -405,6 +419,42 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
                 )
 
         return super().destroy(request, *args, **kwargs)
+
+    @staticmethod
+    def _live_broadcasts_using(template) -> list:
+        """Unfinished broadcasts that still need this template, newest first.
+
+        ``broadcast.models`` reaches the template by direct attribute access —
+        ``self.template_number.gupshup_template`` at :217, :367, :506, :699,
+        :812 and :1386. That is a *reverse* one-to-one, so once the template
+        row is gone it raises ``RelatedObjectDoesNotExist`` rather than
+        returning ``None``: an already-charged broadcast would crash while
+        rendering instead of failing a single message.
+
+        Deleting was impossible through the API until this change, so the
+        exposure arrives with the endpoint and the guard belongs with it. Only
+        unfinished broadcasts block — a terminal one has already rendered
+        whatever it was going to.
+        """
+        from broadcast.models import Broadcast, BroadcastStatusChoices
+
+        if template.number_id is None:
+            return []
+
+        unfinished = (
+            BroadcastStatusChoices.DRAFT,
+            BroadcastStatusChoices.SCHEDULED,
+            BroadcastStatusChoices.QUEUED,
+            BroadcastStatusChoices.SENDING,
+        )
+        return list(
+            Broadcast.objects.filter(
+                template_number_id=template.number_id,
+                status__in=unfinished,
+            )
+            .order_by("-id")
+            .values("id", "name", "status")[:20]
+        )
 
     @swagger_auto_schema(
         operation_description="Trigger sync of template to BSP",
