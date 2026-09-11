@@ -642,6 +642,22 @@ CRONJOBS = [
         "broadcast.cron.update_broadcast_status",
         ">> " + os.path.join(BASE_DIR, "jina_cron_broadcast_status.log 2>&1"),
     ),
+    # Launch SCHEDULED broadcasts whose time has arrived. The normal path is
+    # apply_async(countdown=…) on commit; this is the recovery net for the ones
+    # a worker restart or revoked task loses, which previously had none because
+    # it was registered only in celery beat, which this deployment does not run.
+    (
+        "* * * * *",
+        "broadcast.cron.run_scheduled_broadcasts",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_broadcast_scheduled.log 2>&1"),
+    ),
+    # Re-queue broadcast messages that failed for a retryable reason (429s,
+    # transient 5xx). Without a consumer, retry_count was written and never read.
+    (
+        "*/5 * * * *",
+        "broadcast.cron.retry_transient_message_failures",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_broadcast_retry.log 2>&1"),
+    ),
     # Clean up notifications older than 90 days — runs daily at 3 AM
     (
         "0 3 * * *",
