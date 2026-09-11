@@ -2974,6 +2974,13 @@ class PreProductionSweepTests(RBACIntegrationBase):
         allowed_files = {
             "users/viewsets/user_login_patch.py",  # Login
             "users/viewsets/token.py",  # JWT token
+            # #221: exchanges an operator-set temporary password for a real
+            # one. Necessarily unauthenticated — the account cannot obtain a
+            # token while must_change_password stands, so there is no token
+            # to present. It verifies the temporary password before changing
+            # anything and returns one identical message for every failure,
+            # so it cannot be used to enumerate accounts.
+            "users/viewsets/set_initial_password.py",
             "tenants/viewsets/tenants.py",  # Register, forgot-password
             "tenants/viewsets/tenant_gupshup.py",  # Webhook receivers
             "tenants/viewsets/tenant_media.py",  # Public media serving
