@@ -402,7 +402,6 @@ def process_message_webhook(pk: str):
         pk: UUID string of the WAWebhookEvent instance
     """
     try:
-        from team_inbox.models import AuthorChoices, MessageDirectionChoices, MessagePlatformChoices, Messages
         from tenants.models import BSPChoices, TenantWAApp
         from wa.models import WAWebhookEvent
 
@@ -434,46 +433,64 @@ def process_message_webhook(pk: str):
             process_message_status_webhook(pk)
             return
 
-        parsing_successful = False
-        extracted_data = {}
-
         # ── BSP-aware parsing ─────────────────────────────────────────
         bsp = getattr(instance, "bsp", None)
 
+        # META batches messages; Gupshup delivers one per webhook. Splitting
+        # first makes the per-message path below identical for both (#268).
         if bsp == BSPChoices.META:
-            # ── META Cloud API ────────────────────────────────────────
-            try:
-                # Pass wa_app so the parser can download+save media via
-                # the Graph API (META webhooks only include media id,
-                # not a persistent URL).
-                extracted_data = _parse_meta_message_payload(payload, wa_app=instance.wa_app)
+            payload_slices = _split_meta_message_payloads(payload)
+            if not payload_slices:
+                instance.error_message = "META payload has no messages in any entry/change"
+        else:
+            payload_slices = [payload]
+
+        parsed: list[dict] = []
+        parse_errors: list[str] = []
+
+        for payload_slice in payload_slices:
+            if bsp == BSPChoices.META:
+                try:
+                    # Pass wa_app so the parser can download+save media via
+                    # the Graph API (META webhooks only include media id,
+                    # not a persistent URL).
+                    extracted_data = _parse_meta_message_payload(payload_slice, wa_app=instance.wa_app)
+                except Exception as e:  # noqa: BLE001 — one bad message must not drop its siblings
+                    parse_errors.append(f"Failed to parse META message: {e}")
+                    continue
 
                 # wa_app is already set by MetaWebhookView; keep it.
                 # If somehow missing, look up by waba_id.
                 if not instance.wa_app_id:
                     waba_id = extracted_data.get("waba_id")
                     if waba_id:
-                        wa_app = TenantWAApp.objects.get(waba_id=waba_id, bsp=BSPChoices.META)
-                        instance.wa_app = wa_app
-
-                parsing_successful = True
-            except Exception as e:
-                instance.error_message = f"Failed to parse META message: {str(e)}"
-        else:
-            # ── Gupshup (default / legacy) ─────────────────────────────
-            try:
-                extracted_data = _parse_gupshup_message_payload(payload)
+                        try:
+                            instance.wa_app = TenantWAApp.objects.get(waba_id=waba_id, bsp=BSPChoices.META)
+                        except TenantWAApp.DoesNotExist:
+                            parse_errors.append(f"No META WAApp for waba_id={waba_id}")
+                            continue
+            else:
+                # ── Gupshup (default / legacy) ─────────────────────────
+                try:
+                    extracted_data = _parse_gupshup_message_payload(payload_slice)
+                except Exception as e:  # noqa: BLE001
+                    parse_errors.append(f"Failed to parse message input: {e}")
+                    continue
 
                 # Look up WA App by gs_app_id
                 if not instance.wa_app_id:
                     gs_app_id = extracted_data.get("gs_app_id")
                     if gs_app_id:
-                        wa_app = TenantWAApp.objects.get(app_id=gs_app_id)
-                        instance.wa_app = wa_app
+                        try:
+                            instance.wa_app = TenantWAApp.objects.get(app_id=gs_app_id)
+                        except TenantWAApp.DoesNotExist:
+                            parse_errors.append(f"No WAApp for gs_app_id={gs_app_id}")
+                            continue
 
-                parsing_successful = True
-            except Exception as e:
-                instance.error_message = f"Failed to parse message input: {str(e)}"
+            parsed.append(extracted_data)
+
+        if parse_errors and not instance.error_message:
+            instance.error_message = "; ".join(parse_errors)
 
         # Save and mark as processed
         instance.is_processed = True
@@ -484,160 +501,224 @@ def process_message_webhook(pk: str):
             logger.error("Error saving WAWebhookEvent: %s", str(e))
 
         # ── Create Messages entry in team_inbox ───────────────────────
-        if parsing_successful and instance.wa_app:
-            try:
-                tenant = instance.wa_app.tenant
-                contact_phone = extracted_data.get("contact_phone")
-                contact_name = extracted_data.get("contact_name", "")
+        if parsed and instance.wa_app:
+            if len(parsed) > 1:
+                logger.info("Webhook %s carries %s inbound messages", instance.pk, len(parsed))
 
-                # Validate phone number — reject obviously invalid values
-                # that would create phantom "+None" contacts.
-                if not contact_phone or contact_phone in ("+None", "None", "+", "+null") or len(contact_phone) < 4:
-                    logger.warning(
-                        "Webhook %s: invalid contact_phone=%r — skipping "
-                        "contact/message creation (likely status webhook "
-                        "mis-classified as MESSAGE)",
-                        pk,
-                        contact_phone,
-                    )
-                    instance.error_message = f"Invalid contact_phone: {contact_phone!r}"
-                    instance.save(update_fields=["error_message"])
-                    return
-
-                # Get or create contact by phone number (#108 fallback)
-                from contacts.services import resolve_or_create_contact
-
-                contact = resolve_or_create_contact(
-                    tenant=tenant,
-                    source=MessagePlatformChoices.WHATSAPP,
-                    phone=contact_phone,
-                    defaults={
-                        "first_name": contact_name or "",
-                        "last_name": "",
-                    },
-                )
-
-                # Build message content according to team_inbox validator schema
-                content = _build_team_inbox_content(extracted_data, instance)
-
-                # Create a MessageEventIds entry for timeline ordering
-                from team_inbox.models import MessageEventIds
-
-                message_event_id = MessageEventIds.objects.create()
-
-                # Create the Messages entry
-                message = Messages.objects.create(
-                    tenant=tenant,
-                    message_id=message_event_id,
-                    content=content,
-                    direction=MessageDirectionChoices.INCOMING,
-                    platform=MessagePlatformChoices.WHATSAPP,
-                    author=AuthorChoices.CONTACT,
-                    contact=contact,
-                )
-
-                # Update timestamp to message_actual_time
-                if extracted_data.get("message_actual_time"):
-                    from django.utils.dateparse import parse_datetime
-
-                    actual_time = parse_datetime(extracted_data["message_actual_time"])
-                    if actual_time:
-                        Messages.objects.filter(pk=message.pk).update(timestamp=actual_time)
-
-                logger.debug("Created team_inbox Message %s for webhook %s", message.pk, instance.pk)
-
-                # Route to ChatFlow if contact is assigned to a ChatFlow
-                _handle_chatflow_routing(contact, instance, content)
-
-                # ── CTWA wiring (#189 + #192 + #194 + #195) ────────────
-                # Resolve-or-create the WaConversation that holds 24h
-                # service-window state; parse the CTWA referral via the
-                # BSP adapter; if present, create a CtwaLead and stamp
-                # the campaign tag on this message. All wrapped in
-                # try/except — every CTWA step is additive and must
-                # never break inbound ingestion.
-                referral_extra: dict = {}
+            for extracted_data in parsed:
                 try:
-                    from wa.adapters import get_bsp_adapter
-                    from wa.services.conversations import resolve_or_create as resolve_conversation
-
-                    conversation = resolve_conversation(wa_app=instance.wa_app, contact=contact)
-
-                    referral = None
-                    try:
-                        adapter = get_bsp_adapter(instance.wa_app)
-                        referral = adapter.parse_referral(instance.payload or {})
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("[wa.tasks] parse_referral failed: %s", exc)
-
-                    if referral is not None:
-                        referral_extra = {
-                            "referral_source_type": referral.source_type,
-                            "referral_source_id": referral.source_id,
-                            "referral_source_url": referral.source_url,
-                            "referral_headline": referral.headline,
-                            "referral_body": referral.body,
-                            "referral_media_type": referral.media_type,
-                            "referral_media_url": referral.media_url,
-                            "referral_ctwa_clid": referral.ctwa_clid,
-                        }
-
-                        from ctwa.ingestion import handle_inbound_referral
-
-                        lead = handle_inbound_referral(conversation=conversation, referral=referral)
-                        if lead is not None:
-                            referral_extra["ctwa_lead_id"] = str(lead.id)
-                            referral_extra["campaign_id"] = str(lead.campaign_id) if lead.campaign_id else ""
-                            # Auto-apply a CTWA tag to the message so the
-                            # inbox UI can render the "From CTWA Ad" badge.
-                            try:
-                                _autotag_ctwa_message(message=message, lead=lead, tenant=tenant)
-                            except Exception as exc:  # noqa: BLE001
-                                logger.warning("[wa.tasks] CTWA auto-tag failed: %s", exc)
-                except Exception as exc:  # noqa: BLE001 — never break inbound
-                    logger.warning("[wa.tasks] CTWA inbound wiring failed: %s", exc)
-
-                # Emit a normalised TriggerEvent so any active flow whose
-                # ``triggers`` config matches this inbound auto-spawns
-                # via ``chat_flow.triggers.dispatch`` (#188). Idempotent
-                # across webhook replays.
-                try:
-                    from chat_flow.triggers import TriggerEvent, emit
-
-                    body_text = _trigger_body_text(content)
-
-                    extra = {
-                        "wa_webhook_event_id": str(instance.pk),
-                        "external_message_id": extracted_data.get("message_id") or "",
-                    }
-                    extra.update(referral_extra)
-
-                    emit(
-                        TriggerEvent(
-                            tenant_id=tenant.id,
-                            channel="wa",
-                            contact_id=contact.id,
-                            inbound_row_id=str(message.pk),
-                            inbound_row_model="team_inbox.Messages",
-                            body_text=body_text,
-                            received_at=timezone.now().isoformat(),
-                            extra=extra,
-                        )
-                    )
-                except Exception as exc:  # noqa: BLE001 — never break ingestion
-                    logger.warning(
-                        "[wa.tasks] chat_flow trigger emit failed for msg %s: %s",
-                        message.pk,
-                        exc,
-                    )
-
-            except Exception as e:
-                logger.error("Error creating team_inbox Message: %s", str(e))
+                    _ingest_inbound_message(instance, extracted_data, pk)
+                except Exception as e:  # noqa: BLE001 — one message must not drop the batch
+                    logger.error("Error creating team_inbox Message: %s", str(e))
 
     except WAWebhookEvent.DoesNotExist:
         raise Exception(f"WAWebhookEvent with pk={pk} does not exist.")
     except Exception as e:
         raise Exception(f"Failed to process message webhook: {str(e)}")
+
+
+
+def _split_meta_message_payloads(payload: dict) -> list[dict]:
+    """Split one META webhook into one payload per inbound message.
+
+    META batches on three levels — several ``entry`` items per POST, several
+    ``changes`` per entry, and several ``messages`` per ``value`` — while
+    ``_parse_meta_message_payload`` reads ``entry[0] / changes[0] /
+    messages[0]``. Every other message was silently discarded and the event
+    still marked processed (#268). The *status* path in this same module has
+    always iterated all three levels, so the payload's shape was never in
+    doubt; only the message parser assumed otherwise.
+
+    Rather than change that parser's contract, each message is handed back as
+    a complete single-message payload. The parser then runs unchanged, once
+    per message, and its media download and field extraction keep working
+    exactly as they did.
+
+    Everything else in ``value`` is carried into every slice — notably
+    ``contacts`` and ``metadata``, which META sends once for a batch and which
+    each slice needs to resolve the sender and the phone number id.
+    """
+    slices: list[dict] = []
+
+    for entry in payload.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        entry_id = entry.get("id")
+
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                continue
+
+            messages = value.get("messages")
+            if not isinstance(messages, list):
+                continue
+
+            for message in messages:
+                sliced_value = {k: v for k, v in value.items() if k != "messages"}
+                sliced_value["messages"] = [message]
+                sliced_change = {k: v for k, v in change.items() if k != "value"}
+                sliced_change["value"] = sliced_value
+                slices.append({"entry": [{"id": entry_id, "changes": [sliced_change]}]})
+
+    return slices
+
+
+def _ingest_inbound_message(instance, extracted_data: dict, pk: str) -> None:
+    """Create the team_inbox message for one parsed inbound, and all that follows.
+
+    Lifted out of ``process_message_webhook`` unchanged, so that a batched
+    webhook can run it once per message (#268). It was previously the body of
+    a single ``try`` block operating on one ``extracted_data``.
+    """
+    from team_inbox.models import AuthorChoices, MessageDirectionChoices, MessagePlatformChoices, Messages
+
+    tenant = instance.wa_app.tenant
+    contact_phone = extracted_data.get("contact_phone")
+    contact_name = extracted_data.get("contact_name", "")
+
+    # Validate phone number — reject obviously invalid values
+    # that would create phantom "+None" contacts.
+    if not contact_phone or contact_phone in ("+None", "None", "+", "+null") or len(contact_phone) < 4:
+        logger.warning(
+            "Webhook %s: invalid contact_phone=%r — skipping "
+            "contact/message creation (likely status webhook "
+            "mis-classified as MESSAGE)",
+            pk,
+            contact_phone,
+        )
+        instance.error_message = f"Invalid contact_phone: {contact_phone!r}"
+        instance.save(update_fields=["error_message"])
+        return
+
+    # Get or create contact by phone number (#108 fallback)
+    from contacts.services import resolve_or_create_contact
+
+    contact = resolve_or_create_contact(
+        tenant=tenant,
+        source=MessagePlatformChoices.WHATSAPP,
+        phone=contact_phone,
+        defaults={
+            "first_name": contact_name or "",
+            "last_name": "",
+        },
+    )
+
+    # Build message content according to team_inbox validator schema
+    content = _build_team_inbox_content(extracted_data, instance)
+
+    # Create a MessageEventIds entry for timeline ordering
+    from team_inbox.models import MessageEventIds
+
+    message_event_id = MessageEventIds.objects.create()
+
+    # Create the Messages entry
+    message = Messages.objects.create(
+        tenant=tenant,
+        message_id=message_event_id,
+        content=content,
+        direction=MessageDirectionChoices.INCOMING,
+        platform=MessagePlatformChoices.WHATSAPP,
+        author=AuthorChoices.CONTACT,
+        contact=contact,
+    )
+
+    # Update timestamp to message_actual_time
+    if extracted_data.get("message_actual_time"):
+        from django.utils.dateparse import parse_datetime
+
+        actual_time = parse_datetime(extracted_data["message_actual_time"])
+        if actual_time:
+            Messages.objects.filter(pk=message.pk).update(timestamp=actual_time)
+
+    logger.debug("Created team_inbox Message %s for webhook %s", message.pk, instance.pk)
+
+    # Route to ChatFlow if contact is assigned to a ChatFlow
+    _handle_chatflow_routing(contact, instance, content)
+
+    # ── CTWA wiring (#189 + #192 + #194 + #195) ────────────
+    # Resolve-or-create the WaConversation that holds 24h
+    # service-window state; parse the CTWA referral via the
+    # BSP adapter; if present, create a CtwaLead and stamp
+    # the campaign tag on this message. All wrapped in
+    # try/except — every CTWA step is additive and must
+    # never break inbound ingestion.
+    referral_extra: dict = {}
+    try:
+        from wa.adapters import get_bsp_adapter
+        from wa.services.conversations import resolve_or_create as resolve_conversation
+
+        conversation = resolve_conversation(wa_app=instance.wa_app, contact=contact)
+
+        referral = None
+        try:
+            adapter = get_bsp_adapter(instance.wa_app)
+            referral = adapter.parse_referral(instance.payload or {})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[wa.tasks] parse_referral failed: %s", exc)
+
+        if referral is not None:
+            referral_extra = {
+                "referral_source_type": referral.source_type,
+                "referral_source_id": referral.source_id,
+                "referral_source_url": referral.source_url,
+                "referral_headline": referral.headline,
+                "referral_body": referral.body,
+                "referral_media_type": referral.media_type,
+                "referral_media_url": referral.media_url,
+                "referral_ctwa_clid": referral.ctwa_clid,
+            }
+
+            from ctwa.ingestion import handle_inbound_referral
+
+            lead = handle_inbound_referral(conversation=conversation, referral=referral)
+            if lead is not None:
+                referral_extra["ctwa_lead_id"] = str(lead.id)
+                referral_extra["campaign_id"] = str(lead.campaign_id) if lead.campaign_id else ""
+                # Auto-apply a CTWA tag to the message so the
+                # inbox UI can render the "From CTWA Ad" badge.
+                try:
+                    _autotag_ctwa_message(message=message, lead=lead, tenant=tenant)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[wa.tasks] CTWA auto-tag failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — never break inbound
+        logger.warning("[wa.tasks] CTWA inbound wiring failed: %s", exc)
+
+    # Emit a normalised TriggerEvent so any active flow whose
+    # ``triggers`` config matches this inbound auto-spawns
+    # via ``chat_flow.triggers.dispatch`` (#188). Idempotent
+    # across webhook replays.
+    try:
+        from chat_flow.triggers import TriggerEvent, emit
+
+        body_text = _trigger_body_text(content)
+
+        extra = {
+            "wa_webhook_event_id": str(instance.pk),
+            "external_message_id": extracted_data.get("message_id") or "",
+        }
+        extra.update(referral_extra)
+
+        emit(
+            TriggerEvent(
+                tenant_id=tenant.id,
+                channel="wa",
+                contact_id=contact.id,
+                inbound_row_id=str(message.pk),
+                inbound_row_model="team_inbox.Messages",
+                body_text=body_text,
+                received_at=timezone.now().isoformat(),
+                extra=extra,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — never break ingestion
+        logger.warning(
+            "[wa.tasks] chat_flow trigger emit failed for msg %s: %s",
+            message.pk,
+            exc,
+        )
 
 
 def _autotag_ctwa_message(*, message, lead, tenant):
