@@ -30,3 +30,60 @@ class WABAAPI(WAAPI):
             "headers": self.headers,
         }
         return self.make_request(request_data)
+
+    # ── App subscription (webhook delivery) ──────────────────────────────
+    #
+    # Two separate things control whether Meta sends us anything, and only
+    # one of them is app-level:
+    #
+    #   * the callback URL and verify token are configured once per app, in
+    #     the App Dashboard — there is no API call for those;
+    #   * every WABA must *additionally* be subscribed to that app, or Meta
+    #     delivers nothing for it: no messages, no statuses, no template
+    #     updates.
+    #
+    # Only the second is an API operation, and it was missing entirely
+    # (#264). Meta derives which app to subscribe from the access token, so
+    # no app id is ever sent.
+
+    @property
+    def _subscribed_apps_url(self) -> str:
+        return f"{self.BASE_URL}{self.waba_id}/subscribed_apps"
+
+    def subscribe_app(self) -> dict:
+        """``POST /{waba_id}/subscribed_apps`` — subscribe this token's app.
+
+        Idempotent: Meta returns success for a WABA that is already
+        subscribed, so callers need not check first.
+        """
+        return self.make_request(
+            {
+                "method": "POST",
+                "url": self._subscribed_apps_url,
+                "headers": self.headers,
+            }
+        )
+
+    def get_subscribed_apps(self) -> dict:
+        """``GET /{waba_id}/subscribed_apps`` — which apps receive this WABA.
+
+        Each row carries a ``whatsapp_business_api_data`` object with the
+        app's ``id``, ``name`` and ``link``.
+        """
+        return self.make_request(
+            {
+                "method": "GET",
+                "url": self._subscribed_apps_url,
+                "headers": self.headers,
+            }
+        )
+
+    def unsubscribe_app(self) -> dict:
+        """``DELETE /{waba_id}/subscribed_apps`` — stop delivery for this WABA."""
+        return self.make_request(
+            {
+                "method": "DELETE",
+                "url": self._subscribed_apps_url,
+                "headers": self.headers,
+            }
+        )
