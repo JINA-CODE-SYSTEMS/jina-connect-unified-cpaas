@@ -1,7 +1,9 @@
+from django import forms
 from django.apps import apps
 from django.contrib import admin, messages
 
-from tenants.models import RolePermission, TenantRole, TenantWAApp
+from tenants.models import RolePermission, Tenant, TenantRole, TenantWAApp
+from tenants.services.onboarding import create_tenant_with_owner, validate_new_tenant
 
 
 class RolePermissionInline(admin.TabularInline):
@@ -162,6 +164,121 @@ class TenantWAAppAdmin(admin.ModelAdmin):
                 f"Done: {success_count} app(s) refreshed, {fail_count} failed.",
                 messages.SUCCESS if fail_count == 0 else messages.WARNING,
             )
+
+
+# ── Tenant ───────────────────────────────────────────────────────────────────
+# Tenant used to fall through the generic auto-registration loop at the bottom
+# of this file: every field in list_display, no fieldsets, no validation — and
+# creating one there produced a tenant nobody could log into, because nothing
+# made the owner user or the OWNER TenantUser row (#221).
+
+
+class TenantCreationForm(forms.ModelForm):
+    """Collects the owner alongside the tenant, because one is useless without the other."""
+
+    owner_email = forms.EmailField(
+        label="Owner email",
+        help_text="If this address already has an account it is linked as owner and keeps its own password.",
+    )
+    owner_mobile = forms.CharField(
+        label="Owner mobile",
+        required=False,
+        help_text="International format, e.g. +14155552671. Required for a new account; unique across all users.",
+    )
+    temporary_password = forms.CharField(
+        label="Temporary password",
+        required=False,
+        widget=forms.PasswordInput(render_value=True),
+        help_text="Only for a new account. The owner must replace it before they can sign in.",
+    )
+    owner_first_name = forms.CharField(label="Owner first name", required=False)
+    owner_last_name = forms.CharField(label="Owner last name", required=False)
+
+    class Meta:
+        model = Tenant
+        fields = ("name", "description")
+
+    def clean(self):
+        cleaned = super().clean()
+        # Shared with the service, so the operator sees field errors here
+        # rather than a 500 — and so the two cannot disagree about the rules.
+        validate_new_tenant(
+            name=cleaned.get("name", ""),
+            owner_email=cleaned.get("owner_email", ""),
+            owner_mobile=cleaned.get("owner_mobile", ""),
+            temporary_password=cleaned.get("temporary_password", ""),
+        )
+        return cleaned
+
+
+@admin.register(Tenant)
+class TenantAdmin(admin.ModelAdmin):
+    list_display = ("name", "balance", "is_archived", "created_at")
+    # is_archived is a property, not a field, so it can be displayed but not
+    # filtered on. Filter by whether archived_at is set, which is the same
+    # question asked of the column that actually exists.
+    list_filter = (("archived_at", admin.EmptyFieldListFilter), "created_at")
+    search_fields = ("name", "description")
+    readonly_fields = ("created_at", "updated_at", "archived_at")
+    ordering = ("-created_at",)
+
+    fieldsets = (
+        (None, {"fields": ("name", "description")}),
+        ("Wallet", {"fields": ("balance", "credit_line", "threshold_alert")}),
+        ("Lifecycle", {"fields": ("archived_at", "created_at", "updated_at")}),
+    )
+
+    add_fieldsets = (
+        (None, {"fields": ("name", "description")}),
+        (
+            "Owner",
+            {
+                "description": (
+                    "A tenant without an owner cannot be logged into. These create or link one "
+                    "in the same transaction as the tenant."
+                ),
+                "fields": (
+                    "owner_email",
+                    "owner_mobile",
+                    "temporary_password",
+                    "owner_first_name",
+                    "owner_last_name",
+                ),
+            },
+        ),
+    )
+
+    def get_form(self, request, obj=None, **kwargs):
+        if obj is None:
+            kwargs["form"] = TenantCreationForm
+        return super().get_form(request, obj, **kwargs)
+
+    def get_fieldsets(self, request, obj=None):
+        return self.add_fieldsets if obj is None else self.fieldsets
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            super().save_model(request, obj, form, change)
+            return
+
+        # Creation goes through the service so the admin and the API cannot
+        # drift. The form's clean() has already run the same validation, so
+        # reaching here with bad input means a genuine race, not operator
+        # error.
+        result = create_tenant_with_owner(
+            name=form.cleaned_data["name"],
+            description=form.cleaned_data.get("description", "") or "",
+            owner_email=form.cleaned_data["owner_email"],
+            owner_mobile=form.cleaned_data.get("owner_mobile", "") or "",
+            temporary_password=form.cleaned_data.get("temporary_password", "") or "",
+            first_name=form.cleaned_data.get("owner_first_name", "") or "",
+            last_name=form.cleaned_data.get("owner_last_name", "") or "",
+        )
+        # Hand the saved row back to the admin so its log entry and redirect
+        # point at a real object.
+        obj.pk = result.tenant.pk
+        obj.refresh_from_db()
+        self.message_user(request, result.summary, messages.SUCCESS)
 
 
 # Auto-register remaining models that aren't already registered

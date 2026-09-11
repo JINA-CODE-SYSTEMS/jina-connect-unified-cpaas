@@ -67,6 +67,16 @@ class User(AbstractUser):
     mobile = PhoneNumberField(unique=True)
     image = models.ImageField(upload_to="user_images/", blank=True, null=True)
     birth_date = models.DateField(blank=True, null=True)
+
+    # Set when an operator creates the account with a temporary password
+    # (#221). While it is true the account cannot obtain a token — see
+    # JwtUserSerializer — so a temporary password cannot quietly become the
+    # permanent one. The holder clears it via /users/set-initial-password/,
+    # which takes the temporary password and does not need a token.
+    must_change_password = models.BooleanField(
+        default=False,
+        help_text="The password was set by an operator and must be replaced before the account can be used.",
+    )
     address = models.JSONField(
         blank=True,
         null=True,
