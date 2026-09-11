@@ -389,19 +389,16 @@ class MetaWebhookView(View):
             # Always return 200 to Meta — non-200 causes delivery throttling
             return JsonResponse({"status": "ignored", "reason": "missing_waba_id"}, status=200)
 
-        # Try to match by waba_id first, then fallback to phone_number_id
-        wa_app = None
-        try:
-            wa_app = WAApp.objects.get(waba_id=waba_id, bsp=BSPChoices.META)
-        except WAApp.DoesNotExist:
-            if phone_number_id:
-                try:
-                    wa_app = WAApp.objects.get(
-                        phone_number_id=phone_number_id,
-                        bsp=BSPChoices.META,
-                    )
-                except WAApp.DoesNotExist:
-                    pass
+        # Try to match by waba_id first, then fallback to phone_number_id.
+        # ``bsp_q`` rather than ``bsp=META`` because a blank column means
+        # META too — filtering on the literal answered those apps' webhooks
+        # with "unknown_app" while every other path served them (#265).
+        from wa.adapters import bsp_q
+
+        meta_apps = WAApp.objects.filter(bsp_q(BSPChoices.META))
+        wa_app = meta_apps.filter(waba_id=waba_id).first()
+        if wa_app is None and phone_number_id:
+            wa_app = meta_apps.filter(phone_number_id=phone_number_id).first()
 
         if wa_app is None:
             logger.warning(

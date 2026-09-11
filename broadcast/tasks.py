@@ -859,25 +859,16 @@ def route_to_platform_handler(message):
         return {"success": False, "error": error_msg}
 
 
-def _get_wa_api_for_broadcast(message):
-    """
-    Resolve the correct WhatsApp API client for a BroadcastMessage based on
-    the BSP of the template's wa_app.
+def _wa_app_for_broadcast(message):
+    """The ``TenantWAApp`` this broadcast message sends from.
 
     Resolution chain:
         message → broadcast → template_number → .gupshup_template (WATemplate)
-                  → wa_app (TenantWAApp) → bsp
-
-    Returns:
-        API client instance with a ``.send_template(data, is_marketing)`` method.
+                  → wa_app (TenantWAApp)
 
     Raises:
-        ValueError: If wa_app or credentials cannot be resolved.
+        ValueError: if the chain is broken.
     """
-    from django.conf import settings
-
-    from tenants.models import BSPChoices
-
     template_number = message.broadcast.template_number
     if not template_number or not hasattr(template_number, "gupshup_template"):
         raise ValueError("Broadcast has no linked template_number / WATemplate")
@@ -887,52 +878,19 @@ def _get_wa_api_for_broadcast(message):
     if not wa_app:
         raise ValueError("WATemplate has no wa_app")
 
-    bsp = getattr(wa_app, "bsp", None)
-
-    if bsp == BSPChoices.META:
-        from wa.utility.apis.meta.template_api import TemplateAPI as MetaTemplateAPI
-
-        creds = wa_app.bsp_credentials or {}
-        token = creds.get("access_token") or getattr(settings, "META_PERM_TOKEN", None)
-        if not token:
-            raise ValueError(
-                "META access token not configured. Set bsp_credentials.access_token "
-                "on the WAApp or META_PERM_TOKEN in settings."
-            )
-        waba_id = wa_app.waba_id
-        if not waba_id:
-            raise ValueError("WABA ID not configured on the WAApp.")
-
-        phone_number_id = wa_app.phone_number_id
-        if not phone_number_id:
-            raise ValueError(
-                "phone_number_id not configured on the WAApp. Required for META Cloud API message sending."
-            )
-
-        return MetaTemplateAPI(
-            token=token,
-            waba_id=waba_id,
-            phone_number_id=phone_number_id,
-        )
-
-    else:
-        # Default: Gupshup (covers BSPChoices.GUPSHUP and legacy apps)
-        from wa.utility.apis.gupshup.template_api import TemplateAPI as GupshupTemplateAPI
-
-        app_id = wa_app.app_id
-        app_secret = wa_app.app_secret
-        if not app_id or not app_secret:
-            raise ValueError(f"Gupshup credentials (app_id/app_secret) missing on WAApp {wa_app.pk}")
-
-        return GupshupTemplateAPI(appId=app_id, token=app_secret)
+    return wa_app, wa_template
 
 
 def handle_whatsapp_message(message):
     """
-    Handle WhatsApp message sending (BSP-aware).
+    Handle WhatsApp message sending, through the BSP adapter.
 
-    Resolves the correct API client (Gupshup or META Direct) from the
-    template's wa_app, then sends via ``api.send_template()``.
+    This used to pick an API client from ``wa_app.bsp`` here, with
+    ``else: Gupshup`` as the fallback — so a blank ``bsp`` came here and
+    failed with "Gupshup credentials missing" while the adapter factory,
+    reading the same column, handed back META Direct (#265). Routing through
+    ``get_bsp_adapter`` means there is one answer to "which provider", and it
+    is the same one the sync, webhook and template paths get.
 
     Args:
         message (BroadcastMessage): The message to send
@@ -940,22 +898,7 @@ def handle_whatsapp_message(message):
     Returns:
         dict: Send result with success status and details
     """
-    from broadcast.models import BroadcastMessage
-
-    message: BroadcastMessage = message
-
-    def extract_message_id(response: dict) -> str:
-        """
-        Extract message ID from API response.
-        Both Gupshup and META return: {'messages': [{'id': 'wamid.xxx'}], ...}
-        """
-        try:
-            messages = response.get("messages", [])
-            if messages and len(messages) > 0:
-                return messages[0].get("id", "")
-        except (KeyError, IndexError, TypeError):
-            pass
-        return ""
+    from wa.adapters import get_bsp_adapter
 
     try:
         logger.info(f"Sending WhatsApp message to {message.contact.phone}")
@@ -969,16 +912,29 @@ def handle_whatsapp_message(message):
             if comp.get("type") == "CAROUSEL":
                 logger.info(f"CAROUSEL payload for {message.contact.phone}: {json.dumps(comp, indent=2, default=str)}")
 
-        wa_api = _get_wa_api_for_broadcast(message)
+        wa_app, wa_template = _wa_app_for_broadcast(message)
         is_marketing = message.broadcast.is_marketing_broadcast
 
-        try:
-            result = wa_api.send_template(data=message.payload, is_marketing=is_marketing)
-            return {"success": True, "message_id": extract_message_id(result), "response": result}
-        except Exception as e:
+        result = get_bsp_adapter(wa_app).send_template(
+            message.payload,
+            is_marketing=is_marketing,
+            template_type=getattr(wa_template, "template_type", "") or "",
+        )
+
+        if not result.success:
             msg_type = "marketing" if is_marketing else "transactional"
-            logger.exception(f"Error sending WhatsApp {msg_type} template: {str(e)}")
-            return {"success": False, "error": str(e)}
+            logger.error(f"Error sending WhatsApp {msg_type} template: {result.error_message}")
+            return {"success": False, "error": result.error_message}
+
+        # The adapter normalises the id, so this no longer has to guess at the
+        # provider's response shape — the guess here only ever handled META's,
+        # which left `message_id` blank on Gupshup and silently disabled the
+        # duplicate-send guard in `_already_sent` (#271).
+        return {
+            "success": True,
+            "message_id": (result.data or {}).get("message_id") or "",
+            "response": result.raw_response,
+        }
 
     except Exception as e:
         error_msg = f"WhatsApp sending failed: {str(e)}"

@@ -195,7 +195,14 @@ class TenantWAApp(BaseTenantModelForFilterUser):
     )
 
     # BSP Support
-    bsp = models.CharField(max_length=20, choices=BSPChoices.choices, default=BSPChoices.GUPSHUP)
+    # Defaults to META, matching ``wa.adapters.DEFAULT_BSP``. It defaulted to
+    # GUPSHUP, which meant an app created by admin, fixture, data migration or
+    # the legacy tenant-gupshup endpoint without an explicit bsp sent every
+    # broadcast to partner.gupshup.io and hard-failed on missing credentials —
+    # while the adapter factory, reading the same column, returned META
+    # Direct (#265). Change this and DEFAULT_BSP together; a test asserts they
+    # agree.
+    bsp = models.CharField(max_length=20, choices=BSPChoices.choices, default=BSPChoices.META)
 
     # META identifiers (used when bsp=META)
     waba_id = models.CharField(max_length=100, blank=True, null=True, help_text="WhatsApp Business Account ID")
