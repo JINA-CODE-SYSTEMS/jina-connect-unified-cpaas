@@ -1209,6 +1209,113 @@ def _build_team_inbox_content(extracted_data: dict, instance) -> dict:
 # ── META template webhook processor ──────────────────────────────────────────
 
 
+# ── Account / phone-number state webhooks ────────────────────────────────────
+
+#: How META's account events map onto ``WABAInfo.can_send_message``. Events not
+#: listed are recorded in the log and change nothing — inventing a state from
+#: an event we do not understand is worse than leaving the synced value alone.
+_ACCOUNT_EVENT_TO_SEND_STATE = {
+    "ACCOUNT_RESTRICTION": "LIMITED",
+    "ACCOUNT_VIOLATION": "BLOCKED",
+    "DISABLED_UPDATE": "BLOCKED",
+    "ACCOUNT_DELETED": "BLOCKED",
+    "ACCOUNT_VERIFIED": "AVAILABLE",
+    "ACCOUNT_RESTORED": "AVAILABLE",
+}
+
+_KNOWN_TIERS = frozenset(
+    {"TIER_50", "TIER_250", "TIER_1K", "TIER_10K", "TIER_100K", "TIER_UNLIMITED", "TIER_NOT_SET"}
+)
+
+
+@shared_task
+def process_account_webhook(pk: str):
+    """Apply META's account and phone-number events to the stored WABA state.
+
+    ``account_update`` was classified correctly and then dropped: the dispatch
+    had no ACCOUNT branch, so it fell to "unknown event type" and was marked
+    processed (#267). ``phone_number_quality_update`` was worse — not
+    classified at all, so the one push channel that reports a tier change or a
+    flagged number never even reached a handler.
+
+    Together with the pull-side sync, this is what gives a Meta Direct
+    deployment any quality signal: the sync answers "what is the tier now",
+    this answers "it just changed".
+    """
+    from tenants.models import WABAInfo
+    from wa.models import WAWebhookEvent
+
+    try:
+        instance = WAWebhookEvent.objects.get(pk=pk)
+    except WAWebhookEvent.DoesNotExist:
+        logger.debug("WAWebhookEvent with pk=%s does not exist", pk)
+        return
+
+    applied: list[str] = []
+    try:
+        if not instance.wa_app:
+            instance.error_message = "Account webhook has no WAApp to apply to"
+        else:
+            waba_info, _ = WABAInfo.objects.get_or_create(wa_app=instance.wa_app)
+            dirty: set[str] = set()
+
+            # Batched like every other META delivery — iterate all three
+            # levels rather than indexing [0], the lesson from #268.
+            for entry in (instance.payload or {}).get("entry") or []:
+                if not isinstance(entry, dict):
+                    continue
+                for change in entry.get("changes") or []:
+                    if not isinstance(change, dict):
+                        continue
+                    value = change.get("value")
+                    if not isinstance(value, dict):
+                        continue
+
+                    event = str(value.get("event") or "").upper()
+
+                    # A tier change is concrete and worth trusting.
+                    limit = str(value.get("current_limit") or "").upper()
+                    if limit:
+                        if limit in _KNOWN_TIERS:
+                            waba_info.messaging_limit = limit
+                            dirty.add("messaging_limit")
+                            applied.append(f"tier={limit}")
+                        else:
+                            logger.warning("[wa.tasks] unknown current_limit %r on account webhook %s", limit, pk)
+
+                    # FLAGGED means META has downgraded the number's quality.
+                    # UNFLAGGED only says it recovered, not to what, so it is
+                    # logged and left for the periodic sync to fill in rather
+                    # than guessed at.
+                    if event == "FLAGGED":
+                        waba_info.phone_quality = "RED"
+                        dirty.add("phone_quality")
+                        applied.append("quality=RED")
+                    elif event == "UNFLAGGED":
+                        logger.info("[wa.tasks] number unflagged on %s — quality level left to the next sync", pk)
+
+                    send_state = _ACCOUNT_EVENT_TO_SEND_STATE.get(event)
+                    if send_state:
+                        waba_info.can_send_message = send_state
+                        dirty.add("can_send_message")
+                        applied.append(f"can_send={send_state}")
+                    elif event and event not in ("FLAGGED", "UNFLAGGED"):
+                        logger.info("[wa.tasks] account event %r recorded, no field mapped", event)
+
+            if dirty:
+                waba_info.save(update_fields=sorted(dirty))
+                logger.info("[wa.tasks] account webhook %s applied: %s", pk, ", ".join(applied))
+            else:
+                logger.info("[wa.tasks] account webhook %s carried nothing actionable", pk)
+
+    except Exception as exc:  # noqa: BLE001 — never leave the row unprocessed
+        logger.exception("[wa.tasks] account webhook %s failed: %s", pk, exc)
+        instance.error_message = f"Account webhook failed: {exc}"
+
+    instance.is_processed = True
+    instance.save(update_fields=["is_processed", "error_message"])
+
+
 def _process_meta_template_webhook(instance, payload: dict):
     """
     Process a META Cloud API template status/category webhook.
@@ -1306,7 +1413,32 @@ def _process_meta_template_webhook(instance, payload: dict):
     }
 
     try:
-        if field == "template_category_update":
+        if field == "message_template_quality_update":
+            # ── Quality score ─────────────────────────────────────────
+            # This is how a template dies: META drops the score to RED and
+            # then pauses it. The event was unclassified and discarded, so
+            # the pause was the first visible sign (#267). Status is
+            # deliberately untouched — a quality drop is a warning, not a
+            # state change, and PAUSED arrives on its own event.
+            new_score = str(value.get("new_quality_score") or "").upper()
+            template = _find_template()
+            if template and new_score in ("GREEN", "YELLOW", "RED", "UNKNOWN"):
+                previous = str(value.get("previous_quality_score") or "").upper() or "?"
+                template.quality_rating = new_score
+                template.quality_rating_updated_at = timezone.now()
+                template.save(update_fields=["quality_rating", "quality_rating_updated_at"])
+                logger.info(
+                    "META template %s quality: %s→%s",
+                    template.element_name,
+                    previous,
+                    new_score,
+                )
+            elif not template:
+                logger.info("Quality update for unknown template %s/%s", meta_template_id, template_name)
+            else:
+                logger.warning("Unrecognised quality score %r for template %s", new_score, template_name)
+
+        elif field == "template_category_update":
             # ── Category change ───────────────────────────────────────
             new_category_str = (value.get("new_category") or "").upper()
             template = _find_template()
@@ -3207,6 +3339,7 @@ def process_webhook_event_task(pk: str):
     - MESSAGE: process_message_webhook
     - TEMPLATE: process_template_webhook
     - STATUS: process_message_status_webhook
+    - ACCOUNT: process_account_webhook
     - BILLING: (no processing currently)
 
     Args:
@@ -3229,6 +3362,8 @@ def process_webhook_event_task(pk: str):
             instance.is_processed = True
             instance.save(update_fields=["is_processed"])
             logger.debug(f"Billing webhook {pk} marked as processed (no action required)")
+        elif event_type == "ACCOUNT":
+            process_account_webhook(pk)
         elif event_type == "PAYMENT":
             process_payment_webhook(pk)
         elif event_type == "UNKNOWN":
