@@ -137,3 +137,101 @@ class SetPlatformCurrencyCommandTestCase(TestCase):
     def test_an_unsupported_currency_is_rejected(self):
         with self.assertRaises(CommandError):
             self._run("--to", "XYZ")
+
+
+@override_settings(PLATFORM_DEFAULT_CURRENCY="ZAR")
+class EditingAWalletKeepsItsCurrencyTestCase(TestCase):
+    """Editing an amount must not relabel the money (#228).
+
+    The host dashboard PATCHes balance, credit line and threshold as bare
+    numbers. A MoneyField's default_currency is USD for every wallet, so
+    djmoney resolves a bare number to USD — which on a non-USD deployment
+    turns R1,000 into $1,000: same digits, different money, no conversion.
+
+    Nothing downstream catches it. Stamping runs only at creation, and the
+    mixed-currency guard cannot fire because all three fields are sent
+    together, so they land in USD consistently and the arithmetic stays valid.
+    """
+
+    def setUp(self):
+        from tenants.serializers import TenantSerializer
+
+        self.serializer_class = TenantSerializer
+        self.tenant = Tenant.objects.create(name="ZA Co")
+        self.assertEqual(str(self.tenant.balance.currency), "ZAR")
+
+    def _patch(self, payload):
+        serializer = self.serializer_class(self.tenant, data=payload, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        self.tenant.refresh_from_db()
+
+    def test_a_bare_amount_does_not_restamp_the_wallet(self):
+        self._patch({"balance": 1000.0, "credit_line": 500.0, "threshold_alert": 10.0})
+
+        self.assertEqual(self.tenant.balance, Money(Decimal("1000"), "ZAR"))
+        self.assertEqual(self.tenant.credit_line, Money(Decimal("500"), "ZAR"))
+        self.assertEqual(self.tenant.threshold_alert, Money(Decimal("10"), "ZAR"))
+
+    def test_editing_one_field_leaves_the_others_alone(self):
+        self._patch({"balance": 250.0})
+
+        self.assertEqual(str(self.tenant.balance.currency), "ZAR")
+        self.assertEqual(self.tenant.balance.amount, Decimal("250"))
+        self.assertEqual(str(self.tenant.credit_line.currency), "ZAR")
+
+    def test_an_explicit_currency_still_wins(self):
+        """Relabelling on purpose must stay possible — that is what the
+        set-platform-currency command does.
+
+        All three fields have to move together: a wallet holding a mix is
+        unusable, and BaseWallet.save rejects it.
+        """
+        self._patch(
+            {
+                "balance": 1000.0,
+                "balance_currency": "USD",
+                "credit_line": 500.0,
+                "credit_line_currency": "USD",
+                "threshold_alert": 10.0,
+                "threshold_alert_currency": "USD",
+            }
+        )
+
+        self.assertEqual(str(self.tenant.balance.currency), "USD")
+        self.assertEqual(str(self.tenant.credit_line.currency), "USD")
+
+    def test_relabelling_a_single_field_is_still_refused(self):
+        """The mixed-currency guard must keep working.
+
+        It is precisely because the dashboard sends all three fields together
+        that this guard never fired on the bug above — they landed in USD
+        consistently, so the arithmetic stayed valid and nothing complained.
+        """
+        serializer = self.serializer_class(
+            self.tenant, data={"balance": 1000.0, "balance_currency": "USD"}, partial=True
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+        with self.assertRaises(TypeError):
+            serializer.save()
+
+    def test_the_amount_is_never_converted(self):
+        """Preserving the currency must not quietly apply an exchange rate."""
+        self._patch({"balance": 1234.56})
+
+        self.assertEqual(self.tenant.balance, Money(Decimal("1234.56"), "ZAR"))
+
+
+@override_settings(PLATFORM_DEFAULT_CURRENCY="USD")
+class EditingAUsdWalletIsUnaffectedTestCase(TestCase):
+    def test_a_usd_deployment_behaves_exactly_as_before(self):
+        from tenants.serializers import TenantSerializer
+
+        tenant = Tenant.objects.create(name="US Co")
+        serializer = TenantSerializer(tenant, data={"balance": 42.0}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        tenant.refresh_from_db()
+
+        self.assertEqual(tenant.balance, Money(Decimal("42"), "USD"))
