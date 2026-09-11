@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from djmoney.contrib.django_rest_framework import MoneyField
+from djmoney.money import Money
 from rest_framework import serializers, status
 
 from abstract.serializers import BaseSerializer
@@ -104,6 +105,38 @@ class TenantSerializer(BaseSerializer):
     class Meta(BaseSerializer.Meta):
         model = Tenant
         fields = "__all__"
+
+    # Wallet fields, all of which must hold the same currency as each other.
+    _MONEY_FIELDS = ("balance", "credit_line", "threshold_alert")
+
+    def update(self, instance, validated_data):
+        """Keep the currency the wallet already holds unless one was named.
+
+        A MoneyField's ``default_currency`` is fixed at class-definition time
+        and is USD for every wallet, so djmoney's DRF field resolves a bare
+        number to USD. A client that PATCHes ``{"balance": 1000}`` against a
+        ZAR wallet therefore restamps it: R1,000 becomes $1,000 — the same
+        digits, different money, no conversion and no error.
+
+        Nothing downstream catches it either. ``_stamp_platform_currency``
+        runs only on creation, and the mixed-currency guard in
+        ``BaseWallet.save`` cannot fire because the host dashboard sends all
+        three fields together, so they land in USD consistently and the
+        arithmetic stays valid.
+
+        An explicitly supplied ``*_currency`` still wins — relabelling a
+        wallet on purpose is what the set-platform-currency command is for,
+        and this must not block it.
+        """
+        sent = getattr(self, "initial_data", None) or {}
+        for name in self._MONEY_FIELDS:
+            amount = validated_data.get(name)
+            if amount is None or f"{name}_currency" in sent:
+                continue
+            held = getattr(instance, name, None)
+            if held is not None and held.currency != amount.currency:
+                validated_data[name] = Money(amount.amount, held.currency)
+        return super().update(instance, validated_data)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
