@@ -616,6 +616,19 @@ def _is_transient(error_text: str) -> bool:
     return any(marker in lowered for marker in _TRANSIENT_ERROR_MARKERS)
 
 
+def _is_opted_out(message) -> bool:
+    """Whether this message must not be sent because the contact opted out (#276).
+
+    MARKETING only. Utility and authentication templates are transactional —
+    an order update or a login code is not what anyone unsubscribed from, and
+    Meta draws the same line — so suppressing them would break traffic the
+    contact still expects.
+    """
+    if not message.broadcast.is_marketing_broadcast:
+        return False
+    return bool(message.contact and message.contact.marketing_opt_out)
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def process_broadcast_messages_batch(self, message_ids: List[int]):
     """
@@ -636,8 +649,12 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
     logger.info(f"Processing batch of {len(message_ids)} broadcast messages")
 
     try:
-        # Get messages with related broadcast and contact data
-        messages = BroadcastMessage.objects.select_related("broadcast", "contact").filter(id__in=message_ids)
+        # Get messages with related broadcast and contact data. The template is
+        # pulled in too because the opt-out check below reads its category, and
+        # a lazy load there would be two extra queries per message in the batch.
+        messages = BroadcastMessage.objects.select_related(
+            "broadcast", "contact", "broadcast__template_number__gupshup_template"
+        ).filter(id__in=message_ids)
 
         if not messages.exists():
             logger.warning(f"No messages found for IDs: {message_ids}")
@@ -650,6 +667,7 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
 
         skipped_count = 0
         retryable_count = 0
+        suppressed_count = 0
 
         # Process each message
         for message in messages:
@@ -666,6 +684,24 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                         message.message_id or "",
                     )
                     skipped_count += 1
+                    continue
+
+                # A contact who opted out of marketing gets no marketing
+                # template (#276). The check sits here, ahead of the provider
+                # call, because that call is the spend — and because the
+                # charge estimate already left this contact out, so sending
+                # anyway would bill nobody for a message Meta counts against
+                # the number's quality rating.
+                if _is_opted_out(message):
+                    logger.info(
+                        "Suppressing message %s — contact %s opted out of marketing",
+                        message.id,
+                        message.contact_id,
+                    )
+                    message.status = MessageStatusChoices.SUPPRESSED
+                    message.response = "Suppressed: contact opted out of marketing messages"
+                    message.save(update_fields=["status", "response"])
+                    suppressed_count += 1
                     continue
 
                 # Update status to SENDING
@@ -749,6 +785,7 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
             "failed": failed_count,
             "retryable": retryable_count,
             "skipped_already_sent": skipped_count,
+            "suppressed_opted_out": suppressed_count,
             "message_ids": processed_ids,
         }
 

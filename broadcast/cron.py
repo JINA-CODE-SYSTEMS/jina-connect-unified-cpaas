@@ -52,6 +52,7 @@ def update_broadcast_status():
                 read=Count("id", filter=Q(status=MessageStatusChoices.READ)),
                 failed=Count("id", filter=Q(status=MessageStatusChoices.FAILED)),
                 blocked=Count("id", filter=Q(status=MessageStatusChoices.BLOCKED)),
+                suppressed=Count("id", filter=Q(status=MessageStatusChoices.SUPPRESSED)),
                 pending=Count(
                     "id",
                     filter=Q(
@@ -64,7 +65,11 @@ def update_broadcast_status():
                 ),
             )
 
-            total_messages = message_stats["total"]
+            # Opted-out recipients were never attempted and never charged
+            # (#276), so they belong in neither column. Left in the
+            # denominator they would make an otherwise complete broadcast read
+            # as partially sent forever.
+            total_messages = message_stats["total"] - message_stats["suppressed"]
             pending_messages = message_stats["pending"]
             # SENT + DELIVERED + READ count as successful (SENT accepted by API, delivery may still come)
             successful_messages = message_stats["sent"] + message_stats["delivered"] + message_stats["read"]
@@ -91,10 +96,15 @@ def update_broadcast_status():
             old_status = broadcast.status
             new_status = None
 
-            if total_messages == 0:
+            if message_stats["total"] == 0:
                 # No messages created - mark as failed
                 new_status = BroadcastStatusChoices.FAILED
                 broadcast.reason_for_cancellation = "No messages were created for this broadcast"
+            elif total_messages == 0:
+                # Every recipient had opted out (#276). The broadcast ran to
+                # completion with nothing left to send — not FAILED, which
+                # would imply something to retry and something to refund.
+                new_status = BroadcastStatusChoices.SENT
             elif successful_messages == total_messages:
                 # All messages delivered successfully
                 new_status = BroadcastStatusChoices.SENT

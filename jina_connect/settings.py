@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import json
 import os
 import tempfile
 import warnings
@@ -383,6 +384,74 @@ USE_TZ = True
 # Assumed country for phone numbers entered in national rather than E.164
 # format. Set per deployment so local numbers validate.
 PHONENUMBER_DEFAULT_REGION = config("PHONENUMBER_DEFAULT_REGION", "IN")
+
+
+# ── Marketing opt-out keywords (#276) ────────────────────────────────────────
+def _locale_keyword_overrides(env_key: str) -> dict:
+    """Per-locale keyword lists supplied as a JSON object in the environment.
+
+    Bad JSON warns and is ignored rather than raising: one mistyped env var
+    must not take the deployment down, and the built-in defaults are a safe
+    place to land.
+    """
+    raw = config(env_key, "")
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        warnings.warn(
+            f"{env_key} is not valid JSON — ignoring it and using the built-in keywords.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return {}
+    if not isinstance(parsed, dict):
+        warnings.warn(
+            f"{env_key} must be a JSON object mapping locale to keyword list — ignoring it.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return {}
+    return {
+        str(locale): [str(word) for word in words]
+        for locale, words in parsed.items()
+        if isinstance(words, (list, tuple))
+    }
+
+
+# Honouring an opt-out is a WhatsApp Business Policy requirement, and Meta
+# enforces it through quality rating rather than through an API error: a
+# recipient who cannot unsubscribe blocks and reports instead, the number's
+# rating drops, and its messaging tier is lowered. Where many tenants share one
+# business portfolio that cost is pooled, so one careless campaign reaches
+# everybody's deliverability.
+#
+# Keyed by locale because the platform is white-labelled and deployments do not
+# all serve English. The "default" set applies on top of every locale — "stop"
+# travels well beyond English-speaking markets, and a recipient who reaches for
+# it means it. See ``contacts.opt_out`` for how the sets are matched.
+#
+# Override per deployment with a JSON object in the env, e.g.
+#   MARKETING_OPT_OUT_KEYWORDS={"pt": ["parar", "sair"]}
+# Keys given in the env replace that locale's list; other locales are kept, so
+# ``{"default": []}`` is how a deployment drops the built-in English words.
+#
+# Deliberately absent from the defaults: "cancel", "end" and "quit". They are
+# SMS convention, but on WhatsApp they are ordinary answers inside a
+# conversational flow ("cancel" the booking, not the marketing), and an
+# accidental opt-out is invisible until the contact asks why they stopped
+# hearing from us.
+MARKETING_OPT_OUT_KEYWORDS = {
+    "default": ["stop", "unsubscribe", "opt out", "optout"],
+    **_locale_keyword_overrides("MARKETING_OPT_OUT_KEYWORDS"),
+}
+
+MARKETING_OPT_IN_KEYWORDS = {
+    "default": ["start", "unstop", "subscribe", "opt in", "optin"],
+    **_locale_keyword_overrides("MARKETING_OPT_IN_KEYWORDS"),
+}
+
 
 # ── Platform currency ────────────────────────────────────────────────────────
 # One currency per deployment, set at provisioning and changed almost never.
