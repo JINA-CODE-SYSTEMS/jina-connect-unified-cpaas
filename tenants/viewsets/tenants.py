@@ -1,10 +1,12 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count
+from djmoney.money import Money
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
+from abstract.exceptions import WalletCreditError
 from abstract.viewsets.base import BaseTenantModelViewSet
 from tenants.filters import TenantFilter
 from tenants.models import RolePermission, Tenant, TenantRole, TenantUser
@@ -16,8 +18,10 @@ from tenants.serializers import (
     TenantRegistrationSerializer,
     TenantSerializer,
     TransferOwnershipSerializer,
+    WalletMovementSerializer,
 )
 from tenants.services.onboarding import create_tenant_with_owner
+from tenants.services.wallet import credit_tenant_wallet, debit_tenant_wallet
 
 
 class TenantViewSet(BaseTenantModelViewSet):
@@ -63,7 +67,11 @@ class TenantViewSet(BaseTenantModelViewSet):
         """
         Get permissions for the viewset.
         """
-        if self.action in ("create", "admin_create"):
+        if self.action in ("create", "admin_create", "wallet_movement"):
+            # All three are host operations, deliberately not tenant role
+            # permissions. Crediting in particular: a tenant must never be
+            # able to credit itself, which is what
+            # jain-t/jina-connect#613 was about.
             self.permission_classes = [IsAdminUser]
         elif self.action in [
             "register",
@@ -775,6 +783,45 @@ class TenantViewSet(BaseTenantModelViewSet):
                     "must_change_password": result.owner.must_change_password,
                 },
                 "detail": result.summary,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="wallet-movement", url_name="wallet-movement")
+    def wallet_movement(self, request, pk=None):
+        """Apply an operator-recorded credit or debit against a settled invoice.
+
+        For deployments that invoice and settle offline rather than taking
+        card payments. Host/staff only — see get_permissions.
+        """
+        tenant = self.get_object()
+        serializer = WalletMovementSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        apply_movement = credit_tenant_wallet if data["direction"] == "credit" else debit_tenant_wallet
+
+        try:
+            txn = apply_movement(
+                tenant,
+                Money(data["amount"], data["currency"].upper()),
+                data["reference"],
+                request.user,
+                note=data.get("note", ""),
+            )
+        except WalletCreditError as exc:
+            # Every subclass means the same thing to a caller: nothing was
+            # applied. The message says which rule stopped it.
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        tenant.refresh_from_db()
+        return Response(
+            {
+                "transaction_id": txn.system_transaction_id,
+                "type": txn.transaction_type,
+                "reference": txn.reference,
+                "amount": str(txn.amount),
+                "balance": str(tenant.balance),
             },
             status=status.HTTP_201_CREATED,
         )
