@@ -67,22 +67,39 @@ def websocket_info(request):
                 "get_token_endpoint": request.build_absolute_uri("/token/"),
                 "token_format": "JWT (JSON Web Token)",
             },
+            # Kept in step with TeamInboxConsumer.receive() and the types it
+            # actually sends — the list used to advertise a "send_message"
+            # the consumer has never handled, so a client following this
+            # document got back "Unknown message type" (#274). Replies are
+            # posted over REST, not the socket.
             "supported_message_types": {
-                "client_to_server": ["send_message", "mark_as_read", "get_messages", "client_info"],
+                "client_to_server": [
+                    "mark_as_read",
+                    "get_timeline",
+                    "get_chat_list",
+                    "typing_indicator",
+                    "client_info",
+                ],
                 "server_to_client": [
                     "connection_established",
+                    "timeline",
+                    "chat_list",
                     "new_message",
-                    "contact_message",
-                    "message_sent",
-                    "message_history",
                     "messages_read",
+                    "typing_indicator",
+                    "message_status_update",
+                    "payment_status_update",
+                    "assignment_update",
+                    "mention_notification",
                     "error",
                 ],
             },
             "message_examples": {
-                "send_message": {"type": "send_message", "content": {"text": "Hello team!"}, "platform": "WHATSAPP"},
-                "mark_as_read": {"type": "mark_as_read", "message_ids": ["msg_123", "msg_456"]},
-                "get_messages": {"type": "get_messages", "limit": 50, "offset": 0},
+                "mark_as_read": {"type": "mark_as_read", "message_ids": [123, 456], "contact_id": 789},
+                "get_timeline": {"type": "get_timeline", "contact_id": 789, "limit": 50, "offset": 0},
+                "get_chat_list": {"type": "get_chat_list", "limit": 50, "offset": 0, "search": "john"},
+                "typing_indicator": {"type": "typing_indicator", "contact_id": 789, "is_typing": True},
+                "client_info": {"type": "client_info", "client_type": "web"},
             },
             "response_examples": {
                 "connection_established": {
@@ -101,16 +118,13 @@ def websocket_info(request):
                         "timestamp": "2024-01-01T12:00:00Z",
                     },
                 },
-                "contact_message": {
-                    "type": "contact_message",
-                    "message": {
-                        "id": 124,
-                        "content": {"text": "Customer inquiry"},
-                        "platform": "WHATSAPP",
-                        "author": "CONTACT",
-                        "timestamp": "2024-01-01T12:01:00Z",
-                    },
-                    "priority": "high",
+                "messages_read": {
+                    "type": "messages_read",
+                    "message_ids": [123, 124],
+                    "contact_id": 789,
+                    "user_id": "user_123",
+                    "user_name": "Jane Doe",
+                    "timestamp": "2024-01-01T12:01:00Z",
                 },
             },
             "connection_flow": [
