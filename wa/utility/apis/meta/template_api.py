@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import ClassVar, Optional
 
 from .waba import WABAAPI
 
@@ -7,6 +7,16 @@ class TemplateAPI(WABAAPI):
     # Required for message sending (POST /{phone_number_id}/messages).
     # Not needed for template CRUD which uses waba_id.
     phone_number_id: Optional[str] = None
+
+    # Every field we actually parse off a template read, asked for by name.
+    #
+    # Whether ``rejected_reason`` and ``quality_score`` are in Graph's default
+    # field set for these edges is not settled, and a missing field is silent:
+    # the response parses fine and the value is simply absent — which is
+    # indistinguishable from "not rejected". ``/phone_numbers`` already spells
+    # its fields out for the same reason, so do the same here rather than rely
+    # on a default that costs nothing to stop relying on (#272).
+    TEMPLATE_FIELDS: ClassVar[str] = "id,name,language,status,category,components,rejected_reason,quality_score"
 
     @property
     def _apply_for_templates(self):
@@ -237,6 +247,31 @@ class TemplateAPI(WABAAPI):
         request_data = {"method": "POST", "url": url, "headers": self.json_headers, "data": data}
         return self.make_json_request(request_data)
 
+    def edit_template(self, template_id: str, data: dict):
+        """
+        Edit an existing template via ``POST /{template_id}``.
+
+        META has no "resubmit" — an approved or rejected template is amended
+        in place and goes back into review.  Re-POSTing the *create* endpoint
+        with a name META already holds fails as a duplicate, which is what
+        made a rejected template unfixable (#272).
+
+        ``name`` and ``language`` are not editable and must not be sent;
+        callers pass the same payload ``to_meta_payload()`` builds and this
+        method strips them.
+
+        Args:
+            template_id: The META template ID (``meta_template_id``).
+            data: Template payload — ``components`` and optionally ``category``.
+
+        Returns:
+            dict: ``{"success": true}`` from META on success.
+        """
+        url = f"{self.BASE_URL}{template_id}"
+        editable = {k: v for k, v in data.items() if k not in ("name", "language")}
+        request_data = {"method": "POST", "url": url, "headers": self.json_headers, "data": editable}
+        return self.make_json_request(request_data)
+
     def get_template_status(self, template_id: str):
         """
         Get template status from META Graph API by template ID.
@@ -249,5 +284,10 @@ class TemplateAPI(WABAAPI):
         """
         # META Graph API endpoint for getting template details
         url = f"{self.BASE_URL}{template_id}"
-        request_data = {"method": "GET", "url": url, "headers": self.json_headers}
+        request_data = {
+            "method": "GET",
+            "url": url,
+            "headers": self.json_headers,
+            "data": {"fields": self.TEMPLATE_FIELDS},
+        }
         return self.make_json_request(request_data)
