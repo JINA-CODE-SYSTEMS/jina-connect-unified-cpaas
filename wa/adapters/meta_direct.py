@@ -167,6 +167,33 @@ class MetaDirectAdapter(BaseBSPAdapter):
         api.waba_id = waba_id
         return api
 
+    def _get_waba_api(self):
+        """Build a configured ``WABAAPI`` instance.
+
+        Mirrors ``_get_template_api``: raises ``ValueError`` for missing
+        credentials so the caller can report which knob is unset rather than
+        surfacing a 401.
+        """
+        from wa.utility.apis.meta.waba import WABAAPI
+
+        token = self._resolve_access_token()
+        if not token:
+            raise ValueError(
+                "META access token not configured. Set bsp_credentials.access_token "
+                "on the WAApp or META_PERM_TOKEN in settings."
+            )
+
+        waba_id = self._resolve_waba_id()
+        if not waba_id:
+            raise ValueError(
+                "WABA ID not configured on the WAApp. Please set wa_app.waba_id before "
+                "registering webhooks."
+            )
+
+        api = WABAAPI(token=token)
+        api.waba_id = waba_id
+        return api
+
     # ── Payload validation ─────────────────────────────────────────────
 
     @staticmethod
@@ -627,60 +654,165 @@ class MetaDirectAdapter(BaseBSPAdapter):
     @silk_profile(name="adapter.meta.register_webhook")
     def register_webhook(self, subscription: "WASubscription") -> AdapterResult:
         """
-        Register a webhook with META Graph API.
+        Subscribe this WABA to the app so META actually delivers its events.
 
-        META manages webhooks at the **WABA level** via the App Dashboard
-        or Graph API ``/{app-id}/subscriptions`` endpoint.  Per-subscription
-        registration is not natively supported — META uses a single webhook
-        URL per app configured in the App Dashboard.
+        Two separate things govern whether anything arrives, and only one of
+        them is app-level:
 
-        This adapter stores the subscription locally and marks it ACTIVE
-        since the actual META webhook URL is configured once at the app
-        level (not per-subscription).
+        * The **callback URL** and verify token are configured once per app in
+          the App Dashboard. There is no API call for those, which is what the
+          previous implementation correctly observed.
+        * Every **WABA must additionally be subscribed to that app** via
+          ``POST /{waba_id}/subscribed_apps``, or META delivers nothing for it
+          — no inbound messages, no delivery or read statuses, no
+          ``message_template_status_update``, no ``account_update``.
+
+        The second was missing entirely: this method flipped the local row to
+        ACTIVE and reported success without making any call, so an onboarded
+        customer silently received nothing while the platform showed a healthy
+        subscription (#264).
+
+        META derives which app to subscribe from the access token, so no app id
+        is sent.
         """
-        self._log("info", f"register_webhook START — url={subscription.webhook_url}")
-
         from wa.models import SubscriptionStatus
 
-        # META doesn't have per-subscription registration.
-        # The webhook URL is configured once in App Dashboard.
-        # We mark it ACTIVE so the app can route events.
+        self._log("info", f"[STEP 1/4] register_webhook START — url={subscription.webhook_url}")
+
+        def _fail(message: str) -> AdapterResult:
+            """Record a failure. A subscription that did not happen is not ACTIVE."""
+            subscription.status = SubscriptionStatus.FAILED
+            subscription.error_message = message
+            subscription.save(update_fields=["status", "error_message"])
+            self._log("error", f"register_webhook FAILED — {message}")
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=message,
+            )
+
+        try:
+            api = self._get_waba_api()
+        except ValueError as exc:
+            return _fail(str(exc))
+
+        self._log("info", f"[STEP 2/4] Subscribing WABA {api.waba_id} — POST {api._subscribed_apps_url}")
+        try:
+            api.subscribe_app()
+        except Exception as exc:  # noqa: BLE001 — surfaced to the caller below
+            return _fail(f"META refused the WABA subscription: {exc}")
+
+        # Verify rather than trust the write. A POST that returns success and a
+        # WABA that is not actually subscribed is exactly the state this ticket
+        # was about, and it is cheap to rule out.
+        self._log("info", "[STEP 3/4] Verifying — GET subscribed_apps")
+        try:
+            listed = api.get_subscribed_apps() or {}
+        except Exception as exc:  # noqa: BLE001
+            return _fail(f"WABA subscription could not be verified: {exc}")
+
+        subscribed_ids: list[str] = []
+        for row in listed.get("data") or []:
+            if not isinstance(row, dict):
+                continue
+            app_data = row.get("whatsapp_business_api_data") or {}
+            app_id = str(app_data.get("id") or "")
+            if app_id:
+                subscribed_ids.append(app_id)
+
+        if not subscribed_ids:
+            return _fail(
+                "META accepted the subscription but lists no subscribed app for this WABA. "
+                "Nothing would be delivered."
+            )
+
+        # ``wa_app.app_id`` is overloaded — documented as the Gupshup app ID and
+        # reused as the META App ID by ``upload_media`` — so a mismatch here is
+        # not reliable enough to fail on. Worth a warning, not a refusal.
+        own_app_id = str(getattr(self.wa_app, "app_id", "") or "")
+        if own_app_id and own_app_id not in subscribed_ids:
+            self._log(
+                "warning",
+                f"app_id {own_app_id!r} is not among the subscribed apps {subscribed_ids} — "
+                "either app_id holds a non-META value or a different app is subscribed",
+            )
+
+        subscription.bsp_subscription_id = own_app_id if own_app_id in subscribed_ids else subscribed_ids[0]
         subscription.status = SubscriptionStatus.ACTIVE
         subscription.error_message = None
-        subscription.save(update_fields=["status", "error_message"])
+        subscription.save(update_fields=["bsp_subscription_id", "status", "error_message"])
 
-        self._log("info", "register_webhook SUCCESS — META uses app-level webhook, marked ACTIVE")
+        self._log(
+            "info",
+            f"[STEP 4/4] register_webhook SUCCESS — WABA {api.waba_id} subscribed, apps={subscribed_ids}",
+        )
 
         return AdapterResult(
             success=True,
             provider=self.PROVIDER_NAME,
             data={
-                "note": "META uses app-level webhooks configured in App Dashboard. "
-                "Subscription marked ACTIVE for internal routing.",
+                "waba_id": api.waba_id,
+                "subscribed_app_ids": subscribed_ids,
+                "note": (
+                    "WABA subscribed to the app. The callback URL and verify token remain "
+                    "app-level configuration in the META App Dashboard."
+                ),
             },
         )
 
     @silk_profile(name="adapter.meta.unregister_webhook")
     def unregister_webhook(self, subscription: "WASubscription") -> AdapterResult:
         """
-        Unregister (deactivate) a webhook subscription.
+        Unsubscribe this WABA from the app, so META stops delivering its events.
 
-        Since META doesn't support per-subscription unregistration, this
-        simply marks the subscription INACTIVE locally.
+        The counterpart to :meth:`register_webhook`:
+        ``DELETE /{waba_id}/subscribed_apps``. Previously this only flipped the
+        local row to INACTIVE, which left META still delivering to a
+        subscription the platform believed it had torn down.
         """
-        self._log("info", f"unregister_webhook START — sub_id={subscription.id}")
-
         from wa.models import SubscriptionStatus
 
-        subscription.status = SubscriptionStatus.INACTIVE
-        subscription.save(update_fields=["status"])
+        self._log("info", f"unregister_webhook START — sub_id={subscription.id}")
 
-        self._log("info", "unregister_webhook SUCCESS — marked INACTIVE")
+        try:
+            api = self._get_waba_api()
+        except ValueError as exc:
+            # Nothing can be unsubscribed without credentials, but the local
+            # row should still stop claiming to be live.
+            subscription.status = SubscriptionStatus.INACTIVE
+            subscription.error_message = str(exc)
+            subscription.save(update_fields=["status", "error_message"])
+            self._log("warning", f"unregister_webhook — marked INACTIVE without calling META: {exc}")
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=str(exc),
+            )
+
+        try:
+            api.unsubscribe_app()
+        except Exception as exc:  # noqa: BLE001
+            message = f"META refused the WABA unsubscribe: {exc}"
+            subscription.status = SubscriptionStatus.FAILED
+            subscription.error_message = message
+            subscription.save(update_fields=["status", "error_message"])
+            self._log("error", f"unregister_webhook FAILED — {message}")
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=message,
+            )
+
+        subscription.status = SubscriptionStatus.INACTIVE
+        subscription.error_message = None
+        subscription.save(update_fields=["status", "error_message"])
+
+        self._log("info", f"unregister_webhook SUCCESS — WABA {api.waba_id} unsubscribed")
 
         return AdapterResult(
             success=True,
             provider=self.PROVIDER_NAME,
-            data={"note": "Subscription deactivated locally."},
+            data={"waba_id": api.waba_id},
         )
 
     # ── Media operations ─────────────────────────────────────────────────
