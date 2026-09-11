@@ -1,6 +1,16 @@
 """
-Management command to fix missing currency values in broadcast cost fields.
-Adds default currency (INR) to initial_cost and refund_amount fields.
+Backfill missing currency values on broadcast cost columns.
+
+These columns can be NULL on rows written before ``initial_cost`` was stored
+as ``Money`` (#263): the amount was saved as a bare Decimal, so the paired
+``*_currency`` column was never set.
+
+The command previously disagreed with itself about which currency to use —
+the docstring said INR, the ``--currency`` default said USD, and the help text
+said INR again. It now defaults to the deployment's own
+``PLATFORM_DEFAULT_CURRENCY``, because the only currency these rows can
+sensibly be labelled with is the one the wallets they were charged against
+are denominated in.
 """
 
 from django.core.management.base import BaseCommand
@@ -14,8 +24,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--currency",
             type=str,
-            default="USD",
-            help="Currency code to use as default (default: INR)",
+            default=None,
+            help="Currency code to apply. Defaults to settings.PLATFORM_DEFAULT_CURRENCY.",
         )
         parser.add_argument(
             "--dry-run",
@@ -24,7 +34,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        currency = options["currency"]
+        from django.conf import settings
+
+        currency = options["currency"] or str(getattr(settings, "PLATFORM_DEFAULT_CURRENCY", "USD"))
         dry_run = options["dry_run"]
 
         self.stdout.write(self.style.WARNING("Fixing broadcast currency fields..."))
