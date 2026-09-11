@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 
 from tenants.models import BrandingSettings
+from tenants.serializers import BrandingSettingsSerializer
 
 
 class BrandingSettingsProductNameTestCase(TestCase):
@@ -89,3 +90,41 @@ class BrandingSettingsPrimaryColorTestCase(TestCase):
                 branding.primary_color = bad
                 with self.assertRaises(ValidationError):
                     branding.full_clean()
+
+
+class BrandingSettingsSerializerTestCase(TestCase):
+    """The deployment default is exposed in its own right, not inferred.
+
+    The white-labelling page shows the default as placeholder text so an
+    operator can see what clearing the field falls back to.
+    ``effective_product_name`` cannot serve that purpose: it equals
+    ``product_name`` as soon as one is set, at which point the client has no
+    way to learn the fallback it would return to.
+    """
+
+    @override_settings(DEFAULT_PRODUCT_NAME="Deployment Default")
+    def test_the_default_is_reported_when_no_name_is_set(self):
+        data = BrandingSettingsSerializer(BrandingSettings.get_instance()).data
+
+        self.assertEqual(data["product_name"], "")
+        self.assertEqual(data["effective_product_name"], "Deployment Default")
+        self.assertEqual(data["default_product_name"], "Deployment Default")
+
+    @override_settings(DEFAULT_PRODUCT_NAME="Deployment Default")
+    def test_the_default_is_still_reported_once_a_name_is_set(self):
+        branding = BrandingSettings.get_instance()
+        branding.product_name = "Something Else"
+        branding.save()
+
+        data = BrandingSettingsSerializer(branding).data
+
+        self.assertEqual(data["effective_product_name"], "Something Else")
+        self.assertEqual(data["default_product_name"], "Deployment Default")
+
+    def test_the_default_is_read_only(self):
+        serializer = BrandingSettingsSerializer(
+            BrandingSettings.get_instance(), data={"default_product_name": "Injected"}, partial=True
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertNotIn("default_product_name", serializer.validated_data)

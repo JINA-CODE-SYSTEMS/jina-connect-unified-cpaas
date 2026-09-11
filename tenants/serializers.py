@@ -1,6 +1,7 @@
 import logging
 from decimal import Decimal
 
+from django.conf import settings
 from djmoney.contrib.django_rest_framework import MoneyField
 from rest_framework import serializers, status
 
@@ -472,12 +473,19 @@ class BrandingSettingsSerializer(serializers.ModelSerializer):
     effective_product_name = serializers.CharField(read_only=True)
     effective_primary_color = serializers.CharField(read_only=True)
 
+    # What a blank product_name falls back to. Separate from
+    # effective_product_name, which collapses to product_name the moment one is
+    # set and so cannot tell a client what clearing the field would resolve to
+    # — which is exactly what the placeholder in the UI has to show.
+    default_product_name = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = None  # Will be set dynamically to avoid circular import
         fields = [
             "id",
             "product_name",
             "effective_product_name",
+            "default_product_name",
             "primary_color",
             "effective_primary_color",
             "favicon",
@@ -500,6 +508,10 @@ class BrandingSettingsSerializer(serializers.ModelSerializer):
         from tenants.models import BrandingSettings
 
         self.Meta.model = BrandingSettings
+
+    def get_default_product_name(self, obj) -> str:
+        """What this deployment shows when no product name is set."""
+        return settings.DEFAULT_PRODUCT_NAME
 
     def get_effective_favicon_url(self, obj):
         """Return file URL if uploaded, otherwise external URL."""

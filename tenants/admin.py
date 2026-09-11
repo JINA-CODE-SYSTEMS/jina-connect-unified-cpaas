@@ -2,7 +2,7 @@ from django import forms
 from django.apps import apps
 from django.contrib import admin, messages
 
-from tenants.models import RolePermission, Tenant, TenantRole, TenantWAApp
+from tenants.models import BrandingSettings, RolePermission, Tenant, TenantRole, TenantWAApp
 from tenants.services.onboarding import create_tenant_with_owner, validate_new_tenant
 
 
@@ -279,6 +279,61 @@ class TenantAdmin(admin.ModelAdmin):
         obj.pk = result.tenant.pk
         obj.refresh_from_db()
         self.message_user(request, result.summary, messages.SUCCESS)
+
+
+@admin.register(BrandingSettings)
+class BrandingSettingsAdmin(admin.ModelAdmin):
+    """The single row that white-labels this deployment.
+
+    Registered explicitly rather than through the generic loop below, which
+    put every field in ``list_display``, offered no grouping, and — worse —
+    showed an "Add" button for a model whose ``save()`` quietly folds a second
+    row into the first. An operator who used it believed they had created a
+    separate configuration and were editing that, while they were in fact
+    overwriting the only one there is.
+    """
+
+    list_display = ["__str__", "effective_product_name", "effective_primary_color", "updated_at"]
+    readonly_fields = ["effective_product_name", "effective_primary_color", "created_at", "updated_at"]
+
+    fieldsets = (
+        (
+            "Text",
+            {
+                "fields": ("product_name", "effective_product_name"),
+                "description": (
+                    "Shown in page titles and transactional copy. Leave the product name blank to use "
+                    "this deployment's default; the resolved value is shown beneath it."
+                ),
+            },
+        ),
+        (
+            "Colour",
+            {
+                "fields": ("primary_color", "effective_primary_color"),
+                "description": "The web app derives its whole brand ramp from this one colour.",
+            },
+        ),
+        (
+            "Assets",
+            {
+                "fields": (
+                    "favicon",
+                    "favicon_url",
+                    "primary_logo",
+                    "primary_logo_url",
+                    "secondary_logo",
+                    "secondary_logo_url",
+                ),
+                "description": "An uploaded file takes precedence over the matching external URL.",
+            },
+        ),
+        ("Metadata", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+    def has_add_permission(self, request):
+        """Enforce the singleton in the UI instead of papering over it in save()."""
+        return not BrandingSettings.objects.exists()
 
 
 # Auto-register remaining models that aren't already registered
