@@ -754,7 +754,7 @@ class ChatFlowProcessor:
         - condition: Logic node for branching
         - action: API/webhook integration node
         - delay: Wait/timing node (future)
-        - handoff: Transfer to human agent (future)
+        - handoff: Transfer to human agent (Team Inbox)
         """
         node_data_dict = node_obj.data.model_dump()
 

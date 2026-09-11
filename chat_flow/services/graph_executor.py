@@ -35,6 +35,7 @@ from django.conf import settings
 from django.utils import timezone
 from langgraph.graph import END, StateGraph
 
+from ..constants import canonical_session_message_type, session_message_awaits_reply
 from ..models import ChatFlow, ChatFlowEdge, ChatFlowNode, UserChatFlowSession
 
 logger = logging.getLogger(__name__)
@@ -572,6 +573,34 @@ def create_template_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
     return handler
 
 
+def create_passthrough_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
+    """
+    Create a handler for a node type that is declared but does nothing yet.
+
+    Only ``action`` uses this.  It exists so that "this node type has no
+    runtime behaviour" is something the code states rather than something
+    that happens to fall out of the dispatch's default branch (#273).
+    """
+    node_id = node.node_id
+
+    def handler(state: FlowState) -> FlowState:
+        """Execute an inert node - record the visit and continue."""
+        logger.info(f"Node '{node_id}' ({node.node_type}): no runtime behaviour, passing through")
+
+        new_state = {
+            **state,
+            "current_node_id": node_id,
+            "user_input": "__PASSTHROUGH__",
+            "awaiting_input": False,
+        }
+
+        save_session_to_db(new_state)
+
+        return new_state
+
+    return handler
+
+
 def create_end_node_handler(node: ChatFlowNode):
     """
     Create a handler function for an end node.
@@ -731,6 +760,228 @@ def _unassign_contact_on_flow_end(contact_id: int, flow_id: int):
 
     except Exception as e:
         logger.exception(f"Error unassigning contact {contact_id} on flow end: {e}")
+
+
+def create_handoff_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
+    """
+    Create a handler function for a handoff node (transfer to a human agent).
+
+    Until #273 a handoff node fell through to the template handler with no
+    template, which made it a bare passthrough: the flow walked past it, the
+    customer was told nothing, and the conversation stayed assigned to the
+    bot.  The node rendered in the editor and had eight validation rules
+    behind it, so nothing about the authoring surface hinted at that.
+
+    What a handoff does now:
+
+    1. Sends ``handoff_message`` to the customer, if one is configured.
+    2. Moves the conversation off the ChatFlow — to a named agent when
+       ``agent_id`` is set, otherwise into the Team Inbox unassigned queue.
+    3. Records a Team Inbox event and broadcasts it, the same way flow-end
+       unassignment does, so the timeline shows who took over and why.
+    4. Passes through to the next node.  HANDOFF_008 requires that to be an
+       end node; the end node's own unassignment is a no-op by then because
+       the contact is no longer assigned to this flow.
+
+    Team-based routing (``assignment_type`` of team / round_robin /
+    least_busy) lands in the unassigned queue: there is no Team model in this
+    codebase to route to.  HANDOFF_003 says so at authoring time rather than
+    leaving the author to discover it in production.
+    """
+    node_id = node.node_id
+    node_data = node.node_data or {}
+    flow_id = node.flow_id
+
+    def handler(state: FlowState) -> FlowState:
+        """Execute handoff node - notify the customer, hand the ticket to a human."""
+        # ── Resume skip: fast-forward without re-handing-off ──
+        resume_target = state.get("_resume_target")
+        if resume_target and resume_target != node_id:
+            return {**state, "current_node_id": node_id, "user_input": "__PASSTHROUGH__"}
+        if resume_target and resume_target == node_id:
+            pending = state.get("_pending_user_input")
+            state = {**state, "_resume_target": None, "_pending_user_input": None}
+            if pending:
+                state["user_input"] = pending
+
+        contact_id = state["contact_id"]
+        messages_sent = list(state.get("messages_sent", []))
+        error = None
+
+        # 1. Tell the customer a human is taking over
+        handoff_message = (node_data.get("handoff_message") or "").strip()
+        if handoff_message:
+            result = send_session_message(
+                contact_id=contact_id,
+                node_data={"message_type": "text", "message_content": handoff_message},
+                context=state.get("context", {}),
+            )
+            if result.get("outgoing_message_id"):
+                messages_sent.append(f"session:{result.get('outgoing_message_id')}")
+            if not result.get("success"):
+                error = result.get("error")
+                logger.error(f"Handoff node '{node_id}': Failed to send handoff message: {error}")
+
+        # 2 + 3. Reassign the conversation and record it on the timeline
+        assign_error = _handoff_contact_to_human(contact_id, flow_id, node_data)
+        error = error or assign_error
+
+        new_state = {
+            **state,
+            "current_node_id": node_id,
+            "messages_sent": messages_sent,
+            "user_input": "__PASSTHROUGH__",  # Handoff does not wait for a reply
+            "awaiting_input": False,
+            "error": error,
+        }
+
+        save_session_to_db(new_state)
+
+        return new_state
+
+    return handler
+
+
+def _handoff_contact_to_human(contact_id: int, flow_id: int, node_data: Dict[str, Any]) -> Optional[str]:
+    """
+    Move a contact off the ChatFlow and onto a human, recording the event.
+
+    Mirrors ``_unassign_contact_on_flow_end``: same assignment fields, same
+    Event row, same WebSocket broadcast — the difference is the destination.
+    An ``agent_id`` that belongs to the contact's tenant produces a USER
+    assignment; anything else (no agent, an agent from another tenant, or a
+    team-based ``assignment_type`` this platform cannot resolve) leaves the
+    conversation unassigned, which is how a human picks it up from the
+    Team Inbox queue.
+
+    Returns an error string when the handoff could not be recorded, or None.
+    """
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+
+        from contacts.models import AssigneeTypeChoices, TenantContact
+        from team_inbox.models import ActorTypeChoices, Event, EventTypeChoices, MessageEventIds
+        from tenants.models import TenantUser
+
+        contact = TenantContact.objects.filter(pk=contact_id).first()
+        if not contact:
+            return f"Contact {contact_id} not found for handoff"
+
+        flow = ChatFlow.objects.filter(pk=flow_id).first()
+        flow_name = flow.name if flow else f"ChatFlow #{flow_id}"
+
+        # ── Resolve the target agent ──
+        agent_id = node_data.get("agent_id") or node_data.get("handoff_agent_id")
+        agent_user = None
+        if agent_id:
+            # An agent from another tenant would be a cross-tenant assignment,
+            # so the membership check is a boundary, not a nicety.
+            membership = (
+                TenantUser.objects.select_related("user")
+                .filter(tenant_id=contact.tenant_id, user_id=agent_id, is_active=True)
+                .first()
+            )
+            if membership:
+                agent_user = membership.user
+            else:
+                logger.warning(
+                    f"Handoff: agent {agent_id} is not an active member of tenant "
+                    f"{contact.tenant_id} — leaving contact {contact_id} unassigned"
+                )
+
+        note = f"Handed off by ChatFlow '{flow_name}'"
+
+        # Skip signal to avoid duplicate events
+        contact._skip_assignment_event = True
+
+        if agent_user:
+            contact.assigned_to_type = AssigneeTypeChoices.USER
+            contact.assigned_to_id = agent_user.pk
+            contact.assigned_to_user = agent_user
+            event_type = EventTypeChoices.TICKET_ASSIGNED
+        else:
+            contact.assigned_to_type = AssigneeTypeChoices.UNASSIGNED
+            contact.assigned_to_id = None
+            contact.assigned_to_user = None
+            event_type = EventTypeChoices.TICKET_UNASSIGNED
+
+        contact.assigned_by_type = AssigneeTypeChoices.CHATFLOW
+        contact.assigned_by_id = flow_id
+        contact.assigned_by_user = None
+        contact.assignment_note = note
+        contact.save()
+
+        event_id_entry = MessageEventIds.objects.create()
+
+        event = Event.objects.create(
+            event_id=event_id_entry,
+            tenant=contact.tenant,
+            contact=contact,
+            event_type=event_type,
+            note=note,
+            icon="🤝",
+            color_background="#FCE7F3",
+            color_text="#DB2777",
+            created_by_type=ActorTypeChoices.CHATFLOW,
+            created_by_id=flow_id,
+            created_by_user=None,
+            assigned_by_type=ActorTypeChoices.CHATFLOW,
+            assigned_by_id=flow_id,
+            assigned_by_user=None,
+            assigned_to_type=ActorTypeChoices.USER if agent_user else None,
+            assigned_to_id=agent_user.pk if agent_user else None,
+            assigned_to_user=agent_user,
+            event_data={
+                "chatflow_name": flow_name,
+                "reason": "handoff_node",
+                "assignment_type": node_data.get("assignment_type"),
+                "priority": node_data.get("priority"),
+                "tags": node_data.get("tags"),
+                "internal_note": node_data.get("internal_note"),
+            },
+        )
+
+        logger.info(
+            f"Handoff: contact {contact_id} -> "
+            f"{'user ' + str(agent_user.pk) if agent_user else 'unassigned queue'} "
+            f"by ChatFlow '{flow_name}' (event {event.pk})"
+        )
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                f"team_inbox_{contact.tenant_id}",
+                {
+                    "type": "team_message",
+                    "message": {
+                        "type": "new_event",
+                        "contact_id": contact.id,
+                        "event": {
+                            "id": event.pk,
+                            "event_type": event.event_type,
+                            "event_type_display": event.get_event_type_display(),
+                            "note": event.note,
+                            "created_by_name": event.created_by_name,
+                            "assigned_by_name": event.assigned_by_name,
+                            "assigned_to_name": event.assigned_to_name,
+                            "assigned_to_type": event.assigned_to_type,
+                            "assigned_to_id": event.assigned_to_id,
+                            "icon": event.icon,
+                            "color_background": event.color_background,
+                            "color_text": event.color_text,
+                            "event_data": event.event_data,
+                            "created_at": event.created_at.isoformat() if event.created_at else None,
+                        },
+                    },
+                },
+            )
+
+        return None
+
+    except Exception as e:
+        logger.exception(f"Error handing contact {contact_id} off to a human: {e}")
+        return f"Handoff failed: {e}"
 
 
 def create_api_call_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
@@ -1398,7 +1649,7 @@ def create_message_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
 
     Execution modes (mirrors the template handler pattern):
 
-    Mode 1: Interactive (has QUICK_REPLY buttons)
+    Mode 1: Interactive (has QUICK_REPLY buttons or list rows)
         Phase 1 (First visit — no user_input):
             - Send the session message to the contact
             - Set awaiting_input=True, user_input=None → router returns END
@@ -1407,7 +1658,7 @@ def create_message_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
             - Don't re-send the message
             - Clear awaiting_input, let the router route by button text
 
-    Mode 2: Passthrough (no QUICK_REPLY buttons)
+    Mode 2: Passthrough (nothing for the customer to answer)
         - Send the session message
         - Set user_input="__PASSTHROUGH__" → router continues immediately
 
@@ -1415,17 +1666,25 @@ def create_message_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
     - node_data['message_type']: 'text', 'image', 'video', etc.
     - node_data['message_content']: The message content (text body, media id, etc.)
     - node_data['buttons']: Optional list of buttons (QUICK_REPLY, URL, etc.)
+    - node_data['sections']: Optional list sections/rows (interactive_list)
     """
     node_id = node.node_id
     node_data = node.node_data or {}
 
-    # ── Detect interactive buttons (QUICK_REPLY) ──
+    # ── Detect interactive content the customer is expected to answer ──
+    # Quick-reply buttons live in 'buttons'; list rows live in 'sections'.
+    # Missing the list case made a list node passthrough, so the flow walked
+    # on while the customer was still staring at a menu (#273).
     message_buttons = node_data.get("buttons", []) or []
     has_quick_reply = any(btn.get("type") == "QUICK_REPLY" for btn in message_buttons)
+    has_list_rows = session_message_awaits_reply(node_data.get("message_type")) and any(
+        s.get("rows") for s in (node_data.get("sections") or [])
+    )
+    awaits_reply = has_quick_reply or has_list_rows
 
     # Find the passthrough target (for non-interactive messages)
     passthrough_target = None
-    if not has_quick_reply:
+    if not awaits_reply:
         for edge in edges:
             if edge.source_node.id == node.id:
                 if edge.button_text in ("__PASSTHROUGH__", None, "") or not edge.button_text:
@@ -1457,7 +1716,7 @@ def create_message_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
 
         # ── Mode 1 Phase 2: Resumption (user clicked a button) ──
         is_resuming = (
-            has_quick_reply and user_input and user_input != "__PASSTHROUGH__" and (current_node == node_id or awaiting)
+            awaits_reply and user_input and user_input != "__PASSTHROUGH__" and (current_node == node_id or awaiting)
         )
 
         if is_resuming:
@@ -1488,9 +1747,9 @@ def create_message_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
         if result.get("outgoing_message_id"):
             messages_sent.append(f"session:{result.get('outgoing_message_id')}")
 
-        if has_quick_reply:
+        if awaits_reply:
             # Mode 1 Phase 1: Interactive — wait for user button click
-            logger.info(f"Message node '{node_id}': Has QUICK_REPLY buttons, waiting for user input")
+            logger.info(f"Message node '{node_id}': Has buttons/list rows, waiting for user input")
             new_state = {
                 **state,
                 "current_node_id": node_id,
@@ -1541,18 +1800,36 @@ def send_session_message(
     from contacts.models import TenantContact
     from wa.utility.data_model.gupshup.session_message_base import (
         ButtonReply,
+        Contact,
+        ContactMessage,
+        CtaUrlAction,
+        CtaUrlButton,
         InteractiveBody,
         InteractiveButton,
         InteractiveButtonAction,
         InteractiveButtonContent,
         InteractiveButtonMessage,
+        InteractiveCtaUrlContent,
+        InteractiveCtaUrlMessage,
         InteractiveFooter,
         InteractiveHeader,
+        InteractiveListAction,
+        InteractiveListContent,
+        InteractiveListMessage,
         InteractiveOrderDetailsContent,
         InteractiveOrderDetailsMessage,
+        InteractiveOrderStatusContent,
+        InteractiveOrderStatusMessage,
+        ListRow,
+        ListSection,
         OrderDetailsAction,
         OrderDetailsParameters,
         OrderSession,
+        OrderStatusAction,
+        OrderStatusOrder,
+        OrderStatusParameters,
+        ReactionMessage,
+        ReactionMessageInput,
         TextMessage,
         TextMessageInput,
     )
@@ -1742,8 +2019,11 @@ def send_session_message(
             logger.error(result["error"])
             return result
 
-        # Extract message configuration from node_data
-        message_type = node_data.get("message_type", "text")
+        # Extract message configuration from node_data.
+        # The editor has emitted several spellings for the same type over the
+        # years ('list' vs 'interactive_list'); canonicalise once here so every
+        # branch below only has to know the canonical name (#273).
+        message_type = canonical_session_message_type(node_data.get("message_type"))
         message_content = node_data.get("message_content", "")
         body_text = node_data.get("body", "") or message_content
 
@@ -1798,12 +2078,16 @@ def send_session_message(
         if recipient.startswith("+"):
             recipient = recipient[1:]  # Remove leading +
 
-        is_interactive = message_type in ("interactive_button", "button")
+        is_interactive = message_type == "interactive_button"
         node_buttons = node_data.get("buttons", []) if is_interactive else []
         # Only QUICK_REPLY buttons are sent as interactive buttons
         quick_reply_buttons = [
             b for b in node_buttons if (b.get("type", "QUICK_REPLY")).upper() in ("QUICK_REPLY", "QUICK-REPLY")
         ]
+        # List rows live under 'sections', not 'buttons' — the same shape
+        # ListItemElement extracts from to build the per-row edges.
+        list_sections = node_data.get("sections", []) if message_type == "interactive_list" else []
+        list_has_rows = any(s.get("rows") for s in list_sections)
 
         if is_interactive and quick_reply_buttons:
             # Build interactive button message
@@ -1835,6 +2119,88 @@ def send_session_message(
             stored_text = body_text or message_content
 
             logger.info(f"Session message: interactive_button with {len(buttons)} buttons for contact {contact_id}")
+
+        elif message_type == "interactive_list" and list_has_rows:
+            # ── Interactive list message ──
+            # Rows come from node_data['sections'], the same structure
+            # ListItemElement reads to build one outgoing edge per row, so the
+            # row titles WhatsApp echoes back in the list_reply already match
+            # the edges' button_text.  Before #273 this fell through to the
+            # plain-text branch: the customer saw a paragraph with no rows, no
+            # row reply could ever arrive, and the flow stalled for good.
+            sections = []
+            rows_total = 0
+            for raw_section in list_sections:
+                rows = []
+                for raw_row in raw_section.get("rows", []):
+                    if rows_total >= 10:  # WhatsApp caps a list at 10 rows overall
+                        break
+                    row_title = (raw_row.get("title") or raw_row.get("text") or "Option")[:24]
+                    rows.append(
+                        ListRow(
+                            id=str(raw_row.get("id") or row_title)[:200],
+                            title=row_title,
+                            description=(raw_row.get("description") or None),
+                        )
+                    )
+                    rows_total += 1
+                if rows:
+                    section_title = raw_section.get("title")
+                    sections.append(
+                        ListSection(
+                            title=section_title[:24] if section_title else None,
+                            rows=rows,
+                        )
+                    )
+
+            interactive_content = InteractiveListContent(
+                body=InteractiveBody(text=body_text or message_content or "Please choose:"),
+                action=InteractiveListAction(
+                    button=(node_data.get("button_text") or node_data.get("list_button") or "View Options")[:20],
+                    sections=sections,
+                ),
+            )
+            # Optional header — lists only accept a text header
+            if header_raw and isinstance(header_raw, str) and header_raw.strip():
+                interactive_content.header = InteractiveHeader(type="text", text=header_raw.strip()[:60])
+            if footer_raw and isinstance(footer_raw, str) and footer_raw.strip():
+                interactive_content.footer = InteractiveFooter(text=footer_raw.strip()[:60])
+
+            message = InteractiveListMessage(to=recipient, interactive=interactive_content)
+            payload = message.model_dump(by_alias=True, exclude_none=True)
+            wa_message_type = MessageType.INTERACTIVE
+            stored_text = body_text or message_content
+
+            logger.info(
+                f"Session message: interactive_list with {rows_total} rows "
+                f"in {len(sections)} sections for contact {contact_id}"
+            )
+
+        elif message_type == "cta_url":
+            # ── Interactive CTA-URL message ──
+            # A single button that opens a URL.  It produces no reply, so the
+            # node stays passthrough.
+            cta = node_data.get("cta_url") or {}
+            cta_display = str(cta.get("display_text") or node_data.get("button_text") or "Open Link")[:20]
+            cta_target = str(cta.get("url") or node_data.get("url") or "")
+            for key, value in all_vars.items():
+                cta_target = cta_target.replace(f"{{{{{key}}}}}", str(value))
+
+            interactive_content = InteractiveCtaUrlContent(
+                body=InteractiveBody(text=body_text or message_content or "Tap below:"),
+                action=CtaUrlAction(parameters=CtaUrlButton(display_text=cta_display, url=cta_target)),
+            )
+            if header_raw and isinstance(header_raw, str) and header_raw.strip():
+                interactive_content.header = InteractiveHeader(type="text", text=header_raw.strip()[:60])
+            if footer_raw and isinstance(footer_raw, str) and footer_raw.strip():
+                interactive_content.footer = InteractiveFooter(text=footer_raw.strip()[:60])
+
+            message = InteractiveCtaUrlMessage(to=recipient, interactive=interactive_content)
+            payload = message.model_dump(by_alias=True, exclude_none=True)
+            wa_message_type = MessageType.INTERACTIVE
+            stored_text = body_text or message_content
+
+            logger.info(f"Session message: cta_url -> {cta_target[:80]} for contact {contact_id}")
 
         elif message_type == "order_details":
             # ── Interactive order_details message ──
@@ -1887,10 +2253,28 @@ def send_session_message(
             raw_ps = od.get("payment_settings", [])
             payment_settings = [PaymentSettings(**ps) if isinstance(ps, dict) else ps for ps in raw_ps]
 
+            # WhatsApp Pay settles review_and_pay orders in INR and nothing
+            # else, so the currency cannot simply follow the deployment — but
+            # nor can it be assumed.  Stamping "INR" onto amounts an operator
+            # priced in this deployment's currency would relabel the order, not
+            # convert it: the same silent reinterpretation #263 fixed for
+            # message prices.  Take the deployment's currency as the default,
+            # let the node override it, and refuse anything Meta will not
+            # settle rather than reprice the customer's order (#273).
+            order_currency = str(od.get("currency") or getattr(settings, "PLATFORM_DEFAULT_CURRENCY", "USD")).upper()
+            if order_currency != "INR":
+                result["error"] = (
+                    f"order_details is INR-only (WhatsApp Pay), but this order is priced in "
+                    f"{order_currency}. Sending it would relabel the amounts, not convert them."
+                )
+                result["status"] = "failed"
+                logger.error(result["error"])
+                return result
+
             parameters = OrderDetailsParameters(
                 reference_id=ref_id,
                 type=od.get("type", "digital-goods"),
-                currency=od.get("currency", "INR"),
+                currency=order_currency,
                 total_amount=OrderAmount(**od["total_amount"])
                 if isinstance(od.get("total_amount"), dict)
                 else OrderAmount(value=0),
@@ -1919,26 +2303,64 @@ def send_session_message(
 
             logger.info(f"Session message: order_details ref={ref_id} items={len(items)} for contact {contact_id}")
 
-        elif message_type in ("image", "video", "document", "audio"):
-            # ── Media message (image / video / document / audio) ──
+        elif message_type == "order_status":
+            # ── Interactive order_status message ──
+            # Updates an order the customer already received, matched by the
+            # reference_id of the original order_details message.  Carries no
+            # currency of its own — only a status.
+            os_data = node_data.get("order_status") or {}
+
+            os_ref_id = str(os_data.get("reference_id", ""))
+            for key, value in all_vars.items():
+                os_ref_id = os_ref_id.replace(f"{{{{{key}}}}}", str(value))
+
+            order_status_order = OrderStatusOrder(
+                status=os_data.get("status") or (os_data.get("order") or {}).get("status") or "processing",
+                description=(os_data.get("description") or (os_data.get("order") or {}).get("description") or None),
+            )
+
+            message = InteractiveOrderStatusMessage(
+                to=recipient,
+                interactive=InteractiveOrderStatusContent(
+                    body=InteractiveBody(text=body_text or "Your order status has been updated"),
+                    action=OrderStatusAction(
+                        parameters=OrderStatusParameters(reference_id=os_ref_id, order=order_status_order)
+                    ),
+                ),
+            )
+            payload = message.model_dump(by_alias=True, exclude_none=True)
+            wa_message_type = MessageType.INTERACTIVE
+            stored_text = body_text or f"Order {order_status_order.status}"
+
+            logger.info(
+                f"Session message: order_status ref={os_ref_id} "
+                f"status={order_status_order.status} for contact {contact_id}"
+            )
+
+        elif message_type in ("image", "video", "document", "audio", "sticker"):
+            # ── Media message (image / video / document / audio / sticker) ──
             # message_content holds the media URL (e.g. GCS signed URL).
             # body_text (from node_data['body']) is the optional caption.
             # WhatsApp Cloud API accepts: {"type":"image", "image":{"link":"…","caption":"…"}}
             media_url = message_content or ""
             caption = body_text if body_text and body_text != media_url else None
 
-            # Map node message_type → Cloud API type key + MessageType enum
+            # Map node message_type → Cloud API type key + MessageType enum.
+            # Stickers ride here rather than through StickerMessage: that model
+            # takes an uploaded media *id*, while message nodes author media as
+            # a URL like every other media type (#273).
             _MEDIA_TYPE_MAP = {
                 "image": (MessageType.IMAGE, "image"),
                 "video": (MessageType.VIDEO, "video"),
                 "document": (MessageType.DOCUMENT, "document"),
                 "audio": (MessageType.AUDIO, "audio"),
+                "sticker": (MessageType.STICKER, "sticker"),
             }
             wa_message_type, api_type_key = _MEDIA_TYPE_MAP[message_type]
 
             media_obj: Dict[str, Any] = {"link": media_url}
-            # caption is supported on image, video, document — not audio
-            if caption and message_type != "audio":
+            # caption is supported on image, video, document — not audio or sticker
+            if caption and message_type not in ("audio", "sticker"):
                 media_obj["caption"] = caption
 
             payload = {
@@ -1952,17 +2374,127 @@ def send_session_message(
 
             logger.info(f"Session message: {message_type} for contact {contact_id}, url={media_url[:80]}...")
 
-        elif message_type == "text" or not is_interactive:
+        elif message_type == "location":
+            # ── Location message ──
+            # Built through the META Direct validator rather than a data model
+            # because there is no LocationMessage in session_message_base, and
+            # the validator already enforces the lat/long ranges a mistyped
+            # coordinate would otherwise carry all the way to Meta (#273).
+            from wa.utility.validators.meta_direct.send.session.location_message_request import (
+                LocationMessageSendRequestValidator,
+            )
+
+            loc = node_data.get("location") or {}
+            location_payload = {
+                "latitude": loc.get("latitude", node_data.get("latitude")),
+                "longitude": loc.get("longitude", node_data.get("longitude")),
+            }
+            loc_name = loc.get("name") or node_data.get("location_name")
+            loc_address = loc.get("address") or node_data.get("location_address")
+            if loc_name:
+                location_payload["name"] = str(loc_name)[:1000]
+            if loc_address:
+                location_payload["address"] = str(loc_address)[:1000]
+
+            payload = LocationMessageSendRequestValidator(to=recipient, location=location_payload).to_meta_payload()
+            wa_message_type = MessageType.LOCATION
+            stored_text = loc_name or loc_address or "Shared location"
+
+            logger.info(
+                f"Session message: location {location_payload['latitude']},"
+                f"{location_payload['longitude']} for contact {contact_id}"
+            )
+
+        elif message_type == "contacts":
+            # ── Contact card message ──
+            # node_data['contacts'] is a list of Cloud-API contact objects; the
+            # only mandatory part is name.formatted_name, so the model does the
+            # rest of the shape checking for us.
+            raw_contacts = node_data.get("contacts") or []
+            contact_cards = [Contact(**rc) for rc in raw_contacts if isinstance(rc, dict)]
+
+            message = ContactMessage(to=recipient, contacts=contact_cards)
+            payload = message.model_dump(by_alias=True, exclude_none=True)
+            wa_message_type = MessageType.CONTACTS
+            stored_text = ", ".join(c.name.formatted_name for c in contact_cards)
+
+            logger.info(f"Session message: contacts x{len(contact_cards)} for contact {contact_id}")
+
+        elif message_type == "reaction":
+            # ── Reaction message ──
+            # A reaction has to name the message it reacts to.  An author
+            # cannot know a wamid at design time, so the default target is the
+            # contact's most recent inbound message — the one they just sent,
+            # which is what a reaction node in a flow means.
+            reaction_cfg = node_data.get("reaction") or {}
+            target_message_id = reaction_cfg.get("message_id") or ""
+            if not target_message_id:
+                last_inbound = (
+                    WAMessage.objects.filter(contact=contact, direction=MessageDirection.INBOUND)
+                    .exclude(wa_message_id__isnull=True)
+                    .exclude(wa_message_id="")
+                    .order_by("-created_at")
+                    .values_list("wa_message_id", flat=True)
+                    .first()
+                )
+                target_message_id = last_inbound or ""
+
+            if not target_message_id:
+                result["error"] = (
+                    f"Cannot react for contact {contact_id}: no inbound message to react to "
+                    f"and no reaction.message_id configured on the node."
+                )
+                result["status"] = "failed"
+                logger.error(result["error"])
+                return result
+
+            emoji = str(reaction_cfg.get("emoji") or message_content or "")
+            message = ReactionMessage(
+                to=recipient,
+                reaction=ReactionMessageInput(message_id=target_message_id, emoji=emoji),
+            )
+            payload = message.model_dump(by_alias=True, exclude_none=True)
+            wa_message_type = MessageType.REACTION
+            stored_text = emoji
+
+            logger.info(f"Session message: reaction '{emoji}' on {target_message_id} for contact {contact_id}")
+
+        elif message_type == "text":
             message = TextMessage(to=recipient, text=TextMessageInput(body=message_content))
             payload = message.model_dump(by_alias=True, exclude_none=True)
             wa_message_type = MessageType.TEXT
             stored_text = message_content
-        else:
-            # Interactive type but no quick-reply buttons → send as plain text
+
+        elif message_type in ("interactive_button", "interactive_list"):
+            # Interactive type with nothing to interact with — no quick-reply
+            # buttons, or a list with no rows.  Meta rejects both, so the body
+            # goes out as text.  This is the one deliberate degrade left: the
+            # node has no options to render, and dropping the message entirely
+            # would strand the conversation mid-flow.  SESSION_003/SESSION_004
+            # flag it at authoring time so it should not reach here.
+            logger.warning(
+                f"Session message: '{message_type}' node for contact {contact_id} has no "
+                f"buttons/rows to render — sending the body as plain text"
+            )
             message = TextMessage(to=recipient, text=TextMessageInput(body=body_text or message_content))
             payload = message.model_dump(by_alias=True, exclude_none=True)
             wa_message_type = MessageType.TEXT
             stored_text = body_text or message_content
+
+        else:
+            # A type the editor can author but this function cannot send.
+            # Sending the body as a paragraph instead is what #273 was filed
+            # for — the author sees a working node and the customer gets prose.
+            # Fail the send so the gap is visible in the session error and the
+            # logs instead of arriving silently at the customer.
+            result["error"] = (
+                f"Unsupported session message type '{message_type}' for contact {contact_id}. "
+                f"Add a branch to send_session_message, or drop the type from "
+                f"chat_flow.constants.SESSION_MESSAGE_TYPES."
+            )
+            result["status"] = "failed"
+            logger.error(result["error"])
+            return result
 
         # Create WAMessage entry — post_save signal queues the Celery send task
         create_kwargs = dict(
@@ -1977,9 +2509,16 @@ def send_session_message(
         # Persist media_url for media messages so it shows in team-inbox / logs.
         # WAMessage.media_url is URLField(max_length=200) by default;
         # GCS signed URLs are much longer, so only store if it fits.
-        if message_type in ("image", "video", "document", "audio") and message_content:
+        if message_type in ("image", "video", "document", "audio", "sticker") and message_content:
             if len(message_content) <= 200:
                 create_kwargs["media_url"] = message_content
+        # Same reasoning for locations: WAMessage has dedicated coordinate
+        # columns that team-inbox renders as a map pin.
+        if message_type == "location":
+            create_kwargs["latitude"] = payload["location"]["latitude"]
+            create_kwargs["longitude"] = payload["location"]["longitude"]
+            create_kwargs["location_name"] = payload["location"].get("name")
+            create_kwargs["location_address"] = payload["location"].get("address")
 
         outgoing_message = WAMessage.objects.create(**create_kwargs)
 
@@ -2242,7 +2781,16 @@ class ChatFlowExecutor:
         return f"flow_{self.flow_id}_contact_{contact_id}"
 
     def _create_node_handler(self, node: ChatFlowNode, edges: List[ChatFlowEdge]):
-        """Create the appropriate handler based on node type."""
+        """Create the appropriate handler based on node type.
+
+        Every type in ``constants.VALID_NODE_TYPES`` — the same list the
+        authoring validators accept — gets an explicit branch here.  The
+        trailing ``else`` is for types this build has never heard of, not for
+        types the editor can author: before #273 ``handoff`` and ``action``
+        both landed there and became template nodes with no template, i.e.
+        silent no-ops.  ``test_node_type_coverage.py`` asserts the two lists
+        still agree.
+        """
         node_type = node.node_type
 
         if node_type == "start":
@@ -2264,8 +2812,17 @@ class ChatFlowExecutor:
         elif node_type == "api":
             # API Call nodes make HTTP requests and route by status code
             return create_api_call_node_handler(node, edges)
+        elif node_type == "handoff":
+            # Handoff nodes notify the customer and move the ticket to a human
+            return create_handoff_node_handler(node, edges)
+        elif node_type == "action":
+            # 'action' is declared but has no runtime behaviour yet — passing
+            # through is deliberate, not a fall-through (see models.py)
+            return create_passthrough_node_handler(node, edges)
         else:
-            # Default to template handler
+            # Unknown node type — treat it as a template node, which is what
+            # every flow_data blob looked like before node types existed
+            logger.warning(f"Node '{node.node_id}': unknown node type '{node_type}', using the template handler")
             return create_template_node_handler(node, edges)
 
     def start_session(self, contact_id: int, context: Optional[Dict[str, Any]] = None) -> FlowState:

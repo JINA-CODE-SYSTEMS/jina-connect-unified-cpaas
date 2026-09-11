@@ -5,7 +5,7 @@ Central source of truth for node types, button types, and other constants
 used across the ChatFlow module.
 """
 
-from typing import FrozenSet, Tuple
+from typing import Dict, FrozenSet, Tuple
 
 # =============================================================================
 # NODE TYPES
@@ -17,7 +17,7 @@ VALID_NODE_TYPES: Tuple[str, ...] = (
     "start",  # Flow entry point
     "end",  # Flow termination point
     "condition",  # Conditional branching logic
-    "action",  # Custom action execution
+    "action",  # Declared for the editor; no runtime behaviour yet (#273)
     "delay",  # Timed delay before continuing
     "message",  # Session message (free-form text/media)
     "handoff",  # Handoff to human agent (Team Inbox)
@@ -102,7 +102,14 @@ PASSTHROUGH_SOURCE_HANDLES: FrozenSet[str] = frozenset(
 # SESSION MESSAGE TYPES
 # =============================================================================
 
-# Valid content types for session messages
+# Valid content types for session messages.
+#
+# This tuple is the authoring contract: SESSION_006 rejects a message node
+# whose ``message_type`` is not listed here, and ``send_session_message``
+# has a branch for every entry.  The two lists used to be maintained
+# independently — authoring accepted ``interactive_list`` while the executor
+# sent the body as a plain paragraph — so the pair is now asserted by
+# ``chat_flow/test_node_type_coverage.py`` (#273).
 SESSION_MESSAGE_TYPES: Tuple[str, ...] = (
     "text",
     "image",
@@ -111,8 +118,31 @@ SESSION_MESSAGE_TYPES: Tuple[str, ...] = (
     "document",
     "sticker",
     "location",
+    "contacts",
+    "reaction",
+    "interactive_button",
+    "interactive_list",
+    "cta_url",
     "order_details",
     "order_status",
+)
+
+# Spellings the flow editor has emitted over time, mapped onto the canonical
+# type above.  Kept so flows saved before #273 keep validating and sending;
+# the validation rules already accepted both halves of each pair.
+SESSION_MESSAGE_TYPE_ALIASES: Dict[str, str] = {
+    "button": "interactive_button",
+    "list": "interactive_list",
+    "contact": "contacts",
+    "interactive_cta_url": "cta_url",
+}
+
+# Session message types whose reply the flow must wait for.  A list message
+# stalls forever if the executor passes through instead of waiting, because
+# the row reply then has no node to resume (#273).
+AWAITS_REPLY_SESSION_MESSAGE_TYPES: Tuple[str, ...] = (
+    "interactive_button",
+    "interactive_list",
 )
 
 # =============================================================================
@@ -182,3 +212,23 @@ def is_valid_http_method(method: str) -> bool:
 def is_valid_api_handle(handle: str | None) -> bool:
     """Check if a source handle is a valid API response handle."""
     return handle in API_RESPONSE_HANDLES
+
+
+def canonical_session_message_type(message_type: str | None) -> str:
+    """Resolve a node's ``message_type`` to its canonical spelling.
+
+    A missing type means ``text``: that is what the executor has always
+    defaulted to, and plenty of saved flows rely on it.
+    """
+    resolved = (message_type or "text").strip()
+    return SESSION_MESSAGE_TYPE_ALIASES.get(resolved, resolved)
+
+
+def is_valid_session_message_type(message_type: str | None) -> bool:
+    """Check if a session message type can actually be sent."""
+    return canonical_session_message_type(message_type) in SESSION_MESSAGE_TYPES
+
+
+def session_message_awaits_reply(message_type: str | None) -> bool:
+    """Check if a session message type expects a user reply before routing."""
+    return canonical_session_message_type(message_type) in AWAITS_REPLY_SESSION_MESSAGE_TYPES
