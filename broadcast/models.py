@@ -189,6 +189,16 @@ class Broadcast(BaseTenantModelForFilterUser):
         blank=True,
         help_text="Initial cost deducted for the broadcast",
     )
+    charged_rates = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Per-destination rates actually used to price this broadcast, as "
+            '{"IN": "0.011385", "__unknown__": "0.10"}. Recorded at charge time so a '
+            "refund can return what was taken rather than recomputing from a "
+            "different source (#262)."
+        ),
+    )
     refund_amount = MoneyField(
         max_digits=10,
         decimal_places=2,
@@ -449,6 +459,10 @@ class Broadcast(BaseTenantModelForFilterUser):
         looks up the send-time rate for each country via RateCardService,
         and sums up the costs.
 
+        Also records the rate used for each destination on
+        ``self._charged_rates``, so the charge can be reproduced exactly at
+        refund time instead of being recomputed from the flat fallback (#262).
+
         Returns:
             Decimal total cost, or None if rate-card data is unavailable.
         """
@@ -490,22 +504,26 @@ class Broadcast(BaseTenantModelForFilterUser):
             except phonenumbers.NumberParseException:
                 country_counts["__unknown__"] = country_counts.get("__unknown__", 0) + 1
 
-        # Calculate cost per country
+        # Calculate cost per country, remembering the rate used for each so a
+        # refund can hand back the same number (#262).
         total_cost = Decimal("0")
-        flat_price = self._get_whatsapp_message_price()  # fallback per-msg
+        flat_price = Decimal(str(self._get_whatsapp_message_price()))  # fallback per-msg
+        rates: dict[str, str] = {}
 
         for country, count in country_counts.items():
             if country == "__unknown__":
                 # Unknown country → use flat rate
-                total_cost += Decimal(str(flat_price)) * count
+                rate = flat_price
             else:
                 rate = svc.get_send_time_rate(country, message_type)
-                if rate is not None:
-                    total_cost += rate * count
-                else:
+                if rate is None:
                     # No rate card entry → flat rate fallback
-                    total_cost += Decimal(str(flat_price)) * count
+                    rate = flat_price
 
+            rates[country] = str(rate)
+            total_cost += rate * count
+
+        self._charged_rates = rates
         return total_cost
 
     def get_failed_message_count(self):
@@ -522,14 +540,63 @@ class Broadcast(BaseTenantModelForFilterUser):
             # we cancelled before sending any messages
             return self.recipients.count()
 
+    def _country_of(self, phone) -> str:
+        """Destination bucket for a phone number, matching the charge path."""
+        import phonenumbers
+
+        try:
+            parsed = phonenumbers.parse(str(phone))
+            return phonenumbers.region_code_for_number(parsed) or "__unknown__"
+        except phonenumbers.NumberParseException:
+            return "__unknown__"
+
     def calculate_refund_amount(self) -> Decimal:
         """
-        Calculate refund amount based on failed messages.
+        Refund exactly what the failed messages were charged.
+
+        This used to multiply the failed count by the flat
+        ``TenantWAApp`` price while the *charge* went through per-country
+        rate-card rates — two different sources for the same money (#262).
+        Below the flat rate the refund exceeded the charge and was silently
+        clamped to the whole broadcast, so a half-failed campaign was refunded
+        in full; above it the tenant was short-refunded with nothing logged.
+
+        ``charged_rates`` is recorded at charge time, so each failed message is
+        credited at the rate its own destination was billed. Broadcasts charged
+        before that field existed, and any destination missing from it, fall
+        back to the flat price — the old behaviour, kept only where there is
+        nothing better to use.
         """
         failed_count = self.get_failed_message_count()
-        price_per_message = self.get_message_price()
+        if not failed_count:
+            return Decimal("0")
 
-        return failed_count * price_per_message
+        rates = self.charged_rates or {}
+        flat_price = Decimal(str(self.get_message_price()))
+
+        if not rates:
+            # Legacy broadcast, or one priced entirely off the flat rate.
+            return failed_count * flat_price
+
+        failed_messages = (
+            self.broadcasts.filter(status__in=[MessageStatusChoices.FAILED, MessageStatusChoices.BLOCKED])
+            .select_related("contact")
+            .values_list("contact__phone", flat=True)
+        )
+
+        total = Decimal("0")
+        counted = 0
+        for phone in failed_messages.iterator():
+            rate = rates.get(self._country_of(phone))
+            total += Decimal(str(rate)) if rate is not None else flat_price
+            counted += 1
+
+        if counted != failed_count:
+            # get_failed_message_count() also covers the cancelled-before-send
+            # case, where no BroadcastMessage rows exist to iterate.
+            total += (failed_count - counted) * flat_price
+
+        return total
 
     def should_apply_credit_deduction(self):
         """
