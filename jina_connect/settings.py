@@ -395,7 +395,12 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 # Product name used when BrandingSettings.product_name is blank.
 # White-label deployments override this via env.
-DEFAULT_PRODUCT_NAME = config("DEFAULT_PRODUCT_NAME", "Jina Connect")
+#
+# One word. The spelling was settled deliberately (#226) and it is
+# user-visible in page titles and transactional copy, so the env value on
+# every deployment has to move with this default — the env wins, and a box
+# still setting "Jina Connect" keeps showing it.
+DEFAULT_PRODUCT_NAME = config("DEFAULT_PRODUCT_NAME", "JinaConnect")
 
 # Primary brand colour used when BrandingSettings.primary_color is blank.
 # Matches --color-brand-500 in the web app's default palette.
