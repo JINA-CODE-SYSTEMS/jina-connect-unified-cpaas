@@ -559,6 +559,63 @@ def cancel_broadcast_task(task_id: str):
         return {"success": False, "error": str(e), "task_id": task_id}
 
 
+#: Statuses that mean the provider already accepted this message. A batch
+#: retry must never re-send one of these: the provider has no idempotency key
+#: for sends, so a resend is a second real message to a real customer, billed
+#: again, and a spam report waiting to happen (#271).
+#: Spelled as literals rather than ``MessageStatusChoices`` members because
+#: ``broadcast.models`` is imported inside the tasks here, not at module scope.
+#: ``test_the_sent_statuses_match_the_enum`` keeps the two in step.
+ALREADY_SENT_STATUSES = frozenset({"SENT", "DELIVERED", "READ"})
+
+#: Substrings that mark a failure as worth another attempt rather than
+#: terminal. Matched against the provider error text because the API clients
+#: raise a plain ``Exception`` carrying the status code in its message; a typed
+#: exception would be better and is a larger change than this fix.
+_TRANSIENT_ERROR_MARKERS = (
+    "status code 429",
+    "status code 500",
+    "status code 502",
+    "status code 503",
+    "status code 504",
+    "too many requests",
+    "rate limit",
+    "timed out",
+    "timeout",
+    "connection aborted",
+    "connection reset",
+    "connection refused",
+    "temporarily unavailable",
+)
+
+#: Ceiling on automatic per-message retries.
+MAX_MESSAGE_RETRIES = 3
+
+
+def _already_sent(message) -> bool:
+    """True if this message must not be sent again.
+
+    Two independent signals, because either alone can be stale: a terminal
+    status, or a provider message id — which is only ever set from a response
+    the provider actually returned.
+    """
+    if message.status in ALREADY_SENT_STATUSES:
+        return True
+    return bool(getattr(message, "message_id", "") or "")
+
+
+def _is_transient(error_text: str) -> bool:
+    """Whether a provider error deserves another attempt.
+
+    A 429 or a 502 says "not now"; an invalid template or a blocked number
+    says "not ever". Treating the first as terminal burns the recipient for
+    good and — because failures are refunded — quietly turns a rate-limit
+    event into a billing event.
+    """
+    lowered = (error_text or "").lower()
+    return any(marker in lowered for marker in _TRANSIENT_ERROR_MARKERS)
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def process_broadcast_messages_batch(self, message_ids: List[int]):
     """
@@ -591,9 +648,26 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
         failed_count = 0
         processed_ids = []
 
+        skipped_count = 0
+        retryable_count = 0
+
         # Process each message
         for message in messages:
             try:
+                # A batch retry re-runs the whole message_ids list, so without
+                # this guard one late failure re-sends everything before it
+                # (#271). The provider offers no idempotency key, so the only
+                # protection is not asking twice.
+                if _already_sent(message):
+                    logger.info(
+                        "Skipping message %s — already sent (status=%s, message_id=%s)",
+                        message.id,
+                        message.status,
+                        message.message_id or "",
+                    )
+                    skipped_count += 1
+                    continue
+
                 # Update status to SENDING
                 message.status = MessageStatusChoices.SENDING
                 message.task_id = self.request.id
@@ -628,11 +702,27 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                             f"Error creating team inbox message for broadcast message {message.id}: {str(inbox_error)}"
                         )
                 else:
-                    message.status = MessageStatusChoices.FAILED
-                    message.response = result.get("error", "Unknown error")
+                    error_text = result.get("error", "Unknown error")
                     message.retry_count += 1
-                    failed_count += 1
-                    logger.error(f"Message {message.id} failed: {result.get('error', 'Unknown error')}")
+                    message.response = error_text
+
+                    if _is_transient(error_text) and message.retry_count <= MAX_MESSAGE_RETRIES:
+                        # Back to PENDING so the sweep picks it up. FAILED here
+                        # would be permanent *and* refunded, turning a 429 into
+                        # a billing event.
+                        message.status = MessageStatusChoices.PENDING
+                        retryable_count += 1
+                        logger.warning(
+                            "Message %s hit a transient error (attempt %s/%s), will retry: %s",
+                            message.id,
+                            message.retry_count,
+                            MAX_MESSAGE_RETRIES,
+                            error_text,
+                        )
+                    else:
+                        message.status = MessageStatusChoices.FAILED
+                        failed_count += 1
+                        logger.error(f"Message {message.id} failed: {error_text}")
 
                 message.save(update_fields=["status", "message_id", "response", "retry_count", "sent_at"])
                 processed_count += 1
@@ -657,6 +747,8 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
             "processed": processed_count,
             "successful": success_count,
             "failed": failed_count,
+            "retryable": retryable_count,
+            "skipped_already_sent": skipped_count,
             "message_ids": processed_ids,
         }
 
@@ -675,7 +767,13 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
             logger.error(f"Max retries exceeded for batch {message_ids}")
             try:
                 with transaction.atomic():
-                    BroadcastMessage.objects.filter(id__in=message_ids).update(
+                    # Only messages that never reached the provider. Blanket-
+                    # failing the batch marked delivered messages FAILED, and
+                    # since failures are refunded, credited the tenant for
+                    # traffic that really went out (#271).
+                    BroadcastMessage.objects.filter(id__in=message_ids).exclude(
+                        status__in=ALREADY_SENT_STATUSES
+                    ).exclude(message_id__isnull=False, message_id__gt="").update(
                         status=MessageStatusChoices.FAILED, response=f"Max retries exceeded: {str(exc)}"
                     )
             except Exception as update_error:

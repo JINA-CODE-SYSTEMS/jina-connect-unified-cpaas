@@ -133,3 +133,64 @@ def update_broadcast_status():
     except Exception as e:
         logger.exception(f"Error in update_broadcast_status cron job: {str(e)}")
         raise
+
+
+def run_scheduled_broadcasts():
+    """Launch SCHEDULED broadcasts whose time has arrived.
+
+    ``process_scheduled_broadcasts`` was registered only in
+    ``app.conf.beat_schedule`` (``jina_connect/celery.py``), and this
+    deployment runs no celery beat — periodic work goes through django-crontab.
+    So the recovery net never ran (#271).
+
+    The normal path is unaffected: a broadcast schedules itself on commit with
+    ``apply_async(countdown=…)``. This exists for the ones that fall through —
+    a worker restart, a revoked task, a broker outage — which would otherwise
+    sit in SCHEDULED indefinitely with nobody looking.
+    """
+    from broadcast.tasks import process_scheduled_broadcasts
+
+    try:
+        result = process_scheduled_broadcasts()
+        logger.info("[broadcast.cron] scheduled sweep: %s", result)
+        return result
+    except Exception:
+        logger.exception("[broadcast.cron] scheduled sweep failed")
+        raise
+
+
+def retry_transient_message_failures():
+    """Re-queue messages that failed for a reason worth retrying.
+
+    ``retry_count`` was incremented in two places and read by nothing: there
+    was no consumer, so a 429 or a transient 5xx marked the recipient FAILED
+    for good — and because failures are refunded, quietly turned a rate-limit
+    event into a billing one (#271).
+
+    The dispatch loop now leaves such messages in PENDING with an incremented
+    ``retry_count``; this picks them up. Messages are left alone for a couple
+    of minutes first, so a batch still in flight is not raced.
+    """
+    from broadcast.models import BroadcastMessage, BroadcastStatusChoices, MessageStatusChoices
+    from broadcast.tasks import MAX_MESSAGE_RETRIES, process_broadcast_messages_batch
+
+    cutoff = timezone.now() - timedelta(minutes=2)
+
+    due = list(
+        BroadcastMessage.objects.filter(
+            status=MessageStatusChoices.PENDING,
+            retry_count__gt=0,
+            retry_count__lte=MAX_MESSAGE_RETRIES,
+            updated_at__lt=cutoff,
+        )
+        .filter(broadcast__status__in=[BroadcastStatusChoices.SENDING, BroadcastStatusChoices.PARTIALLY_SENT])
+        .values_list("id", flat=True)[:500]
+    )
+
+    if not due:
+        logger.debug("[broadcast.cron] no messages awaiting retry")
+        return {"requeued": 0}
+
+    logger.info("[broadcast.cron] re-queueing %s message(s) after transient failures", len(due))
+    process_broadcast_messages_batch.delay(due)
+    return {"requeued": len(due)}
