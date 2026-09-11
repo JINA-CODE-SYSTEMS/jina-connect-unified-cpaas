@@ -69,7 +69,11 @@ class MetaDirectAdapter(BaseBSPAdapter):
         # for Conversions API.
         supports_ctwa_referral=True,
         supports_ctwa_clid=True,
-        extra=frozenset({"templates", "subscriptions"}),
+        # "media_upload" belongs here because ``upload_media`` below is a real
+        # Resumable Upload implementation. ``supports()`` consults *only* this
+        # frozenset, so omitting it made the viewset return 501 for every media
+        # template while the method sat fully implemented — see #266.
+        extra=frozenset({"templates", "subscriptions", "media_upload"}),
     )
 
     # ── CTWA referral parsing (#192) ─────────────────────────────────────
