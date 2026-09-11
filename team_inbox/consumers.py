@@ -19,6 +19,7 @@ from rest_framework_simplejwt.tokens import UntypedToken
 from contacts.models import TenantContact
 from team_inbox.models import MessageEventIds, Messages
 from team_inbox.serializers import MessagesSerializer
+from team_inbox.utils.read_receipts import send_read_receipt
 from tenants.models import DefaultRoleSlugs, TenantUser
 
 User = get_user_model()
@@ -819,6 +820,8 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
 
             if updated_count > 0:
                 logger.info(f"User {self.user.id} marked {updated_count} messages as read")
+                # Blue ticks for the customer, not just the team (#274).
+                send_read_receipt(Messages.objects.filter(id__in=unread_ids))
 
             return unread_ids
 
@@ -848,6 +851,8 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
                     is_read=True, read_at=timezone.now(), read_by=self.user
                 )
                 logger.info(f"User {self.user.id} marked {len(unread_ids)} messages as read for contact {contact_id}")
+                # Blue ticks for the customer, not just the team (#274).
+                send_read_receipt(Messages.objects.filter(id__in=unread_ids))
 
             return unread_ids
 

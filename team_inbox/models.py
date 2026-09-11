@@ -219,6 +219,23 @@ class Messages(BaseTenantModelForFilterUser):
                 return self._broadcast_message.failed_at
         return None
 
+    @property
+    def outgoing_error(self) -> Union[str, None]:
+        """Why the outgoing message failed, as the provider explained it.
+
+        Without this the inbox showed FAILED and nothing else, so an agent
+        whose reply fell outside the 24h service window (or hit any other
+        Cloud API error) had no way to learn what to do differently (#274).
+        BroadcastMessage has no error field to read, hence its absence here.
+        """
+        if self.direction == MessageDirectionChoices.OUTGOING:
+            if self.outgoing_message:
+                return self.outgoing_message.error_message
+            telegram_msg = self.telegram_outbound.first()
+            if telegram_msg:
+                return telegram_msg.error_message
+        return None
+
     def __str__(self):
         return f"Message {self.message_id_id} at {self.timestamp}"
 

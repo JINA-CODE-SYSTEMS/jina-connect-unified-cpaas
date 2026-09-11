@@ -63,7 +63,13 @@ class MetaDirectAdapter(BaseBSPAdapter):
         supports_templates=True,
         supports_template_buttons=True,
         supports_reactions=True,
-        supports_typing_indicator=True,
+        # Dropped rather than implemented (#274). META does expose a typing
+        # indicator — the same POST as a read receipt, plus
+        # ``typing_indicator`` — but no adapter method sends one, and the
+        # team-inbox indicator is agent-to-agent over WebSocket only. #266
+        # settled that a flag must match the code behind it; this one
+        # pointed at nothing.
+        supports_typing_indicator=False,
         # CTWA #192 — Meta Cloud surfaces the full referral payload
         # including ctwa_clid, which is the highest-quality match key
         # for Conversions API.
