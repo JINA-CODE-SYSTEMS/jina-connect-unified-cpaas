@@ -812,7 +812,11 @@ class SentPartnerReport(models.Model):
     """
 
     KIND_ACTIVE_ACCOUNTS = "active_accounts"
-    KIND_CHOICES = ((KIND_ACTIVE_ACCOUNTS, "Active Customer Account report"),)
+    KIND_AVAILABILITY = "availability"
+    KIND_CHOICES = (
+        (KIND_ACTIVE_ACCOUNTS, "Active Customer Account report"),
+        (KIND_AVAILABILITY, "Service availability report"),
+    )
 
     kind = models.CharField(max_length=32, choices=KIND_CHOICES)
     year = models.PositiveIntegerField()
