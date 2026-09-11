@@ -16,6 +16,7 @@ Rules (from RULES.MD):
 
 from typing import Any, Dict, List, Set
 
+from ..constants import canonical_session_message_type
 from .base import EdgeRule, FlowRule, NodeRule, RuleCategory, RuleSeverity, RuleViolation
 from .registry import register
 
@@ -312,11 +313,20 @@ class OnlyConditionNodeCanBranchRule(FlowRule):
     _branching_allowed = {"condition", "template", "api"}  # template/api can branch via buttons/status
 
     def _node_has_interactive_buttons(self, node: Dict[str, Any]) -> bool:
-        """Check if a message node has interactive buttons that justify multiple edges."""
+        """Check if a message node has interactive options that justify multiple edges.
+
+        Buttons live under 'buttons', list rows under 'sections' — a list node
+        routed one edge per row has the latter and none of the former (#273).
+        """
         node_data = node.get("data", {})
         buttons = node_data.get("buttons", [])
-        msg_type = node_data.get("message_type", "")
-        return bool(buttons) and msg_type in ("interactive_button", "interactive_list")
+        sections = node_data.get("sections", [])
+        msg_type = canonical_session_message_type(node_data.get("message_type"))
+        if msg_type == "interactive_button":
+            return bool(buttons)
+        if msg_type == "interactive_list":
+            return any(s.get("rows") for s in sections)
+        return False
 
     def validate(self, flow_data: Dict[str, Any]) -> List[RuleViolation]:
         violations = []
