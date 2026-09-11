@@ -65,6 +65,8 @@ class WAAppSerializer(BaseSerializer):
             "bsp",
             "bsp_display",
             "app_id",
+            "meta_app_id",
+            "bsp_credentials",
             "is_active",
             "is_verified",
             "daily_limit",
@@ -81,7 +83,13 @@ class WAAppSerializer(BaseSerializer):
             "updated_at",
         ]
         extra_kwargs = {
+            # Write-only: a live access token must never come back out of the
+            # API. The entry was here before #275 but ``bsp_credentials`` was
+            # missing from ``fields``, so DRF ignored it and the per-tenant
+            # token could not be set at all — every send fell back to the one
+            # global ``META_PERM_TOKEN``.
             "bsp_credentials": {"write_only": True},
+            "meta_app_id": {"help_text": "META App ID — used for the Resumable Upload API"},
             "waba_id": {"help_text": "WhatsApp Business Account ID from META"},
             "bsp": {"help_text": "Business Solution Provider (META, GUPSHUP, etc.)"},
         }

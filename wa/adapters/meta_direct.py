@@ -959,7 +959,8 @@ class MetaDirectAdapter(BaseBSPAdapter):
         creation.  Template headers require handles from the Resumable
         Upload API.
 
-        Requires ``wa_app.app_id`` and ``wa_app.phone_number_id`` to be set.
+        Requires ``wa_app.meta_app_id`` (or the legacy ``wa_app.app_id``) and
+        ``wa_app.phone_number_id`` to be set.
         """
         self._log("info", f"upload_media START — filename={filename}, file_type={file_type}")
 
@@ -972,13 +973,16 @@ class MetaDirectAdapter(BaseBSPAdapter):
                 error_message="META access token not configured.",
             )
 
-        app_id = getattr(self.wa_app, "app_id", None)
+        # ``app_id`` is the Gupshup app ID by definition — it only ever held
+        # the META App ID because there was no field for it (#275). Prefer the
+        # named field, fall back so apps configured before it keep uploading.
+        app_id = getattr(self.wa_app, "meta_app_id", None) or getattr(self.wa_app, "app_id", None)
         phone_number_id = getattr(self.wa_app, "phone_number_id", None)
         if not app_id:
             return AdapterResult(
                 success=False,
                 provider=self.PROVIDER_NAME,
-                error_message="app_id not configured on the WAApp. Required for META Resumable Upload API.",
+                error_message="meta_app_id not configured on the WAApp. Required for META Resumable Upload API.",
             )
         if not phone_number_id:
             return AdapterResult(
