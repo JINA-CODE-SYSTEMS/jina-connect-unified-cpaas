@@ -4,6 +4,9 @@ Tests for BrandingSettings product name and singleton behaviour.
 Run with: python manage.py test tenants.tests.test_branding_settings
 """
 
+from pathlib import Path
+
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 
@@ -90,6 +93,21 @@ class BrandingSettingsPrimaryColorTestCase(TestCase):
                 branding.primary_color = bad
                 with self.assertRaises(ValidationError):
                     branding.full_clean()
+
+
+class DeploymentDefaultTestCase(TestCase):
+    def test_the_env_example_ships_the_settled_spelling(self):
+        """One word, settled deliberately (#226), and user-visible.
+
+        Asserting ``settings.DEFAULT_PRODUCT_NAME`` would not work: every real
+        machine sets it in its own ``.env``, so the test would read that
+        instead of the shipped value and fail everywhere for the wrong reason.
+        What can be pinned is the file a new install copies, which is where a
+        drift back to two words would otherwise spread from.
+        """
+        env_example = (Path(settings.BASE_DIR) / ".env.example").read_text()
+
+        self.assertIn("DEFAULT_PRODUCT_NAME=JinaConnect\n", env_example)
 
 
 class BrandingSettingsSerializerTestCase(TestCase):
