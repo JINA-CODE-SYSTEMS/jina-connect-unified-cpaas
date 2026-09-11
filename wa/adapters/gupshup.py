@@ -275,6 +275,77 @@ class GupshupAdapter(BaseBSPAdapter):
 
         return raw
 
+    # ── Account information ──────────────────────────────────────────────
+
+    def fetch_waba_info(self) -> AdapterResult:
+        """
+        Read WABA state from Gupshup's partner API.
+
+        Gupshup answers with a single camelCase ``wabaInfo`` object whose keys
+        already line up with ``WABAInfo``'s fields, so this is a rename rather
+        than a translation. It is written out explicitly all the same: the
+        previous arrangement read these keys inside the model, which is what
+        made the whole notion of a tier Gupshup-only (#267).
+        """
+        from wa.utility.apis.gupshup.waba import WABAAPI
+
+        app_id = getattr(self.wa_app, "app_id", None)
+        app_secret = getattr(self.wa_app, "app_secret", None)
+        if not app_id or not app_secret:
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=f"Gupshup credentials (app_id/app_secret) missing on WAApp {self.wa_app.pk}",
+            )
+
+        try:
+            response = WABAAPI(appId=app_id, token=app_secret).get_waba_details() or {}
+        except Exception as exc:  # noqa: BLE001
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=f"Could not read WABA info from Gupshup: {exc}",
+            )
+
+        if response.get("status") == "error":
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=str(response.get("message") or "Unknown error"),
+                raw_response=response,
+            )
+        if response.get("status") != "success":
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message="Unknown response format",
+                raw_response=response,
+            )
+
+        waba = response.get("wabaInfo") or {}
+        mapping = {
+            "account_status": "accountStatus",
+            "docker_status": "dockerStatus",
+            "messaging_limit": "messagingLimit",
+            "mm_lite_status": "mmLiteStatus",
+            "ownership_type": "ownershipType",
+            "phone": "phone",
+            "phone_quality": "phoneQuality",
+            "throughput": "throughput",
+            "verified_name": "verifiedName",
+            "waba_id": "wabaId",
+            "can_send_message": "canSendMessage",
+        }
+        # Only carry keys Gupshup actually sent — an absent key must not
+        # overwrite a stored value with None.
+        data = {field: waba[key] for field, key in mapping.items() if key in waba}
+        if "errors" in waba:
+            data["errors"] = waba.get("errors") or []
+        if "additionalInfo" in waba:
+            data["additional_info"] = waba.get("additionalInfo") or []
+
+        return AdapterResult(success=True, provider=self.PROVIDER_NAME, data=data, raw_response=response)
+
     # ── Media operations ─────────────────────────────────────────────────
 
     @silk_profile(name="adapter.gupshup.upload_media")

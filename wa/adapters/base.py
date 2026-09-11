@@ -146,6 +146,32 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
         """
         ...
 
+    # ── Account information ──────────────────────────────────────────────
+
+    @abstractmethod
+    def fetch_waba_info(self) -> AdapterResult:
+        """
+        Fetch account + phone-number state for this WAApp from the BSP.
+
+        ``data`` must be keyed by ``WABAInfo`` field names so the caller can
+        write it without knowing which provider answered. Only keys the
+        provider actually reports should be present — a missing key means
+        "unknown", which is different from ``None`` meaning "reported empty",
+        and lets provider-specific fields (Gupshup's ``docker_status``) stay
+        untouched when the other provider answers.
+
+        Recognised keys: ``account_status``, ``docker_status``,
+        ``messaging_limit``, ``mm_lite_status``, ``ownership_type``, ``phone``,
+        ``phone_quality``, ``throughput``, ``verified_name``, ``waba_id``,
+        ``can_send_message``, ``errors``, ``additional_info``.
+
+        This exists because the tier was previously readable only through a
+        Gupshup-shaped parser, so on Meta Direct ``messaging_limit`` stayed
+        NULL and every broadcast was capped at the conservative 50-recipient
+        fallback (#267).
+        """
+        ...
+
     # ── Media operations ─────────────────────────────────────────────────
 
     @abstractmethod

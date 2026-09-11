@@ -31,6 +31,38 @@ class WABAAPI(WAAPI):
         }
         return self.make_request(request_data)
 
+    # ── Account + phone-number state ─────────────────────────────────────
+
+    _PHONE_FIELDS = "id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,throughput,platform_type"
+
+    def get_phone_numbers(self) -> dict:
+        """``GET /{waba_id}/phone_numbers`` — per-number quality and tier.
+
+        ``fields`` is explicit because ``quality_rating``,
+        ``messaging_limit_tier`` and ``throughput`` are not in Graph's default
+        field set for this edge: without it the response parses fine and every
+        interesting value is simply absent.
+        """
+        return self.make_request(
+            {
+                "method": "GET",
+                "url": f"{self.BASE_URL}{self.waba_id}/phone_numbers",
+                "headers": self.headers,
+                "data": {"fields": self._PHONE_FIELDS},
+            }
+        )
+
+    def get_account_status(self) -> dict:
+        """``GET /{waba_id}`` — account-level review and ownership state."""
+        return self.make_request(
+            {
+                "method": "GET",
+                "url": f"{self.BASE_URL}{self.waba_id}",
+                "headers": self.headers,
+                "data": {"fields": "id,name,account_review_status,currency,timezone_id"},
+            }
+        )
+
     # ── App subscription (webhook delivery) ──────────────────────────────
     #
     # Two separate things control whether Meta sends us anything, and only

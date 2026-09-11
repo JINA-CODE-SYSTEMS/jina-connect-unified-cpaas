@@ -815,6 +815,129 @@ class MetaDirectAdapter(BaseBSPAdapter):
             data={"waba_id": api.waba_id},
         )
 
+    # ── Account information ──────────────────────────────────────────────
+
+    #: META's ``messaging_limit_tier`` strings happen to match our own
+    #: ``WABAInfo.MessagingLimit`` values exactly. Rather than rely on that,
+    #: unknown tiers are refused and logged: storing a value the model does not
+    #: know would read as a real tier while ``get_limit()`` silently scores it
+    #: 50, which is the failure this ticket is about.
+    _KNOWN_TIERS = frozenset(
+        {"TIER_50", "TIER_250", "TIER_1K", "TIER_10K", "TIER_100K", "TIER_UNLIMITED", "TIER_NOT_SET"}
+    )
+    _KNOWN_QUALITY = frozenset({"GREEN", "YELLOW", "RED", "UNKNOWN"})
+    _KNOWN_THROUGHPUT = frozenset({"HIGH", "STANDARD", "NOT_APPLICABLE"})
+
+    @silk_profile(name="adapter.meta.fetch_waba_info")
+    def fetch_waba_info(self) -> AdapterResult:
+        """
+        Read tier, quality and throughput from META.
+
+        Two calls, because the fields live on different nodes:
+
+        * ``GET /{waba_id}/phone_numbers`` — per-number ``quality_rating``,
+          ``messaging_limit_tier``, ``throughput`` and ``verified_name``
+        * ``GET /{waba_id}`` — account-level ``account_review_status``
+
+        The phone-number edge returns every number on the WABA, so the row
+        matching this app's ``phone_number_id`` is selected; a WABA with one
+        number still works if the id is unset, but on a shared WABA picking the
+        first row would attribute another customer's quality rating to this app,
+        so that case is reported rather than guessed.
+        """
+        self._log("info", "[STEP 1/4] fetch_waba_info START")
+
+        try:
+            api = self._get_waba_api()
+        except ValueError as exc:
+            self._log("error", f"[STEP 1/4] Credential resolution FAILED — {exc}")
+            return AdapterResult(success=False, provider=self.PROVIDER_NAME, error_message=str(exc))
+
+        self._log("info", f"[STEP 2/4] GET phone_numbers for WABA {api.waba_id}")
+        try:
+            numbers_response = api.get_phone_numbers() or {}
+        except Exception as exc:  # noqa: BLE001
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=f"Could not read phone numbers from META: {exc}",
+            )
+
+        rows = [r for r in (numbers_response.get("data") or []) if isinstance(r, dict)]
+        if not rows:
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message="META reports no phone numbers on this WABA.",
+                raw_response=numbers_response,
+            )
+
+        wanted = str(getattr(self.wa_app, "phone_number_id", "") or "")
+        row = next((r for r in rows if str(r.get("id") or "") == wanted), None)
+        if row is None:
+            if len(rows) > 1:
+                return AdapterResult(
+                    success=False,
+                    provider=self.PROVIDER_NAME,
+                    error_message=(
+                        f"phone_number_id {wanted or '(unset)'} is not among the "
+                        f"{len(rows)} numbers on this WABA, so quality and tier cannot be "
+                        "attributed to this app."
+                    ),
+                    raw_response=numbers_response,
+                )
+            row = rows[0]
+            self._log("warning", f"phone_number_id {wanted or '(unset)'} not matched; using the WABA's only number")
+
+        data: dict = {"waba_id": api.waba_id}
+
+        tier = str(row.get("messaging_limit_tier") or "")
+        if tier:
+            if tier in self._KNOWN_TIERS:
+                data["messaging_limit"] = tier
+            else:
+                self._log("warning", f"META reported unknown messaging_limit_tier {tier!r} — not stored")
+
+        quality = str(row.get("quality_rating") or "").upper()
+        if quality:
+            if quality in self._KNOWN_QUALITY:
+                data["phone_quality"] = quality
+            else:
+                self._log("warning", f"META reported unknown quality_rating {quality!r} — not stored")
+
+        # ``throughput`` is an object on this edge: {"level": "STANDARD"}.
+        throughput = row.get("throughput")
+        level = str((throughput or {}).get("level") or "").upper() if isinstance(throughput, dict) else ""
+        if level:
+            if level in self._KNOWN_THROUGHPUT:
+                data["throughput"] = level
+            else:
+                self._log("warning", f"META reported unknown throughput level {level!r} — not stored")
+
+        if row.get("verified_name") is not None:
+            data["verified_name"] = row.get("verified_name")
+        if row.get("display_phone_number") is not None:
+            data["phone"] = row.get("display_phone_number")
+
+        # Account-level review status is a separate node and is additive: a
+        # failure here must not discard the tier we just read successfully.
+        self._log("info", "[STEP 3/4] GET account review status")
+        try:
+            account = api.get_account_status() or {}
+            review = str(account.get("account_review_status") or "").upper()
+            if review:
+                data["account_status"] = "APPROVED" if review == "APPROVED" else "PENDING"
+        except Exception as exc:  # noqa: BLE001
+            self._log("warning", f"account review status unavailable, continuing without it: {exc}")
+
+        self._log("info", f"[STEP 4/4] fetch_waba_info SUCCESS — {sorted(data)}")
+        return AdapterResult(
+            success=True,
+            provider=self.PROVIDER_NAME,
+            data=data,
+            raw_response=numbers_response,
+        )
+
     # ── Media operations ─────────────────────────────────────────────────
 
     @silk_profile(name="adapter.meta.upload_media")
