@@ -658,6 +658,16 @@ CRONJOBS = [
         "broadcast.cron.retry_transient_message_failures",
         ">> " + os.path.join(BASE_DIR, "jina_cron_broadcast_retry.log 2>&1"),
     ),
+    # Pull each app's messaging tier and quality rating from its provider.
+    # Without this the tier was only ever read when somebody opened the
+    # WABA-info endpoint, so a number promoted to a higher tier stayed capped
+    # at the old one — and the cap is enforced on every broadcast (#267).
+    # Hourly: tier and quality move over days, and this is one call per app.
+    (
+        "17 * * * *",
+        "wa.cron.sync_waba_info",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_waba_sync.log 2>&1"),
+    ),
     # Clean up notifications older than 90 days — runs daily at 3 AM
     (
         "0 3 * * *",
