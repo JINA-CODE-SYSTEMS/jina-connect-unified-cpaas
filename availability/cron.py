@@ -20,3 +20,14 @@ def send_monthly_availability_report():
     except Exception as exc:
         logger.error("Error in send_monthly_availability_report cron job: %s", exc)
         raise
+
+
+def aggregate_daily_availability():
+    """Copy yesterday's monitoring results into DailyAvailability."""
+    try:
+        logger.info("Starting aggregate_daily_availability cron job")
+        call_command("aggregate_availability")
+        logger.info("Completed aggregate_daily_availability cron job successfully")
+    except Exception as exc:
+        logger.error("Error in aggregate_daily_availability cron job: %s", exc)
+        raise

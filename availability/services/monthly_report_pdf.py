@@ -9,6 +9,8 @@ percentage:
   biases the figure against us
 * that a failed probe counts as one whole interval, so an outage shorter
   than the interval is invisible and a longer one rounds up
+* that an interval is judged on the majority of probe locations, so one
+  location's network fault is not billed to us as an outage
 * whether the month's data is complete, prominently, when it is not
 
 The last matters most. A report computed from partial data can look
@@ -48,7 +50,11 @@ def _basis_note() -> str:
         "the greatest, because the platform is unusable if either the API or the web interface is down; where "
         "outages overlap this understates availability rather than overstating it. Each failed probe counts as "
         "one full probe interval, so an outage shorter than the interval is not visible and a longer one is "
-        f"rounded up. Period boundaries follow {settings.TIME_ZONE}."
+        "rounded up. Each check runs from several probe locations and an interval is counted as failed only "
+        "when the majority of them failed, so a fault on one location's own network path is not reported as "
+        "an outage of the platform. A day is counted towards coverage only when both targets reported at "
+        f"least {int(float(settings.AVAILABILITY_MIN_DAY_COVERAGE) * 100)}% of the checks due that day. "
+        f"Period boundaries follow {settings.TIME_ZONE}."
     )
 
 
