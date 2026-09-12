@@ -291,11 +291,19 @@ def test_a_cooldown_still_running_defers_without_touching_the_provider(broadcast
 
 
 @pytest.mark.django_db
-def test_eager_mode_leaves_the_rows_pending_rather_than_sending_now(broadcast, wa_app, monkeypatch):
+def test_eager_mode_leaves_the_rows_pending_rather_than_sending_now(broadcast, wa_app, monkeypatch, settings):
     """Eager mode has no broker: apply_async runs inline and ignores the
     countdown, which would re-attempt the send inside the window and recurse
     doing it. A slower retry is the right trade; an immediate one is not."""
     from broadcast import tasks
+
+    # Pinned rather than inherited. The root conftest only turns eager mode on
+    # when CELERY_BROKER_URL is unset, so a dev box with no broker reads True
+    # and CI — which runs a real Redis and sets the variable — reads False.
+    # Leaving it ambient made this test pass locally and fail in CI. Its
+    # siblings pin the opposite value in ``_run_batch`` for the same reason;
+    # this is the other half of that pair.
+    settings.CELERY_TASK_ALWAYS_EAGER = True
 
     _tier(wa_app, throughput=WABAInfo.Throughput.STANDARD)
     message = _message(broadcast)
