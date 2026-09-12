@@ -14,7 +14,7 @@ from typing import Optional
 
 from django.utils import timezone
 
-from tenants.models import Tenant, TenantWAApp
+from tenants.models import BSPChoices, Tenant, TenantWAApp
 from wa.utility.apis.gupshup.waba import WABAAPI
 from wa.utility.data_model.gupshup.partner_token import PartnerToken
 
@@ -478,6 +478,15 @@ class ESFService:
             wa_app = TenantWAApp.objects.create(
                 tenant=tenant,
                 app_name=app_name,
+                # Stated, not inherited. This function creates a *Gupshup* app —
+                # ``app_id`` and ``app_secret`` above are Gupshup's — but the
+                # column default became META in #265, so omitting it silently
+                # recorded these rows as Meta: the factory handed them
+                # ``MetaDirectAdapter``, credentials fell through to the
+                # platform-wide ``META_PERM_TOKEN`` instead of failing cleanly,
+                # and the Gupshup webhook auto-registration signal never fired
+                # because it tests for an exact match (#312).
+                bsp=BSPChoices.GUPSHUP,
                 app_id=app_id,
                 app_secret=app_token or "",  # Will be updated after ESF
                 wa_number="+10000000000",  # Placeholder - updated after onboarding
