@@ -1279,6 +1279,11 @@ class WAWebhookEvent(BaseWebhookDumps):
     Stores raw webhook events from BSP for processing.
     """
 
+    # Declared, not derived: this model extends BaseWebhookDumps and so has no
+    # filter_by_user_tenant_fk to derive a tenant path from. Without this an
+    # impersonated read of WAWebhookEventViewSet would raise (#326).
+    filter_by_tenant_fk = "wa_app__tenant"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Relationship
@@ -1316,6 +1321,11 @@ class WASubscription(BaseModel):
 
     Tracks webhook subscriptions with BSPs.
     """
+
+    # Declared, not derived: this model extends BaseModel and so has no
+    # filter_by_user_tenant_fk to derive a tenant path from. Without this an
+    # impersonated read of WASubscriptionV2ViewSet would raise (#326).
+    filter_by_tenant_fk = "wa_app__tenant"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 

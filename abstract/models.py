@@ -335,12 +335,20 @@ class BaseTenantModelForFilterUser(BaseModelWithOwner):
     Inherits from BaseModelWithOwner to include common fields and functionality.
     Attributes:
         filter_by_user_tenant_fk (str): A string attribute to specify the foreign key for filtering by user tenant.
+        filter_by_tenant_fk (str): Optional. The ORM path from this model to its owning ``Tenant`` —
+            what an impersonated session filters by (#326), since it knows the tenant but has no
+            membership to discover it through. Leave it unset and
+            ``abstract.tenant_scoping.tenant_filter_path`` derives it by stripping
+            ``__tenant_users__user`` off ``filter_by_user_tenant_fk``, which is correct for every
+            model following that convention. Set it only when the convention does not hold — and if
+            neither is resolvable, a tenant-scoped read raises rather than returning every tenant.
         objects (BaseTenantModelForFilterUserManager): Custom manager to handle filtering by user tenant.
     Meta:
         abstract (bool): Indicates that this is an abstract base class and should not be used to
     """
 
     filter_by_user_tenant_fk: str = None
+    filter_by_tenant_fk: str = None
     objects = BaseTenantModelForFilterUserManager()
 
     class Meta:

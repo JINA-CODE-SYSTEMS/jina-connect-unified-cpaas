@@ -75,8 +75,13 @@ class TenantViewSet(BaseTenantModelViewSet):
     def get_queryset(self):
         """
         Get queryset with optimized prefetching and contacts count annotation.
+
+        Scoped explicitly because this override never reaches
+        ``BaseTenantModelViewSet.get_queryset``: an impersonated session must see
+        the one organisation it is viewing and not the whole customer list (#326).
         """
-        return Tenant.objects.prefetch_related("wa_apps").annotate(contacts_count=Count("contacts")).all()
+        queryset = Tenant.objects.prefetch_related("wa_apps").annotate(contacts_count=Count("contacts")).all()
+        return self.scope_to_impersonated_tenant(queryset)
 
     def get_permissions(self):
         """

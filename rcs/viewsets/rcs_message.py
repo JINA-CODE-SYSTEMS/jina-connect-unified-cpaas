@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from abstract.viewsets.base import BaseTenantModelViewSet
 from rcs.models import RCSOutboundMessage
 from rcs.serializers import RCSOutboundMessageSerializer
+from users.impersonation import impersonated_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,17 @@ class RCSOutboundMessageViewSet(BaseTenantModelViewSet):
     }
 
     def get_queryset(self):
-        tenant_user = self._get_tenant_user()
-        if tenant_user:
-            return RCSOutboundMessage.objects.filter(tenant=tenant_user.tenant).order_by("-created_at")
-        return RCSOutboundMessage.objects.none()
+        # ``_get_tenant_user`` finds nothing for an impersonated session — the
+        # actor has no membership in the organisation being viewed — so without
+        # this the session would see an empty list rather than what that
+        # organisation sees (#326). Still exactly one organisation either way.
+        tenant_id = impersonated_tenant_id(self.request)
+        if tenant_id is None:
+            tenant_user = self._get_tenant_user()
+            tenant_id = tenant_user.tenant_id if tenant_user else None
+        if tenant_id is None:
+            return RCSOutboundMessage.objects.none()
+        return RCSOutboundMessage.objects.filter(tenant_id=tenant_id).order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
         """Disabled — use the /send/ action instead."""

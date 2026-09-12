@@ -42,7 +42,11 @@ class TenantGupshupAppsViewSet(BaseTenantModelViewSet):
         Webhooks come from external sources (Gupshup) and need access to all apps.
         """
         if self.action in ["webhook_billing", "webhook_template", "webhook_messages", "webhook_misc"]:
-            return TenantWAApp.objects.all()
+            # Still narrowed for an impersonated session (#326) — a no-op for the
+            # external webhook callers this branch exists for, which carry no
+            # impersonation token, but these actions accept GET and so would
+            # otherwise be a way to list every organisation's apps.
+            return self.scope_to_impersonated_tenant(TenantWAApp.objects.all())
         return super().get_queryset()
 
     @swagger_auto_schema(

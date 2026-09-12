@@ -61,6 +61,10 @@ class TelegramMessageViewSet(BaseTenantModelViewSet):
     }
 
     def get_queryset(self):
+        # Deliberately empty for everyone — this viewset exists for its /send/
+        # action, not for listing. Nothing to scope for an impersonated session
+        # (#326); if listing is ever implemented here, scope it to
+        # ``impersonated_tenant_id`` the way sms_message does.
         from telegram.models import TelegramOutboundMessage
 
         return TelegramOutboundMessage.objects.none()

@@ -40,8 +40,12 @@ class WABAInfoViewSet(BaseTenantModelViewSet):
     def get_queryset(self):
         """
         Get queryset with optimized select_related for wa_app.
+
+        Scoped explicitly because this override never reaches
+        ``BaseTenantModelViewSet.get_queryset``, so an impersonated session would
+        otherwise read every organisation's WABA records (#326).
         """
-        return WABAInfo.objects.select_related("wa_app").all()
+        return self.scope_to_impersonated_tenant(WABAInfo.objects.select_related("wa_app").all())
 
     @action(
         detail=True,
