@@ -14,8 +14,6 @@ import logging
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Type
 
-from django.utils import timezone
-
 logger = logging.getLogger(__name__)
 
 
@@ -250,10 +248,6 @@ class MetaTemplateService:
 
         response = api.apply_for_template(payload)
 
-        # Build debug info
-        curl_command = getattr(api, "last_curl_command", "Not captured")
-        debug_info = self._build_debug_info(payload, response, curl_command)
-
         # Process response
         if response.get("id"):
             # Success
@@ -263,7 +257,6 @@ class MetaTemplateService:
                 "name": payload.get("name"),
                 "category": payload.get("category"),
                 "language": payload.get("language"),
-                "debug_info": debug_info,
                 "meta_response": response,
                 "bsp_id": None,  # Will be populated after BSP sync
             }
@@ -272,7 +265,10 @@ class MetaTemplateService:
             if save_to_db:
                 template = self._save_to_model(data, payload, result)
                 result["db_id"] = template.id
-                result["bsp_id"] = template.bsp_id  # Get BSP ID after sync
+                # ``bsp_id`` is not an attribute of WATemplate — the column
+                # is ``bsp_template_id``, and the old name raised
+                # AttributeError here (#337).
+                result["bsp_id"] = template.bsp_template_id
 
             return result
 
@@ -292,22 +288,32 @@ class MetaTemplateService:
                 f"Unexpected response from META API: {json.dumps(response)}", code="unexpected_response"
             )
 
-    def _build_debug_info(self, payload: Dict[str, Any], response: Dict[str, Any], curl_command: str) -> str:
-        """Build debug info string for troubleshooting"""
-        debug_info = "=== META DIRECT API TEMPLATE SUBMISSION ===\n"
-        debug_info += f"Submitted at: {timezone.now().isoformat()}\n"
-        debug_info += "Provider: META Direct API\n"
-        debug_info += f"WABA ID: {self.waba_id}\n"
-        debug_info += f"Payload:\n{json.dumps(payload, indent=2)}\n\n"
-        debug_info += f"Curl Command:\n{curl_command}\n\n"
-        debug_info += f"Response:\n{json.dumps(response, indent=2)}\n"
-        return debug_info
-
     def _save_to_model(self, original_data: Dict[str, Any], meta_payload: Dict[str, Any], result: Dict[str, Any]):
         """
         Save template to WATemplate model for compatibility.
 
         This allows the template to be used with existing message sending flows.
+
+        ``MetaTemplateService`` is instantiated nowhere in the repository — the
+        live template-create path is ``WATemplateV2ViewSet.create`` ->
+        ``MetaDirectAdapter.submit_template`` — so this method was never
+        reached, which is the only reason four separate fatal name errors could
+        sit here unnoticed (#337):
+
+        * ``submission_debug_info=`` — not a field on ``WATemplate`` or its
+          base, and in no migration. ``TypeError``.
+        * ``template_id=`` — a read-only ``@property``, not a legacy column.
+          ``TypeError``.
+        * ``save(skip_legacy_validation=True)`` — ``Model.save()`` takes no such
+          flag. ``TypeError``.
+        * ``template.bsp_id`` in the caller — the column is
+          ``bsp_template_id``. ``AttributeError``.
+
+        The first of those raised *after* ``create_template`` had submitted the
+        template to Meta and Meta had accepted it, so the damage would have been
+        an accepted template with no local row. Do not reintroduce
+        ``submission_debug_info`` — or the ``debug_info`` blob that fed it —
+        without adding the field and a migration.
         """
         from wa.models import StatusChoices, WATemplate
 
@@ -348,8 +354,6 @@ class MetaTemplateService:
         # Get META template ID from result
         meta_template_id = result.get("template_id")
 
-        # Create the template using save() with skip_legacy_validation=True
-        # This bypasses the legacy Gupshup validators since we're using META Direct API
         template = WATemplate(
             wa_app=self.wa_app,
             name=meta_payload.get("name", ""),
@@ -358,16 +362,21 @@ class MetaTemplateService:
             category=meta_payload.get("category", "MARKETING"),
             template_type=template_type,
             status=template_status,
+            # ``template_id`` is not a legacy column to mirror into — it is a
+            # read-only property returning ``bsp_template_id or
+            # meta_template_id``, so passing it here raised TypeError, and the
+            # line below already gives the property its value (#337).
             meta_template_id=meta_template_id,  # Store META template ID
-            template_id=meta_template_id,  # Also store in legacy field for backward compatibility
             content=body_text,
             header=header_text,
             footer=footer_text,
             buttons=buttons if buttons else None,
-            submission_debug_info=result.get("debug_info", ""),
             vertical=original_data.get("vertical", "GENERAL"),
         )
-        template.save(skip_legacy_validation=True)
+        # Plain ``save()``: the former ``skip_legacy_validation=True`` was
+        # forwarded to ``Model.save()``, which rejects it, and there are no
+        # legacy Gupshup validators left in ``save()`` for it to bypass (#337).
+        template.save()
 
         # Sync with BSP to get BSP ID (async-friendly, non-blocking on failure)
         self._sync_with_bsp(template)
