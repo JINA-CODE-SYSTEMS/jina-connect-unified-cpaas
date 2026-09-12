@@ -26,6 +26,7 @@ HOW TO RUN:
 
 from __future__ import annotations
 
+import inspect
 import types
 import uuid
 from importlib import import_module
@@ -104,17 +105,23 @@ def test_the_identifier_is_not_derived_from_anything_about_the_app():
 
     assert first.webhook_identifier != second.webhook_identifier
 
+    # Long, distinctive values only. The primary key and the tenant id are
+    # *also* things the identifier must not be derived from, but they are small
+    # integers: a substring check for "7" in a random 32-character string is
+    # true about nine times in ten, so the assertion would be noise that fails
+    # on whichever pk the suite happens to reach. The structural check below is
+    # what rules them out, and rules out everything else with them.
     for app in (first, second):
         body = app.webhook_identifier
-        for derivable in (
-            str(app.pk),
-            str(app.tenant_id),
-            app.waba_id,
-            app.phone_number_id,
-            app.app_id,
-            app.wa_number.lstrip("+"),
-        ):
+        for derivable in (app.waba_id, app.phone_number_id, app.app_id, app.wa_number.lstrip("+")):
             assert derivable not in body, f"{derivable!r} must not be recoverable from the identifier"
+
+    # The generator is handed nothing — not the row, not the tenant, not the
+    # number — so there is nothing about an app it *could* encode. That is a
+    # stronger statement than any search through the output, and it is the one
+    # a future "make the URL friendlier by putting the tenant in it" change
+    # would have to break first.
+    assert list(inspect.signature(generate_wa_webhook_identifier).parameters) == []
 
 
 @pytest.mark.django_db
