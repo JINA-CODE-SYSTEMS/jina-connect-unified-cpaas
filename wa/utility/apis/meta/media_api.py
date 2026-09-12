@@ -45,9 +45,13 @@ Supported Media Types & Size Limits:
   Max download size: 100 MB.
 """
 
+import logging
 from typing import Optional
 
+from wa.utility.apis.curl_debug import curl_block, header_args, log_curl, redact, redact_url
 from wa.utility.apis.meta.base_api import WAAPI
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # SUPPORTED MEDIA TYPES — Constants
@@ -325,10 +329,10 @@ class MetaMediaAPI(WAAPI):
 
         url = self._upload_url
 
-        # Print curl equivalent for debugging
+        # Masked curl equivalent for debugging (#336)
         curl_cmd = self._generate_upload_curl(url, file_path, mime_type)
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         # Multipart form upload
         with open(file_path, "rb") as f:
@@ -394,10 +398,10 @@ class MetaMediaAPI(WAAPI):
 
         url = self._upload_url
 
-        # Print curl equivalent
+        # Masked curl equivalent (#336)
         curl_cmd = self._generate_upload_curl(url, filename, mime_type)
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         files = {
             "file": (filename, file_obj, mime_type),
@@ -454,18 +458,16 @@ class MetaMediaAPI(WAAPI):
         elif self.phone_number_id:
             params["phone_number_id"] = self.phone_number_id
 
-        # Curl equivalent
+        # Curl equivalent, credentials masked (#336)
         param_str = f"?phone_number_id={params.get('phone_number_id', '')}" if params else ""
-        curl_cmd = (
-            "=" * 80 + "\n"
-            "EQUIVALENT CURL COMMAND (GET MEDIA URL):\n"
-            "=" * 80 + "\n"
-            f"curl '{url}{param_str}' \\\n"
-            f"  -H 'Authorization: Bearer {self.token}'\n"
-            "=" * 80
+        auth = header_args(self.auth_header, quote="'")
+        curl_cmd = curl_block(
+            "EQUIVALENT CURL COMMAND (GET MEDIA URL):",
+            f"curl '{redact_url(url)}{param_str}'{auth}",
+            secrets=(self.token,),
         )
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         response = requests.get(
             url,
@@ -503,18 +505,16 @@ class MetaMediaAPI(WAAPI):
         elif self.phone_number_id:
             params["phone_number_id"] = self.phone_number_id
 
-        # Curl equivalent
+        # Curl equivalent, credentials masked (#336)
         param_str = f"?phone_number_id={params.get('phone_number_id', '')}" if params else ""
-        curl_cmd = (
-            "=" * 80 + "\n"
-            "EQUIVALENT CURL COMMAND (DELETE MEDIA):\n"
-            "=" * 80 + "\n"
-            f"curl -X DELETE '{url}{param_str}' \\\n"
-            f"  -H 'Authorization: Bearer {self.token}'\n"
-            "=" * 80
+        auth = header_args(self.auth_header, quote="'")
+        curl_cmd = curl_block(
+            "EQUIVALENT CURL COMMAND (DELETE MEDIA):",
+            f"curl -X DELETE '{redact_url(url)}{param_str}'{auth}",
+            secrets=(self.token,),
         )
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         response = requests.delete(
             url,
@@ -551,18 +551,16 @@ class MetaMediaAPI(WAAPI):
         """
         import requests
 
-        # Curl equivalent
-        curl_cmd = (
-            "=" * 80 + "\n"
-            "EQUIVALENT CURL COMMAND (DOWNLOAD MEDIA):\n"
-            "=" * 80 + "\n"
-            f"curl '{media_url}' \\\n"
-            f"  -H 'Authorization: Bearer {self.token}' \\\n"
-            f"  -o 'downloaded_media_file'\n"
-            "=" * 80
+        # Curl equivalent, credentials masked (#336). A media URL is itself
+        # signed, so it goes through the same query-parameter masking.
+        auth = header_args(self.auth_header, quote="'")
+        curl_cmd = curl_block(
+            "EQUIVALENT CURL COMMAND (DOWNLOAD MEDIA):",
+            f"curl '{redact_url(media_url)}'{auth} \\\n  -o 'downloaded_media_file'",
+            secrets=(self.token,),
         )
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         response = requests.get(
             media_url,
@@ -590,9 +588,10 @@ class MetaMediaAPI(WAAPI):
                 f"Downloaded media exceeds max size: {len(content):,} bytes (max: {MAX_DOWNLOAD_SIZE:,} bytes / 100 MB)"
             )
 
-        print(
-            f"✅ Media downloaded: {len(content):,} bytes, "
-            f"Content-Type: {response.headers.get('Content-Type', 'unknown')}"
+        logger.debug(
+            "Media downloaded: %s bytes, Content-Type: %s",
+            f"{len(content):,}",
+            response.headers.get("Content-Type", "unknown"),
         )
 
         return content
@@ -616,17 +615,15 @@ class MetaMediaAPI(WAAPI):
         """
         import requests
 
-        curl_cmd = (
-            "=" * 80 + "\n"
-            "EQUIVALENT CURL COMMAND (DOWNLOAD MEDIA TO FILE):\n"
-            "=" * 80 + "\n"
-            f"curl '{media_url}' \\\n"
-            f"  -H 'Authorization: Bearer {self.token}' \\\n"
-            f"  -o '{output_path}'\n"
-            "=" * 80
+        # Curl equivalent, credentials masked (#336).
+        auth = header_args(self.auth_header, quote="'")
+        curl_cmd = curl_block(
+            "EQUIVALENT CURL COMMAND (DOWNLOAD MEDIA TO FILE):",
+            f"curl '{redact_url(media_url)}'{auth} \\\n  -o '{output_path}'",
+            secrets=(self.token,),
         )
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         response = requests.get(
             media_url,
@@ -657,7 +654,7 @@ class MetaMediaAPI(WAAPI):
                     f.write(chunk)
 
         content_type = response.headers.get("Content-Type", "application/octet-stream")
-        print(f"✅ Media saved to {output_path}: {total_size:,} bytes ({content_type})")
+        logger.debug("Media saved to %s: %s bytes (%s)", output_path, f"{total_size:,}", content_type)
 
         return {
             "path": output_path,
@@ -819,7 +816,7 @@ class MetaMediaAPI(WAAPI):
 
         if response.status_code in [200, 201]:
             result = response.json()
-            print(f"✅ {operation} successful: {json.dumps(result, indent=2)}")
+            logger.debug("%s successful: %s", operation, json.dumps(result, indent=2))
             return result
 
         error_msg = f"{operation} failed with status code {response.status_code}"
@@ -829,23 +826,21 @@ class MetaMediaAPI(WAAPI):
         except Exception:
             error_msg += f"\nResponse text: {response.text[:1000]}"
 
-        print("=" * 80)
-        print(f"❌ {operation} FAILED")
-        print("=" * 80)
-        print(error_msg)
-        print("=" * 80)
+        logger.debug("%s FAILED\n%s", operation, redact(error_msg, self.token))
 
         raise Exception(error_msg)
 
     def _generate_upload_curl(self, url: str, file_path: str, mime_type: str) -> str:
-        """Generate curl equivalent for upload requests."""
-        return (
-            "=" * 80 + "\n"
-            "EQUIVALENT CURL COMMAND (UPLOAD MEDIA):\n"
-            "=" * 80 + "\n"
-            f"curl '{url}' \\\n"
-            f"  -H 'Authorization: Bearer {self.token}' \\\n"
+        """Curl equivalent for an upload, with the bearer token masked (#336).
+
+        Masked here rather than at the log call: the same string is kept on
+        ``last_curl_command``, which callers persist.
+        """
+        auth = header_args(self.auth_header, quote="'")
+        return curl_block(
+            "EQUIVALENT CURL COMMAND (UPLOAD MEDIA):",
+            f"curl '{redact_url(url)}'{auth} \\\n"
             f"  -F 'messaging_product=whatsapp' \\\n"
-            f"  -F 'file=@{file_path};type={mime_type}'\n"
-            "=" * 80
+            f"  -F 'file=@{file_path};type={mime_type}'",
+            secrets=(self.token,),
         )

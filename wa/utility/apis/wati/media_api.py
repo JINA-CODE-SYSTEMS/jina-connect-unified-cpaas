@@ -9,7 +9,12 @@ API Endpoints:
 API Reference: https://docs.wati.io/reference
 """
 
+import logging
+
+from wa.utility.apis.curl_debug import curl_block, header_args, log_curl, redact_url
 from wa.utility.apis.wati.base_api import WAAPI
+
+logger = logging.getLogger(__name__)
 
 
 class MediaAPI(WAAPI):
@@ -81,13 +86,15 @@ class MediaAPI(WAAPI):
             "Accept": "*/*",
         }
 
-        print("=" * 80)
-        print("EQUIVALENT CURL COMMAND FOR WATI MEDIA DOWNLOAD:")
-        print("=" * 80)
-        print(f"curl -X GET '{url}?fileName={file_name}' \\")
-        print(f"  -H 'Authorization: Bearer {self.token}' \\")
-        print(f"  -o '{output_path}'")
-        print("=" * 80)
+        # Masked curl equivalent for debugging (#336)
+        auth = header_args(headers, quote="'")
+        curl_cmd = curl_block(
+            "EQUIVALENT CURL COMMAND FOR WATI MEDIA DOWNLOAD:",
+            f"curl -X GET '{redact_url(url)}?fileName={file_name}'{auth} \\\n  -o '{output_path}'",
+            secrets=(self.token,),
+        )
+        self._last_curl_command = curl_cmd
+        log_curl(logger, curl_cmd)
 
         response = requests.get(url, headers=headers, params={"fileName": file_name}, stream=True, timeout=30)
 
@@ -104,5 +111,5 @@ class MediaAPI(WAAPI):
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        print(f"Media downloaded to: {output_path}")
+        logger.debug("Media downloaded to: %s", output_path)
         return output_path

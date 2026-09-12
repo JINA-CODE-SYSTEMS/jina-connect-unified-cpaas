@@ -22,7 +22,13 @@ Usage:
     })
 """
 
+import logging
+
 from pydantic import BaseModel, Field
+
+from wa.utility.apis.curl_debug import build_form_curl, build_json_curl, log_curl, log_request_failure
+
+logger = logging.getLogger(__name__)
 
 
 class WAAPI(BaseModel):
@@ -151,7 +157,7 @@ class WAAPI(BaseModel):
         # Generate equivalent curl request for debug
         curl_cmd = self._generate_curl_equivalent(method, url, headers, processed_data)
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         if method == "GET":
             response = requests.get(url, headers=headers, params=params or processed_data, timeout=30)
@@ -173,14 +179,15 @@ class WAAPI(BaseModel):
             except Exception:
                 error_msg += f"\nResponse text: {response.text}"
 
-            print("=" * 80)
-            print("REQUEST DEBUG INFO:")
-            print("=" * 80)
-            print(f"URL: {url}")
-            print(f"Method: {method}")
-            print(f"Headers: {headers}")
-            print(f"Data sent: {processed_data}")
-            print("=" * 80)
+            # The masked curl command logged above already carries the headers;
+            # this adds nothing a second, separately-masked copy of them would.
+            log_request_failure(
+                logger,
+                method=method,
+                url=url,
+                body=processed_data,
+                secrets=(self.token,),
+            )
 
             raise Exception(error_msg)
 
@@ -217,7 +224,7 @@ class WAAPI(BaseModel):
         # Generate equivalent curl request for debug
         curl_cmd = self._generate_curl_json_equivalent(method, url, headers, data)
         self._last_curl_command = curl_cmd
-        print(curl_cmd)
+        log_curl(logger, curl_cmd)
 
         if method == "GET":
             response = requests.get(url, headers=headers, params=params or data, timeout=30)
@@ -239,14 +246,16 @@ class WAAPI(BaseModel):
             except Exception:
                 error_msg += f"\nResponse text: {response.text}"
 
-            print("=" * 80)
-            print("REQUEST DEBUG INFO:")
-            print("=" * 80)
-            print(f"URL: {url}")
-            print(f"Method: {method}")
-            print(f"Headers: {headers}")
-            print(f"JSON data sent: {json.dumps(data, indent=2)}")
-            print("=" * 80)
+            # The masked curl command logged above already carries the headers;
+            # this adds nothing a second, separately-masked copy of them would.
+            log_request_failure(
+                logger,
+                method=method,
+                url=url,
+                body=json.dumps(data, indent=2),
+                body_label="JSON data sent",
+                secrets=(self.token,),
+            )
 
             raise Exception(error_msg)
 
@@ -257,70 +266,38 @@ class WAAPI(BaseModel):
     # =========================================================================
 
     def _generate_curl_equivalent(self, method: str, url: str, headers: dict, data: dict) -> str:
-        """Generate equivalent curl command for form-encoded requests."""
-        curl_command = f'curl -X {method} "{url}"'
+        """Reconstruct a form-encoded request as a *masked* curl command (#336).
 
-        for key, value in headers.items():
-            curl_command += f' \\\n  -H "{key}: {value}"'
-
-        if method in ["POST", "PUT", "PATCH"] and data:
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    if value is None:
-                        continue
-                    curl_command += f' \\\n  --data-urlencode "{key}={value}"'
-            else:
-                curl_command += f" \\\n  --data-urlencode '{data}'"
-        elif method == "GET" and data:
-            params = "&".join([f"{key}={value}" for key, value in data.items() if value is not None])
-            if params:
-                separator = "?" if "?" not in url else "&"
-                curl_command = f'curl -X {method} "{url}{separator}{params}"'
-                for key, value in headers.items():
-                    curl_command += f' \\\n  -H "{key}: {value}"'
-
-        output = "=" * 80 + "\n"
-        output += "EQUIVALENT CURL COMMAND (WATI) FOR DEBUG:\n"
-        output += "=" * 80 + "\n"
-        output += curl_command + "\n"
-        output += "=" * 80
-
-        return output
+        Credential headers come out as ``Bearer [redacted]``: this string is kept
+        on ``last_curl_command``, which callers copy into a task result and a
+        template's debug blob, so masking anywhere later than here would leave
+        those durable paths holding a live token.
+        """
+        return build_form_curl(
+            method,
+            url,
+            headers,
+            data,
+            title="EQUIVALENT CURL COMMAND (WATI) FOR DEBUG:",
+            secrets=(self.token,),
+        )
 
     def _generate_curl_json_equivalent(self, method: str, url: str, headers: dict, data: dict) -> str:
-        """Generate equivalent curl command for JSON requests."""
-        import json
-
-        curl_command = f'curl -X {method} "{url}"'
-
-        for key, value in headers.items():
-            curl_command += f' \\\n  -H "{key}: {value}"'
-
-        if method in ["POST", "PUT", "PATCH", "DELETE"] and data:
-            json_str = json.dumps(data, indent=2)
-            json_str_escaped = json_str.replace('"', '\\"')
-            curl_command += f' \\\n  -d "{json_str_escaped}"'
-        elif method == "GET" and data:
-            params = "&".join([f"{key}={value}" for key, value in data.items() if value is not None])
-            if params:
-                separator = "?" if "?" not in url else "&"
-                curl_command = f'curl -X {method} "{url}{separator}{params}"'
-                for key, value in headers.items():
-                    curl_command += f' \\\n  -H "{key}: {value}"'
-
-        output = "=" * 80 + "\n"
-        output += "EQUIVALENT CURL COMMAND (WATI JSON) FOR DEBUG:\n"
-        output += "=" * 80 + "\n"
-        output += curl_command + "\n"
-        output += "=" * 80
-
-        return output
+        """Reconstruct a JSON request as a *masked* curl command (#336)."""
+        return build_json_curl(
+            method,
+            url,
+            headers,
+            data,
+            title="EQUIVALENT CURL COMMAND (WATI JSON) FOR DEBUG:",
+            secrets=(self.token,),
+        )
 
     # Keep old method names for backward compatibility
     def _print_curl_equivalent(self, method: str, url: str, headers: dict, data: dict):
         """Deprecated: Use _generate_curl_equivalent instead."""
-        print(self._generate_curl_equivalent(method, url, headers, data))
+        log_curl(logger, self._generate_curl_equivalent(method, url, headers, data))
 
     def _print_curl_json_equivalent(self, method: str, url: str, headers: dict, data: dict):
         """Deprecated: Use _generate_curl_json_equivalent instead."""
-        print(self._generate_curl_json_equivalent(method, url, headers, data))
+        log_curl(logger, self._generate_curl_json_equivalent(method, url, headers, data))

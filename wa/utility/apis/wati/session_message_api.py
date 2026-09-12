@@ -16,9 +16,13 @@ API Endpoints:
 API Reference: https://docs.wati.io/reference
 """
 
+import logging
 from typing import Optional
 
+from wa.utility.apis.curl_debug import curl_block, header_args, log_curl, redact_url
 from wa.utility.apis.wati.base_api import WAAPI
+
+logger = logging.getLogger(__name__)
 
 
 class SessionMessageAPI(WAAPI):
@@ -161,14 +165,15 @@ class SessionMessageAPI(WAAPI):
         with open(file_path, "rb") as f:
             files = {"file": f}
 
-            # Print curl equivalent for debugging
-            print("=" * 80)
-            print("EQUIVALENT CURL COMMAND FOR WATI SESSION FILE UPLOAD:")
-            print("=" * 80)
-            print(f"curl --location --request POST '{url}' \\")
-            print(f"  --header 'Authorization: Bearer {self.token}' \\")
-            print(f"  --form 'file=@\"{file_path}\"'")
-            print("=" * 80)
+            # Masked curl equivalent for debugging (#336)
+            auth = header_args(headers, quote="'")
+            curl_cmd = curl_block(
+                "EQUIVALENT CURL COMMAND FOR WATI SESSION FILE UPLOAD:",
+                f"curl --location --request POST '{redact_url(url)}'{auth} \\\n  --form 'file=@\"{file_path}\"'",
+                secrets=(self.token,),
+            )
+            self._last_curl_command = curl_cmd
+            log_curl(logger, curl_cmd)
 
             response = requests.post(url, headers=headers, files=files, timeout=30)
 
