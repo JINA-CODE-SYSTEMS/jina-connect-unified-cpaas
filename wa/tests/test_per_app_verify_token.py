@@ -463,17 +463,22 @@ def test_the_comparison_is_constant_time():
     """``==`` on a secret leaks its shared prefix through timing, and this
     endpoint will take as many guesses as anyone cares to send it.
 
-    Asserted by reading the source because a timing assertion is not something a
-    test suite on shared CI can make honestly: the difference is microseconds and
-    the noise is milliseconds. ``_verify_meta_signature`` already compares its
-    HMAC this way (#306) — the handshake is the same kind of comparison.
-    """
-    import inspect
+    Asserted by reading the compiled function because a timing assertion is not
+    something a test suite on shared CI can make honestly: the difference is
+    microseconds and the noise is milliseconds. ``_verify_meta_signature`` already
+    compares its HMAC this way (#306) — the handshake is the same comparison.
 
+    ``co_names`` rather than ``inspect.getsource``: the first version of this read
+    the source, which contains the words "hmac.compare_digest" in the docstring
+    explaining why it is used — so replacing the call with ``==`` left the test
+    passing, shadowed by its own explanation.
+    """
     from wa.views import _tokens_match
 
-    source = inspect.getsource(_tokens_match)
-    assert "compare_digest" in source, "the verify-token comparison is no longer constant-time"
+    referenced = _tokens_match.__code__.co_names
+    assert "compare_digest" in referenced, (
+        f"the verify-token comparison is no longer constant-time (calls: {referenced})"
+    )
 
 
 def test_the_migration_gives_each_existing_row_its_own_token():
