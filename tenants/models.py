@@ -208,6 +208,7 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         app_id (CharField): Gupshup app ID.
         app_secret (CharField): Gupshup app secret.
         meta_app_id (CharField): META App ID, when bsp=META.
+        meta_app_secret (EncryptedTextField): The client's own META app secret (#311).
         wa_number (CharField): WhatsApp number associated with the app.
         authentication_message_price (MoneyField): Price for authentication messages.
         marketing_message_price (MoneyField): Price for marketing messages.
@@ -290,8 +291,13 @@ class TenantWAApp(BaseTenantModelForFilterUser):
     #
     # Different BSPs use different ones; the adapter decides which to read
     # (META reads the access token, Gupshup the partner app token). A further
-    # per-app secret belongs here, as one more ``EncryptedTextField`` listed
-    # in ``_BSP_SECRET_FIELDS`` — never as another key in ``bsp_credentials``.
+    # per-app secret belongs here, as one more ``EncryptedTextField`` — never
+    # as another key in ``bsp_credentials``. Whether it also belongs in
+    # ``_BSP_SECRET_FIELDS`` depends on the rule stated at that dict: only a
+    # secret an older client can *already* be sending inside the JSON goes
+    # there, because an entry is a plaintext intake route being tolerated, not
+    # one being offered. ``meta_app_secret`` below is new, so it has no
+    # such history and no entry (#311).
     bsp_access_token = EncryptedTextField(
         blank=True,
         default="",
@@ -303,6 +309,35 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         help_text="Gupshup partner app token for this app. Encrypted at rest, and never returned by the API.",
     )
 
+    # The client's own META app secret (#311, part of #305's bring-your-own-app
+    # handover). ``X-Hub-Signature-256`` is a symmetric HMAC-SHA256 keyed on the
+    # *sending* app's secret, so whoever verifies a delivery has to hold the key
+    # that produced it; Meta offers no delegated alternative. The handover story
+    # was ``waba_id`` + ``phone_number_id`` + access token, and this was the
+    # fourth item with nowhere to live.
+    #
+    # NOT the same credential as ``app_secret`` above, which is the **Gupshup**
+    # app secret (plaintext, Gupshup's partner API) and is left exactly as it
+    # is. This one is **Meta's**, is encrypted, and neither substitutes for the
+    # other. The ``meta_`` prefix draws the same line ``meta_app_id`` already
+    # draws against ``app_id``.
+    #
+    # SEAM for #306 (per-app signature verification): this column is the value
+    # ``wa.views._verify_meta_signature`` will key on once the per-app receiver
+    # has resolved an app from its ``webhook_identifier`` (#310). That function
+    # still reads one deployment-wide ``settings.META_APP_SECRET`` and is
+    # untouched here — providing the column is this ticket, reading it is #306.
+    # Nothing in the codebase reads this field yet, by design.
+    meta_app_secret = EncryptedTextField(
+        blank=True,
+        default="",
+        help_text=(
+            "The client's own META app secret, used to verify X-Hub-Signature-256 on their "
+            "webhook deliveries. Distinct from app_secret, which is the Gupshup app secret. "
+            "Encrypted at rest, write-only through the API, and never returned or logged."
+        ),
+    )
+
     # Non-secret BSP configuration only — e.g. ``waba_id``, which
     # ``wa.services.template_sync`` still falls back to. This column is
     # plaintext and readable in any copy of the database, so nothing secret
@@ -312,8 +347,8 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         blank=True,
         null=True,
         help_text=(
-            "Non-secret BSP configuration. Tokens and secrets are stored in the "
-            "encrypted bsp_access_token / bsp_partner_app_token columns instead."
+            "Non-secret BSP configuration. Tokens and secrets are stored in the encrypted "
+            "bsp_access_token / bsp_partner_app_token / meta_app_secret columns instead."
         ),
     )
 
@@ -458,6 +493,15 @@ class TenantWAApp(BaseTenantModelForFilterUser):
     # mapped to the encrypted column that now owns it. Adding a secret means
     # adding an ``EncryptedTextField`` above and, only if an older client can
     # already be sending it inside the JSON, an entry here.
+    #
+    # Read that condition strictly: an entry here is a *plaintext intake route*
+    # that is being tolerated because it already exists, not one being offered.
+    # ``meta_app_secret`` is deliberately absent — the field is new in #311, no
+    # client has ever sent an app secret inside this JSON, and adding a key for
+    # it would invent a plaintext path rather than preserve one. It is written
+    # through its own write-only serializer field instead, and
+    # ``WAAppSerializer.validate_bsp_credentials`` rejects an attempt to smuggle
+    # it in here rather than letting it come to rest in the plain column.
     _BSP_SECRET_FIELDS = {
         "access_token": "bsp_access_token",
         "partner_app_token": "bsp_partner_app_token",
