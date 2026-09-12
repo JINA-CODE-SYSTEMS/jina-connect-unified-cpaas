@@ -467,9 +467,7 @@ def process_message_webhook(pk: str):
                         try:
                             from wa.adapters import bsp_q
 
-                            instance.wa_app = TenantWAApp.objects.get(
-                                bsp_q(BSPChoices.META), waba_id=waba_id
-                            )
+                            instance.wa_app = TenantWAApp.objects.get(bsp_q(BSPChoices.META), waba_id=waba_id)
                         except TenantWAApp.DoesNotExist:
                             parse_errors.append(f"No META WAApp for waba_id={waba_id}")
                             continue
