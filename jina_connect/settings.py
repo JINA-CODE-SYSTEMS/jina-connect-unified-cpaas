@@ -686,15 +686,9 @@ WHATSAPP_ENABLED = config("WHATSAPP_ENABLED", False, cast=bool)
 
 WHATSAPP_API_TOKEN = config("WHATSAPP_API_TOKEN", "")
 
-# CACHES = {
-#     "default": {
-#         "BACKEND": "django_redis.cache.RedisCache",
-#         "LOCATION": "redis://127.0.0.1:6379/1",  # Redis running on localhost
-#         "OPTIONS": {
-#             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-#         }
-#     }
-# }
+# CACHES lives next to REDIS_URL, further down — the cache and the channel
+# layer have to agree about the host and disagree about the database number, so
+# they are easier to keep honest when they are read together.
 
 
 SWAGGER_SETTINGS = {
@@ -880,6 +874,60 @@ ASGI_APPLICATION = "jina_connect.routing.application"
 
 # Channel layers configuration using Redis
 REDIS_URL = config("REDIS_URL", "redis://localhost:6379/0")
+
+
+# ── Cache (#315) ─────────────────────────────────────────────────────────────
+# This block was commented out, so Django fell back to LocMemCache — a dict in
+# each process's own memory. Everything that reaches for the cache silently got
+# a private copy. The charge-breakdown result a Celery worker computed and
+# cached was read back by the *web* process, which looked in its own empty dict,
+# answered "still processing" forever, and let the worker's result expire
+# unread. The rate limiters (sms, rcs, telegram, and the broadcast pacing added
+# in #271) counted per process, so a configured limit of N was enforced as
+# N × worker count.
+#
+# The cache gets its own Redis database, separate from db 0 where the Celery
+# broker and the channel layer live. Those are different kinds of state with
+# different lifetimes: broker queues and channel-layer groups are routinely
+# cleared during an incident, and a FLUSHDB aimed at either must not also drop
+# every rate-limit counter and RCS capability cache. Separate databases also
+# keep `--scan` and `INFO keyspace` legible per concern.
+CACHE_REDIS_DB = config("CACHE_REDIS_DB", 1, cast=int)
+
+
+def _redis_url_for_db(url: str, db: int) -> str:
+    """Point a Redis URL at database *db*, keeping scheme, auth, host and query."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(url)
+    return urlunsplit(parts._replace(path=f"/{db}"))
+
+
+# An explicit CACHE_URL wins, for a deployment that wants the cache on a
+# separate Redis instance rather than a separate database on the same one.
+CACHE_URL = config("CACHE_URL", default=_redis_url_for_db(REDIS_URL, CACHE_REDIS_DB))
+
+# Every cache key in the codebase discriminates by the thing it is about —
+# ``broadcast:pace:<wa_app pk>``, ``rcs:cap:full:<agent>:<phone>``,
+# ``charge_breakdown:<task id>`` — but nothing in a key says *which deployment*
+# wrote it, because under LocMemCache the process boundary said that for free.
+# Two stacks sharing one Redis (staging beside production, or two self-hosted
+# tenants on one box) would now share rate-limit counters and capability caches,
+# and ``broadcast:pace:1`` means a different number in each. The database name
+# is the discriminator already distinct per deployment, so it is the default.
+CACHE_KEY_PREFIX = config("CACHE_KEY_PREFIX", default=DATABASES["default"]["NAME"])
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": CACHE_URL,
+        "KEY_PREFIX": CACHE_KEY_PREFIX,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
+
 
 # chat_flow node-type registry: log a warning when a flow contains an unknown
 # node ``type`` instead of rejecting it. Useful while existing channels have
