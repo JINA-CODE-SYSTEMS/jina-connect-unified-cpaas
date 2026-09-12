@@ -572,6 +572,25 @@ def test_the_verify_token_reports_the_scope_it_actually_has(settings):
     assert scope == "deployment"
 
 
+@pytest.mark.django_db
+def test_the_setup_pair_follows_the_apps_bsp(settings):
+    """The same endpoint serves a Gupshup app, with that BSP's receiver and that
+    BSP's token — the D-4 property, on the half a client actually reads."""
+    settings.DEFAULT_WEBHOOK_BASE_URL = "https://hooks.example.test"
+    settings.GUPSHUP_WEBHOOK_VERIFY_TOKEN = "gupshup-deployment-token"
+    settings.META_WEBHOOK_VERIFY_TOKEN = "meta-deployment-token"
+
+    tenant = _tenant()
+    app = _wa_app(tenant, bsp="GUPSHUP")
+    api = _api_client_for(tenant)
+
+    body = api.get(f"/wa/v2/apps/{app.pk}/webhook-setup/").data
+
+    assert body["bsp"] == "GUPSHUP"
+    assert body["callback_url"] == (f"https://hooks.example.test/wa/v2/webhooks/gupshup/{app.webhook_identifier}/")
+    assert body["verify_token"] == "gupshup-deployment-token"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # The verification handshake on a per-app URL
 # ─────────────────────────────────────────────────────────────────────────────
