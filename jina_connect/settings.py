@@ -249,7 +249,21 @@ DATABASES = {
         "USER": config("DB_USER", "postgres"),
         "PASSWORD": config("DB_PASSWORD", "postgres"),
         "TEST": {
-            "NAME": "test_server",
+            # No fixed NAME. It was pinned to "test_server", which meant every
+            # concurrent run on one host shared a single test database however
+            # DB_NAME was set — two suites at once corrupt each other's
+            # fixtures. Django's default, "test_" + NAME, follows DB_NAME and
+            # gives each checkout its own.
+            #
+            # CHARSET/TEMPLATE because Django's JSON encoder emits \uXXXX
+            # escapes, and a SQL_ASCII database rejects them with
+            # "unsupported Unicode escape sequence" — so a single emoji in a
+            # webhook payload or a message reaction fails the write. A local
+            # Postgres initialised as SQL_ASCII makes template1 SQL_ASCII too;
+            # creating from template0 with an explicit encoding is the only
+            # way to get a UTF8 test database out of it.
+            "CHARSET": "UTF8",
+            "TEMPLATE": "template0",
         },
         "HOST": config("DB_HOST", "localhost"),
         "PORT": 5432,
