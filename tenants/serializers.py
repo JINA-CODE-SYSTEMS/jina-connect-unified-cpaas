@@ -376,6 +376,29 @@ class TenantGupshupAppsSerializer(BaseSerializer):
             "meta_app_secret": {"write_only": True},
         }
 
+    #: Fields ``__all__`` would publish that this endpoint must not publish.
+    #:
+    #: ``webhook_verify_token`` (#307) is the token this app's webhook handshake
+    #: checks. It is not secret *from its own tenant* — the client has to paste
+    #: it into their BSP dashboard — but handing it over is the job of
+    #: ``GET /wa/v2/apps/<id>/webhook-setup/``, which is gated on
+    #: ``wa_app.manage`` precisely because a setup credential belongs with the
+    #: roles that do setup. ``list``/``retrieve`` here need only ``wa_app.view``,
+    #: so leaving it in would quietly widen that audience to every role that can
+    #: read the app list, which is the line #310 drew and #251 before it.
+    #:
+    #: Dropped rather than marked ``write_only``: the field is ``editable=False``
+    #: on the model, so DRF has already made it read-only and the two flags
+    #: together are an assertion error. It must not be writable either — the
+    #: token is issued by this deployment, never chosen by a client.
+    _UNPUBLISHED_FIELDS = ("webhook_verify_token",)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        for name in self._UNPUBLISHED_FIELDS:
+            fields.pop(name, None)
+        return fields
+
     def validate_bsp_credentials(self, value):
         """The same guard the v2 endpoint applies (#311).
 

@@ -3658,7 +3658,11 @@ def _auto_register_webhook_for_app(task, wa_app_pk: int) -> dict:
     # deliveries would arrive somewhere nobody is watching for them, which is the
     # silent non-delivery #310 exists to prevent. The legacy path stays reachable
     # and unchanged for whatever is already registered against it.
-    webhook_url = webhook_identity.callback_url(wa_app)
+    # Asked through ``registration_callback_url`` rather than ``callback_url``
+    # directly: #334 made that the one place "which URL do we register" is
+    # answered, for this task and the three refresh paths alike, so the four
+    # cannot drift apart again. It returns the per-app URL.
+    webhook_url = webhook_identity.registration_callback_url(wa_app)
 
     base = (getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "") or "").rstrip("/")
     if not base or base.startswith("http://localhost"):
