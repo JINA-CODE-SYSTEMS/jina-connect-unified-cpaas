@@ -25,6 +25,7 @@ def compute_charge_breakdown_task(
     contact_ids: list = None,
     broadcast_id: int = None,
     template_id=None,
+    tenant_id: int = None,
 ):
     """
     Compute charge breakdown asynchronously for large contact sets.
@@ -42,16 +43,24 @@ def compute_charge_breakdown_task(
     # caller is entitled to read it. The key is a UUID4 and so unique, but
     # uniqueness is not authorisation: the poll endpoint has no other way to
     # tell whose breakdown it just fetched, and task ids are handed to clients
-    # (#320). Stays None if the app cannot be resolved — an unknown app has no
-    # owner to report a failure to, so that failure is deliberately unreadable.
-    tenant_id = None
-
+    # (#320).
+    #
+    # It is passed in by the caller rather than derived from ``wa_app_id`` here,
+    # because the failure branch below needs it too — and the most likely reason
+    # to reach that branch is that the app could not be loaded at all. Deriving
+    # it would leave exactly those failures unreadable by anyone, which is the
+    # "polls forever on a dead task" behaviour #315 set out to remove.
+    #
+    # The fallback covers a rolling deploy: a task enqueued by the previous
+    # revision arrives without the kwarg.
     try:
         from broadcast.services.charge_breakdown import ChargeBreakdownService
         from tenants.models import TenantWAApp
 
+        if tenant_id is None:
+            tenant_id = TenantWAApp.objects.filter(id=wa_app_id).values_list("tenant_id", flat=True).first()
+
         wa_app = TenantWAApp.objects.select_related("tenant").get(id=wa_app_id)
-        tenant_id = wa_app.tenant_id
         svc = ChargeBreakdownService(wa_app=wa_app)
 
         result = svc.compute(

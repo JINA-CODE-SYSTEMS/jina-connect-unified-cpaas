@@ -389,6 +389,10 @@ class WABroadcastViewSet(BroadcastViewSet):
                 contact_ids=contact_ids,
                 broadcast_id=broadcast_id,
                 template_id=template_id,
+                # Stated here rather than derived in the task: the task's failure
+                # branch needs it, and the likeliest way to reach that branch is
+                # the app not loading (#320).
+                tenant_id=wa_app.tenant_id,
             )
             return Response(
                 {

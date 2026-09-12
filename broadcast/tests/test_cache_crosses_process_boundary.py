@@ -65,11 +65,19 @@ django.setup()
 
 from broadcast.tasks import compute_charge_breakdown_task
 
+kwargs = {
+    "wa_app_id": int(sys.argv[3]),
+    "contact_ids": [int(c) for c in sys.argv[4].split(",") if c],
+}
+# The enqueueing endpoint always passes the owning tenant, so the worker always
+# receives it (#320) — including when the app it names has since gone, which is
+# the case the failure test below builds. Optional here only so the two tests
+# that do not care need not supply it.
+if len(sys.argv) > 5 and sys.argv[5]:
+    kwargs["tenant_id"] = int(sys.argv[5])
+
 compute_charge_breakdown_task.apply(
-    kwargs={
-        "wa_app_id": int(sys.argv[3]),
-        "contact_ids": [int(c) for c in sys.argv[4].split(",") if c],
-    },
+    kwargs=kwargs,
     task_id=sys.argv[2],
     throw=True,
 )
@@ -252,12 +260,20 @@ def test_a_failed_breakdown_surfaces_as_failed_rather_than_processing_forever(wa
     # A wa_app id that does not exist makes the task take its except branch,
     # cache {"status": "failed"} and re-raise; ``throw=False`` keeps the
     # re-raise from failing the child process, the way a worker would log it.
+    #
+    # The tenant is passed even though the app is not resolvable, because that is
+    # what production does — the endpoint knows the tenant when it enqueues, and
+    # an app deleted between enqueue and execution is precisely how this branch
+    # gets reached for real. Without it the failure would be readable by nobody
+    # (#320 scopes the poll by tenant), which is the "polls forever on a dead
+    # task" behaviour this test exists to prevent.
     _in_another_process(
         _WORKER.replace("throw=True", "throw=False"),
         connection.settings_dict["NAME"],
         task_id,
         str(wa_app.id + 10_000_000),
         "",
+        str(wa_app.tenant_id),
     )
 
     try:
