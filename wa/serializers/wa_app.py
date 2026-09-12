@@ -67,6 +67,8 @@ class WAAppSerializer(BaseSerializer):
             "app_id",
             "meta_app_id",
             "bsp_credentials",
+            "bsp_access_token",
+            "bsp_partner_app_token",
             "is_active",
             "is_verified",
             "daily_limit",
@@ -88,7 +90,14 @@ class WAAppSerializer(BaseSerializer):
             # missing from ``fields``, so DRF ignored it and the per-tenant
             # token could not be set at all — every send fell back to the one
             # global ``META_PERM_TOKEN``.
+            #
+            # The token now lives in its own encrypted column (#289), settable
+            # directly as ``bsp_access_token``. ``bsp_credentials`` stays
+            # writable because clients already send the token inside it; the
+            # model moves it out of the JSON on save.
             "bsp_credentials": {"write_only": True},
+            "bsp_access_token": {"write_only": True},
+            "bsp_partner_app_token": {"write_only": True},
             "meta_app_id": {"help_text": "META App ID — used for the Resumable Upload API"},
             "waba_id": {"help_text": "WhatsApp Business Account ID from META"},
             "bsp": {"help_text": "Business Solution Provider (META, GUPSHUP, etc.)"},

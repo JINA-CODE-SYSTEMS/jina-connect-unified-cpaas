@@ -118,7 +118,7 @@ def get_meta_access_token(wa_app) -> Optional[str]:
     Get META access token for API calls.
 
     Priority:
-    1. meta_access_token field on TenantWAApp (if exists)
+    1. bsp_access_token on TenantWAApp (per-app, encrypted at rest)
     2. META_PERM_TOKEN from settings (for direct META API access)
     3. Fall back to app_secret (legacy - may not work with META API)
 
@@ -130,9 +130,12 @@ def get_meta_access_token(wa_app) -> Optional[str]:
     """
     from django.conf import settings
 
-    # Priority 1: Per-app META access token (if stored on the model)
-    if hasattr(wa_app, "meta_access_token") and wa_app.meta_access_token:
-        return wa_app.meta_access_token
+    # Priority 1: Per-app META access token. This tested ``meta_access_token``,
+    # a field no model has ever declared, so the branch was dead and template
+    # sync silently ran on the global token — or on app_secret — even for a
+    # tenant that had configured its own. #289 gave the token a real home.
+    if wa_app.bsp_access_token:
+        return wa_app.bsp_access_token
 
     # Priority 2: Global META permanent token from settings
     meta_perm_token = getattr(settings, "META_PERM_TOKEN", None)

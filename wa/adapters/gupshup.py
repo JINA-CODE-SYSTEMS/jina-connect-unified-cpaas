@@ -4,7 +4,7 @@ Gupshup BSP Adapter — submits templates via Gupshup Partner API.
 Uses the existing ``wa.utility.apis.gupshup.template_api.TemplateAPI`` HTTP
 client under the hood.  Credential resolution:
 
-    1. ``wa_app.bsp_credentials["partner_app_token"]``  (per-app token)
+    1. ``wa_app.bsp_partner_app_token``  (per-app token, encrypted at rest)
     2. ``wa_app.app_secret``                             (legacy field)
 
 When the WAApp has ``bsp = "GUPSHUP"`` the adapter factory will select this
@@ -138,11 +138,10 @@ class GupshupAdapter(BaseBSPAdapter):
         Resolve the Gupshup partner app token.
 
         Priority:
-        1. ``wa_app.bsp_credentials["partner_app_token"]``
+        1. ``wa_app.bsp_partner_app_token``  (encrypted at rest — #289)
         2. ``wa_app.app_secret``  (legacy — many tenants store it here)
         """
-        creds = self.wa_app.bsp_credentials or {}
-        token = creds.get("partner_app_token")
+        token = self.wa_app.bsp_partner_app_token
         if token:
             return token
 
@@ -167,8 +166,7 @@ class GupshupAdapter(BaseBSPAdapter):
         token = self._resolve_partner_token()
         if not token:
             raise ValueError(
-                "Gupshup partner token not configured. Set "
-                "bsp_credentials.partner_app_token on the WAApp or use app_secret."
+                "Gupshup partner token not configured. Set bsp_partner_app_token on the WAApp or use app_secret."
             )
 
         app_id = self._resolve_app_id()
@@ -1029,8 +1027,7 @@ class GupshupAdapter(BaseBSPAdapter):
         token = self._resolve_partner_token()
         if not token:
             raise ValueError(
-                "Gupshup partner token not configured. Set "
-                "bsp_credentials.partner_app_token on the WAApp or use app_secret."
+                "Gupshup partner token not configured. Set bsp_partner_app_token on the WAApp or use app_secret."
             )
 
         app_id = self._resolve_app_id()

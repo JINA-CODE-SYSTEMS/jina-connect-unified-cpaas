@@ -6,6 +6,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
 from djmoney.models.fields import MoneyField
+from encrypted_model_fields.fields import EncryptedTextField
 from simple_history.models import HistoricalRecords
 
 from abstract.models import BaseEntity, BaseModelWithOwner, BaseTenantModelForFilterUser, BaseWallet
@@ -221,8 +222,42 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         help_text="META App ID — used for the Resumable Upload API. Falls back to app_id when unset.",
     )
 
-    # Generic BSP credentials (JSON blob for tokens, secrets, etc.)
-    bsp_credentials = models.JSONField(blank=True, null=True, help_text="BSP credentials (access tokens, etc.)")
+    # ── BSP secrets, encrypted at rest (#289) ───────────────────────────
+    # Each of these is a live provider credential. They are Fernet-encrypted
+    # by ``encrypted_model_fields``, the same pattern
+    # ``meta.MetaBusinessConnection.system_user_token`` and
+    # ``crm.CrmConnection`` already use, so a database dump, a nightly backup
+    # or a read replica carries ciphertext rather than a working token for
+    # every organisation. Reading one needs ``FIELD_ENCRYPTION_KEY``.
+    #
+    # Different BSPs use different ones; the adapter decides which to read
+    # (META reads the access token, Gupshup the partner app token). A further
+    # per-app secret belongs here, as one more ``EncryptedTextField`` listed
+    # in ``_BSP_SECRET_FIELDS`` — never as another key in ``bsp_credentials``.
+    bsp_access_token = EncryptedTextField(
+        blank=True,
+        default="",
+        help_text="META access token for this app. Encrypted at rest, and never returned by the API.",
+    )
+    bsp_partner_app_token = EncryptedTextField(
+        blank=True,
+        default="",
+        help_text="Gupshup partner app token for this app. Encrypted at rest, and never returned by the API.",
+    )
+
+    # Non-secret BSP configuration only — e.g. ``waba_id``, which
+    # ``wa.services.template_sync`` still falls back to. This column is
+    # plaintext and readable in any copy of the database, so nothing secret
+    # may live in it. A secret written here by an older client is moved into
+    # the matching encrypted column on save; see ``_absorb_bsp_secrets``.
+    bsp_credentials = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Non-secret BSP configuration. Tokens and secrets are stored in the "
+            "encrypted bsp_access_token / bsp_partner_app_token columns instead."
+        ),
+    )
 
     # Verification & quota
     is_verified = models.BooleanField(default=False, help_text="Phone number verified with META")
@@ -335,9 +370,61 @@ class TenantWAApp(BaseTenantModelForFilterUser):
             if value is not None and str(value.currency) != target:
                 setattr(self, name, Money(value.amount, target))
 
+    # ── BSP secrets ──────────────────────────────────────────────────────
+    # The legacy ``bsp_credentials`` key each secret used to be written under,
+    # mapped to the encrypted column that now owns it. Adding a secret means
+    # adding an ``EncryptedTextField`` above and, only if an older client can
+    # already be sending it inside the JSON, an entry here.
+    _BSP_SECRET_FIELDS = {
+        "access_token": "bsp_access_token",
+        "partner_app_token": "bsp_partner_app_token",
+    }
+
+    def _absorb_bsp_secrets(self):
+        """Move any secret found in ``bsp_credentials`` to its encrypted column.
+
+        The v2 API has accepted ``bsp_credentials={"access_token": …}`` since
+        #275 and clients still send exactly that, so the shape keeps working —
+        but the value must not come to rest in a plaintext JSON column. Each
+        known secret key is *moved*, not copied: it is popped from the JSON and
+        written to the matching encrypted field, which is what every reader now
+        looks at.
+
+        A value supplied in the JSON wins over whatever the encrypted column
+        held, because that is what rotating a token through the legacy shape
+        means. An empty or missing value leaves the stored secret alone, so a
+        PATCH of some unrelated field cannot blank a live token.
+
+        Returns the field names it changed, so ``save(update_fields=…)`` can be
+        widened to cover them — otherwise a targeted save would write the
+        stripped JSON and silently drop the token.
+        """
+        creds = self.bsp_credentials
+        if not isinstance(creds, dict) or not (set(creds) & set(self._BSP_SECRET_FIELDS)):
+            return ()
+
+        # Copied rather than mutated: the caller's dict is theirs.
+        remaining = dict(creds)
+        touched = ["bsp_credentials"]
+        for key, field_name in self._BSP_SECRET_FIELDS.items():
+            if key not in remaining:
+                continue
+            value = remaining.pop(key)
+            if value:
+                setattr(self, field_name, value)
+                touched.append(field_name)
+        self.bsp_credentials = remaining
+        return tuple(touched)
+
     def save(self, *args, **kwargs):
         if self._state.adding:
             self._stamp_platform_currency()
+
+        moved = self._absorb_bsp_secrets()
+        update_fields = kwargs.get("update_fields")
+        if moved and update_fields is not None:
+            kwargs["update_fields"] = list(dict.fromkeys([*update_fields, *moved]))
+
         super().save(*args, **kwargs)
 
 

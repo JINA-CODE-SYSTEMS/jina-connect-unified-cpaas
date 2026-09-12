@@ -167,12 +167,9 @@ class OrderService:
     @staticmethod
     def _get_access_token(wa_app) -> str:
         """Resolve META Graph API access token from WAApp credentials."""
-        creds = wa_app.bsp_credentials or {}
-        token = creds.get("access_token") or getattr(settings, "META_PERM_TOKEN", None)
+        token = wa_app.bsp_access_token or getattr(settings, "META_PERM_TOKEN", None)
         if not token:
             raise ValidationError(
-                "META access token not configured. Set "
-                "bsp_credentials.access_token on the WAApp or "
-                "META_PERM_TOKEN in settings."
+                "META access token not configured. Set bsp_access_token on the WAApp or META_PERM_TOKEN in settings."
             )
         return token
