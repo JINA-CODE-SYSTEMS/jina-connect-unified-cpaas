@@ -274,22 +274,104 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
         """
         ...
 
+    # ── Sending ───────────────────────────────────────────────────────────
+    #
+    # Both send paths used to hand-roll this branch — ``broadcast/tasks.py``
+    # and ``wa/tasks.py`` each picked an API client from ``wa_app.bsp`` and
+    # each read the provider's message id out of the response themselves
+    # (#265). They drifted: one documented Gupshup as returning
+    # ``{"messages": [{"id": ...}]}`` and the other as ``{"messageId": ...}``,
+    # for the same client. Both cannot be right, and whichever is wrong loses
+    # the id silently — which disables the duplicate-send guard added in #271,
+    # because that guard keys on the id being set.
+    #
+    # The adapter knows which provider it is; the caller does not. So the
+    # response shape is the adapter's business, and each one is responsible
+    # for its own.
+
+    @abstractmethod
+    def send_template(
+        self,
+        payload: dict,
+        *,
+        is_marketing: bool = False,
+        template_type: str = "",
+    ) -> AdapterResult:
+        """
+        Send a template message.
+
+        ``payload`` is the provider-shaped body the caller has already built.
+        ``template_type`` is the ``WATemplate.template_type``, for adapters
+        that validate the send payload — it is not derivable from the body.
+
+        On success ``data`` carries the normalised ids (see
+        :meth:`_message_ids` for the contract every adapter fills in):
+
+        ``message_id``
+            The id to store and to match webhooks against. Never ``None`` on
+            a successful send — an adapter that cannot find one fails instead,
+            because a send with no id cannot be deduplicated or tracked.
+        ``cloud_api_message_id`` / ``provider_message_id``
+            The individual ids, where the provider returns both, so a webhook
+            carrying either can still be resolved.
+        """
+        ...
+
+    @abstractmethod
+    def send_session_message(self, payload: dict) -> AdapterResult:
+        """
+        Send a free-form (session) message inside the service window.
+
+        Same ``data`` contract as :meth:`send_template`.
+        """
+        ...
+
+    @staticmethod
+    def _message_ids(cloud_api_id: str | None, provider_id: str | None) -> dict:
+        """Normalise a provider's ids into the shape callers read.
+
+        The Cloud API id (``wamid.…``) is preferred as the primary because it
+        is what webhooks normally carry. A provider that returns only its own
+        id supplies that instead, so ``message_id`` is set either way.
+        """
+        return {
+            "message_id": cloud_api_id or provider_id,
+            "cloud_api_message_id": cloud_api_id,
+            "provider_message_id": provider_id,
+        }
+
     # ── BaseChannelAdapter contract ───────────────────────────────────────
-    # Default implementations for the channel-agnostic send interface.
-    # Concrete BSP adapters (MetaDirect, Gupshup) may override these once
-    # session-message sending is built out.
+    #
+    # These stay unimplemented, deliberately. ``WHATSAPP`` is registered in
+    # the channel registry (``wa/apps.py``), so ``get_channel_adapter
+    # ("WHATSAPP", tenant).send_text(...)`` resolves an adapter and then
+    # raises — but nothing in the repo calls it: the only real caller of the
+    # registry asks for ``"SMS"``, and the paths #265 named as reaching this
+    # (``voice/fallback.py``, ``mcp_server/tools/messaging.py``) both use
+    # ``SMSMessageSender`` instead. So this is latent, not live.
+    #
+    # Implementing them means a per-provider payload builder — the Cloud API
+    # and Gupshup's session endpoint take different bodies — which belongs
+    # with whoever adds the first caller and knows what shape they need.
+    # :meth:`send_session_message` is the method that works today.
 
     def send_text(self, chat_id: str, text: str, **kwargs: Any) -> Dict[str, Any]:
         raise NotImplementedError(
-            f"{self.PROVIDER_NAME} adapter does not yet implement send_text(). "
-            "Use the BSP-specific template/session APIs."
+            f"{self.PROVIDER_NAME} adapter does not implement send_text(). "
+            "Build a provider-shaped payload and call send_session_message() instead."
         )
 
     def send_media(self, chat_id, media_type, media_url, caption=None, **kwargs):
-        raise NotImplementedError(f"{self.PROVIDER_NAME} adapter does not yet implement send_media().")
+        raise NotImplementedError(
+            f"{self.PROVIDER_NAME} adapter does not implement send_media(). "
+            "Build a provider-shaped payload and call send_session_message() instead."
+        )
 
     def send_keyboard(self, chat_id, text, keyboard, **kwargs):
-        raise NotImplementedError(f"{self.PROVIDER_NAME} adapter does not yet implement send_keyboard().")
+        raise NotImplementedError(
+            f"{self.PROVIDER_NAME} adapter does not implement send_keyboard(). "
+            "Build a provider-shaped payload and call send_session_message() instead."
+        )
 
     def get_channel_name(self) -> str:
         return "WHATSAPP"

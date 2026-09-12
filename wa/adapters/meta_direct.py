@@ -337,6 +337,152 @@ class MetaDirectAdapter(BaseBSPAdapter):
         validator_cls(**copy.deepcopy(payload))
         self._log("info", f"Send payload validated via {validator_cls.__name__}")
 
+    # ── Sending ───────────────────────────────────────────────────────────
+
+    def send_template(
+        self,
+        payload: dict,
+        *,
+        is_marketing: bool = False,
+        template_type: str = "",
+    ) -> AdapterResult:
+        """Send a template through the Cloud API.
+
+        ``is_marketing`` is accepted for interface parity and does nothing
+        here: META posts every category to the same
+        ``/{phone_number_id}/messages`` endpoint, because the category lives
+        on the template rather than on the request. Gupshup does have two
+        endpoints, which is why the flag is in the signature at all.
+
+        ``template_type`` selects the send-side validator. It is passed in
+        rather than read off the payload because the Cloud API body does not
+        carry it — only the caller, which loaded the ``WATemplate``, knows.
+        """
+        if template_type:
+            # ``_validate_send_payload`` had no caller anywhere in the repo
+            # (#265), so META send payloads were never validated — the
+            # validators existed and simply ran for nobody.
+            try:
+                self._validate_send_payload(template_type, payload)
+            except Exception as exc:
+                self._log("warning", f"send_template payload failed validation — {exc}")
+                return AdapterResult(
+                    success=False,
+                    provider=self.PROVIDER_NAME,
+                    error_message=f"Send payload failed META validation: {exc}",
+                )
+
+        return self._post_message(
+            build_api=self._get_send_template_api,
+            send=lambda api: api.send_template(payload, is_marketing),
+            payload=payload,
+            what="send_template",
+        )
+
+    def send_session_message(self, payload: dict) -> AdapterResult:
+        """Send a free-form message through the Cloud API."""
+        return self._post_message(
+            build_api=self._get_session_message_api,
+            send=lambda api: api.send_message(payload),
+            payload=payload,
+            what="send_session_message",
+        )
+
+    def _post_message(self, *, build_api, send, payload: dict, what: str) -> AdapterResult:
+        """Shared body of the two send methods.
+
+        They differ only in which client they build; everything after that —
+        the credential error, the provider error, and reading the id back out
+        — is identical, and was duplicated at both call sites before this.
+        """
+        if not payload:
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=f"{what}: payload is empty",
+            )
+
+        try:
+            api = build_api()
+        except ValueError as exc:
+            self._log("error", f"{what} credential error — {exc}")
+            return AdapterResult(success=False, provider=self.PROVIDER_NAME, error_message=str(exc))
+
+        try:
+            response = send(api)
+        except Exception as exc:
+            self._log("error", f"{what} API call FAILED — {exc}", exc_info=True)
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=f"META API call failed: {exc}",
+            )
+
+        response = response or {}
+        if response.get("error"):
+            error = response["error"]
+            message = error.get("message", str(error)) if isinstance(error, dict) else str(error)
+            self._log("warning", f"{what} META error — {message}")
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=message,
+                raw_response=response,
+            )
+
+        messages = response.get("messages") or []
+        cloud_api_id = messages[0].get("id") if messages else None
+        if not cloud_api_id:
+            # A 200 with no wamid is not a send we can track, deduplicate or
+            # match a status webhook to. Calling it a success would set the
+            # row to SENT with a blank id, which is exactly the state #271's
+            # duplicate guard cannot see.
+            self._log("warning", f"{what} returned no message id — {response}")
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message="META accepted the request but returned no message id.",
+                raw_response=response,
+            )
+
+        return AdapterResult(
+            success=True,
+            provider=self.PROVIDER_NAME,
+            data=self._message_ids(cloud_api_id, None),
+            raw_response=response,
+        )
+
+    def _get_send_template_api(self):
+        """A ``TemplateAPI`` configured for *sending*, which also needs the
+        phone number id — template CRUD only needs the WABA."""
+        api = self._get_template_api()
+        phone_number_id = getattr(self.wa_app, "phone_number_id", None)
+        if not phone_number_id:
+            raise ValueError(
+                "phone_number_id not configured on the WAApp. Required for META Cloud API message sending."
+            )
+        api.phone_number_id = phone_number_id
+        return api
+
+    def _get_session_message_api(self):
+        """Build a configured ``SessionMessageAPI``."""
+        from wa.utility.apis.meta.session_message_api import SessionMessageAPI
+
+        token = self._resolve_access_token()
+        if not token:
+            raise ValueError(
+                "META access token not configured. Set bsp_credentials.access_token "
+                "on the WAApp or META_PERM_TOKEN in settings."
+            )
+
+        phone_number_id = getattr(self.wa_app, "phone_number_id", None)
+        if not phone_number_id:
+            raise ValueError(
+                "phone_number_id not configured on the WAApp. Required for META Cloud API message sending."
+            )
+
+        return SessionMessageAPI(token=token, phone_number_id=phone_number_id)
+
     # ── Template operations ───────────────────────────────────────────────
 
     # META's template lifecycle is wider than the six states the model was

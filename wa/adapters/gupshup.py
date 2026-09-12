@@ -177,6 +177,121 @@ class GupshupAdapter(BaseBSPAdapter):
 
         return TemplateAPI(appId=app_id, token=token)
 
+    def _get_session_message_api(self):
+        """Build a configured Gupshup ``SessionMessageAPI`` instance."""
+        from wa.utility.apis.gupshup.session_message_api import SessionMessageAPI
+
+        app_id = self.wa_app.app_id
+        app_secret = self.wa_app.app_secret
+        if not app_id or not app_secret:
+            raise ValueError(f"Gupshup credentials (app_id/app_secret) missing on WAApp {self.wa_app.pk}")
+
+        return SessionMessageAPI(appId=app_id, token=app_secret)
+
+    def _get_send_template_api(self):
+        """Build the client the *send* path uses.
+
+        Sending goes through ``app_id``/``app_secret`` rather than the partner
+        token that template CRUD uses, which is why this is separate from
+        ``_get_template_api``.
+        """
+        from wa.utility.apis.gupshup.template_api import TemplateAPI
+
+        app_id = self.wa_app.app_id
+        app_secret = self.wa_app.app_secret
+        if not app_id or not app_secret:
+            raise ValueError(f"Gupshup credentials (app_id/app_secret) missing on WAApp {self.wa_app.pk}")
+
+        return TemplateAPI(appId=app_id, token=app_secret)
+
+    # ── Sending ───────────────────────────────────────────────────────────
+
+    def send_template(
+        self,
+        payload: dict,
+        *,
+        is_marketing: bool = False,
+        template_type: str = "",
+    ) -> AdapterResult:
+        """Send a template.
+
+        ``is_marketing`` matters here, unlike on META: Gupshup has a separate
+        marketing endpoint. ``template_type`` is unused — there is no
+        Gupshup-side send validator.
+        """
+        return self._post_message(
+            build_api=self._get_send_template_api,
+            send=lambda api: api.send_template(data=payload, is_marketing=is_marketing),
+            payload=payload,
+            what="send_template",
+        )
+
+    def send_session_message(self, payload: dict) -> AdapterResult:
+        """Send a free-form message inside the service window."""
+        return self._post_message(
+            build_api=self._get_session_message_api,
+            send=lambda api: api.send_message(payload),
+            payload=payload,
+            what="send_session_message",
+        )
+
+    def _post_message(self, *, build_api, send, payload: dict, what: str) -> AdapterResult:
+        """Shared body of the two send methods.
+
+        **On the response shape.** The two hand-rolled send paths this
+        replaces documented Gupshup's reply differently — ``broadcast/tasks``
+        said ``{"messages": [{"id": ...}]}``, ``wa/tasks`` said
+        ``{"messageId": ...}`` — for this same client (#265). Rather than
+        pick a winner from two comments, both are read: Gupshup wraps the
+        Cloud API, so a ``wamid`` may be present, and its own UUID may be
+        present, and either can arrive alone. A status webhook can carry
+        either id, so both are returned and the caller stores both.
+        """
+        if not payload:
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=f"{what}: payload is empty",
+            )
+
+        try:
+            api = build_api()
+        except ValueError as exc:
+            self._log("error", f"{what} credential error — {exc}")
+            return AdapterResult(success=False, provider=self.PROVIDER_NAME, error_message=str(exc))
+
+        try:
+            response = send(api)
+        except Exception as exc:
+            self._log("error", f"{what} API call FAILED — {exc}", exc_info=True)
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message=f"Gupshup API call failed: {exc}",
+            )
+
+        response = response or {}
+
+        messages = response.get("messages") or []
+        cloud_api_id = messages[0].get("id") if messages else None
+        provider_id = response.get("gs_id") or response.get("messageId") or response.get("message_id")
+
+        if not (cloud_api_id or provider_id):
+            self._log("warning", f"{what} returned no message id — {response}")
+            return AdapterResult(
+                success=False,
+                provider=self.PROVIDER_NAME,
+                error_message="Gupshup accepted the request but returned no message id.",
+                raw_response=response,
+            )
+
+        return AdapterResult(
+            success=True,
+            provider=self.PROVIDER_NAME,
+            data=self._message_ids(cloud_api_id, provider_id),
+            raw_response=response,
+        )
+
     # ── Payload builder ───────────────────────────────────────────────────
 
     def _validate_and_build_payload(self, template: "WATemplate") -> dict:

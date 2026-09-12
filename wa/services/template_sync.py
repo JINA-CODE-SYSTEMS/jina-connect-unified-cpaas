@@ -731,7 +731,13 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
     bsp_templates = result.data.get("templates", [])
 
     # Detect BSP type to choose the right mapper
-    bsp_type = getattr(wa_app, "bsp", None)
+    # ``resolve_bsp`` rather than the raw column: a blank ``bsp`` got the META
+    # adapter from the factory and the *Gupshup* mapper from here, so the
+    # mapper read ``elementName`` out of a META payload, got None, and failed
+    # every row as "Template missing name" (#265).
+    from wa.adapters import resolve_bsp
+
+    bsp_type = resolve_bsp(wa_app)
     is_meta_direct = bsp_type == BSPChoices.META
 
     created = 0

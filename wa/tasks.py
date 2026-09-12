@@ -465,7 +465,9 @@ def process_message_webhook(pk: str):
                     waba_id = extracted_data.get("waba_id")
                     if waba_id:
                         try:
-                            instance.wa_app = TenantWAApp.objects.get(waba_id=waba_id, bsp=BSPChoices.META)
+                            from wa.adapters import bsp_q
+
+                            instance.wa_app = TenantWAApp.objects.get(bsp_q(BSPChoices.META), waba_id=waba_id)
                         except TenantWAApp.DoesNotExist:
                             parse_errors.append(f"No META WAApp for waba_id={waba_id}")
                             continue
@@ -1397,7 +1399,9 @@ def _process_meta_template_webhook(instance, payload: dict):
     # ── Resolve WAApp by waba_id ──────────────────────────────────────
     if not instance.wa_app_id:
         try:
-            wa_app = TenantWAApp.objects.get(waba_id=waba_id, bsp=BSPChoices.META)
+            from wa.adapters import bsp_q
+
+            wa_app = TenantWAApp.objects.get(bsp_q(BSPChoices.META), waba_id=waba_id)
             instance.wa_app = wa_app
         except TenantWAApp.DoesNotExist:
             instance.error_message = f"No META WAApp with waba_id={waba_id}"
@@ -1821,9 +1825,6 @@ def send_outgoing_message(pk: str):
             - team_inbox_error: str (if failed to create)
             - error: str (if any error occurred)
     """
-    from django.conf import settings
-
-    from tenants.models import BSPChoices
     from wa.models import MessageStatus, MessageType, WAMessage
 
     result = {
@@ -1890,41 +1891,12 @@ def send_outgoing_message(pk: str):
             _broadcast_message_status_update_v2(instance, result["status"])
             return result
 
-        # Initialize the Session Message API (BSP-aware)
-        bsp = getattr(wa_app, "bsp", None)
+        # Send through the BSP adapter. This used to pick a client from
+        # ``wa_app.bsp`` here, with ``else: Gupshup`` — so a blank column
+        # failed with "Gupshup credentials missing" while the adapter factory,
+        # reading the same column, returned META Direct (#265).
+        from wa.adapters import get_bsp_adapter
 
-        if bsp == BSPChoices.META:
-            from wa.utility.apis.meta.session_message_api import SessionMessageAPI as MetaSessionMessageAPI
-
-            creds = wa_app.bsp_credentials or {}
-            token = creds.get("access_token") or getattr(settings, "META_PERM_TOKEN", None)
-            if not token:
-                raise Exception(
-                    "META access token not configured. Set "
-                    "bsp_credentials.access_token on the WAApp or "
-                    "META_PERM_TOKEN in settings."
-                )
-            phone_number_id = wa_app.phone_number_id
-            if not phone_number_id:
-                raise Exception(
-                    "phone_number_id not configured on the WAApp. Required for META Cloud API message sending."
-                )
-            api = MetaSessionMessageAPI(
-                token=token,
-                phone_number_id=phone_number_id,
-            )
-        else:
-            # Default: Gupshup (covers BSPChoices.GUPSHUP and legacy apps)
-            from wa.utility.apis.gupshup.session_message_api import SessionMessageAPI as GupshupSessionMessageAPI
-
-            if not wa_app.app_id or not wa_app.app_secret:
-                raise Exception(f"Gupshup credentials (app_id/app_secret) missing on WAApp {wa_app.pk}")
-            api = GupshupSessionMessageAPI(
-                appId=wa_app.app_id,
-                token=wa_app.app_secret,
-            )
-
-        # Send the message
         payload = instance.raw_payload
         if not payload:
             raise Exception("Message payload is empty")
@@ -1932,30 +1904,23 @@ def send_outgoing_message(pk: str):
         logger.debug("Sending message %s with payload: %s", pk, payload)
 
         try:
-            response = api.send_message(payload)
-            logger.debug("API response for message %s: %s", pk, response)
+            send_result = get_bsp_adapter(wa_app).send_session_message(payload)
+            logger.debug("Adapter result for message %s: %s", pk, send_result.raw_response)
 
-            # If we reach here, API returned 200/201 (success)
+            if not send_result.success:
+                raise Exception(send_result.error_message or "Send failed with no error message")
+
             instance.status = MessageStatus.SENT
 
-            # Extract message_id from response.
-            # Cloud API (META Direct) returns: {"messages": [{"id": "wamid.XXX"}]}
-            # Gupshup v3 Partner API returns: {"messageId": "UUID", ...}
-            # We may get both when Gupshup wraps Cloud API — store each
-            # in the appropriate field so status webhook lookups work
-            # regardless of which ID the webhook carries.
-            cloud_api_id = None
-            messages = response.get("messages", [])
-            if messages and len(messages) > 0:
-                cloud_api_id = messages[0].get("id")
-
-            gupshup_id = response.get("gs_id") or response.get("messageId") or response.get("message_id")
-
-            # Primary: prefer Cloud API id (wamid) since that's what
-            # webhooks normally carry in the 'id' field.
-            # If only the Gupshup UUID is available, use that as primary.
-            primary_id = cloud_api_id or gupshup_id or response.get("id")
-            secondary_id = gupshup_id if (cloud_api_id and gupshup_id and cloud_api_id != gupshup_id) else None
+            # The adapter normalises the ids, so this no longer reads the
+            # provider's response shape itself. Both are kept: a status
+            # webhook can carry either, and Gupshup wrapping the Cloud API
+            # can return both at once.
+            ids = send_result.data or {}
+            primary_id = ids.get("message_id")
+            cloud_api_id = ids.get("cloud_api_message_id")
+            provider_id = ids.get("provider_message_id")
+            secondary_id = provider_id if (cloud_api_id and provider_id and cloud_api_id != provider_id) else None
 
             instance.wa_message_id = primary_id
             if secondary_id:

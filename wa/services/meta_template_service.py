@@ -387,10 +387,12 @@ class MetaTemplateService:
             template: WATemplate instance
         """
         from tenants.models import BSPChoices
-        from wa.tasks import sync_template_with_bsp_task
 
         # Skip BSP sync if tenant is using META Direct (no BSP)
-        if self.wa_app.bsp == BSPChoices.META:
+        from wa.adapters import resolve_bsp
+        from wa.tasks import sync_template_with_bsp_task
+
+        if resolve_bsp(self.wa_app) == BSPChoices.META:
             logger.info(f"Skipping BSP sync for template '{template.element_name}' - tenant uses META Direct (no BSP)")
             return
 
