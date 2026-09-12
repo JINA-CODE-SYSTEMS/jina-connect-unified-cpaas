@@ -366,25 +366,37 @@ def test_the_spawned_session_is_persisted_with_its_trigger_context(client, app, 
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "FINDING, not covered by any ticket in #277. The dispatcher documents "
-        "itself as 'idempotent across webhook replays (Redis SETNX keyed on "
-        "(tenant, channel, inbound_row_id))', but `inbound_row_id` is the pk of "
-        "the `team_inbox.Messages` row this run just created. Inbound ingestion "
-        "has no dedup of its own (see the sibling finding in "
-        "team_inbox/tests/test_meta_path_inbound.py), so a redelivered Meta "
-        "webhook creates a second row, produces a second key, claims it and "
-        "spawns the flow again. A key derived from the provider's `wamid` — "
-        "already carried in `extra.external_message_id` — would survive the "
-        "replay; the row pk cannot. Note this test does not exercise the Redis "
-        "claim itself: under the test cache backend SETNX is unsupported and "
-        "`claim_dispatch` fails open, so it demonstrates the duplicate "
-        "dispatch, not the key comparison. Strict xfail so a fix flips it."
-    ),
-)
 def test_a_redelivered_webhook_does_not_spawn_the_flow_twice(client, app, graph, spawns):
+    """A redelivered Meta webhook must not spawn the flow a second time (#330).
+
+    The dispatcher documents itself as "idempotent across webhook replays
+    (Redis SETNX keyed on (tenant, channel, inbound_row_id))", but
+    ``inbound_row_id`` is the pk of the ``team_inbox.Messages`` row the run
+    just created. Ingestion had no dedup of its own (see the sibling test in
+    ``team_inbox/tests/test_meta_path_inbound.py``), so a redelivery created a
+    second row, produced a second key, claimed it and spawned the flow again —
+    a replay defeating the one mechanism meant to stop a replay.
+
+    The fix is on the ingestion side: the ``wamid`` is now a unique column, the
+    second delivery writes no row, and so it emits no trigger event. The guard
+    still keys on the row pk, which is safe only because a redelivery can no
+    longer mint a new pk; the provider's id is nevertheless the more honest
+    key, and is already carried in ``extra.external_message_id``.
+
+    What this pins is the absence of the second dispatch, not the Redis claim:
+    ``claim_dispatch`` goes straight to ``get_redis_connection("default")``, so
+    whether SETNX really runs depends on the cache a given run has — real
+    against the Redis CI and a dev box both provide, failing open where there
+    is none. Either way it could not have saved this case, because the key it
+    claims embeds the row pk.
+
+    One consequence of that key worth knowing when this file is rerun locally:
+    the claims are real, live for 24 hours, and are namespaced by tenant and
+    row pk only. A fresh test database restarts both sequences, so a second run
+    inside the window meets its own predecessor's claims and the dispatch tests
+    fail on a denied claim. CI gets a new Redis per run; locally, flush the
+    cache database between runs.
+    """
     _flow(app.tenant, triggers=_keyword_trigger("help"))
 
     payload = inbound_envelope(app, messages_value(app, text_message("wamid.replay", "help me")))

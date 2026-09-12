@@ -567,13 +567,55 @@ def _split_meta_message_payloads(payload: dict) -> list[dict]:
     return slices
 
 
+#: Name of the partial unique index that makes inbound ingestion idempotent
+#: (``team_inbox.Messages.Meta.constraints``, migration ``team_inbox/0012``).
+#: Postgres names it in the error, which is how a duplicate redelivery is told
+#: apart from any other integrity failure on the same write.
+_INBOUND_DEDUPE_CONSTRAINT = "message_provider_msg_id_uniq"
+
+
+def _existing_inbound(tenant, provider_message_id: str):
+    """Return the inbox row already ingested for *provider_message_id*, or None.
+
+    The cheap half of the idempotency guard (#330): Meta redelivers a webhook
+    whenever it does not see a timely 200, so the common case is a second
+    delivery arriving long after the first has been committed, and a single
+    indexed read answers it without provoking a write that has to roll back.
+
+    It is only the cheap half. Two workers handling concurrent redeliveries
+    can both pass this check, so it is not the guarantee — the partial unique
+    index on ``(tenant, platform, provider_message_id)`` is, and the caller
+    still has to handle the ``IntegrityError`` this check failed to prevent.
+    Factored out as a named function so a test can disable exactly this half
+    and assert the database still holds the line.
+    """
+    from team_inbox.models import MessagePlatformChoices, Messages
+
+    return (
+        Messages.objects.filter(
+            tenant=tenant,
+            platform=MessagePlatformChoices.WHATSAPP,
+            provider_message_id=provider_message_id,
+        )
+        .only("pk")
+        .first()
+    )
+
+
 def _ingest_inbound_message(instance, extracted_data: dict, pk: str) -> None:
     """Create the team_inbox message for one parsed inbound, and all that follows.
 
     Lifted out of ``process_message_webhook`` unchanged, so that a batched
     webhook can run it once per message (#268). It was previously the body of
     a single ``try`` block operating on one ``extracted_data``.
+
+    Idempotent on the provider's message id (#330). Everything after the row
+    is written — opt-out keywords, CTWA lead creation, the chat_flow trigger
+    emission — happens once per inbound message, because a second delivery of
+    the same ``wamid`` returns before any of it.
     """
+    from django.db import IntegrityError, transaction
+
     from team_inbox.models import AuthorChoices, MessageDirectionChoices, MessagePlatformChoices, Messages
 
     tenant = instance.wa_app.tenant
@@ -594,6 +636,30 @@ def _ingest_inbound_message(instance, extracted_data: dict, pk: str) -> None:
         instance.save(update_fields=["error_message"])
         return
 
+    # ── Idempotency key: the provider's own message id (#330) ─────
+    # Meta redelivers on anything but a timely 200 — and sometimes anyway.
+    # Ingestion used to create a row unconditionally, so a redelivery doubled
+    # the inbox and, worse, re-fired the chat flow: the trigger dispatcher's
+    # replay guard keys on the new row's pk, so a fresh row is a key it has
+    # never seen. The wamid is Meta's, and stable across redeliveries.
+    #
+    # Both BSP parsers put the provider's id under the same key, so the
+    # Gupshup path gets the same protection: there it is Gupshup's message id
+    # rather than a wamid, and either is stable across a redelivery, which is
+    # all the guard asks of it. The guard sits ahead of contact resolution
+    # deliberately — a redelivery should not touch the contact either.
+    provider_message_id = extracted_data.get("message_id") or ""
+    if provider_message_id:
+        already = _existing_inbound(tenant, provider_message_id)
+        if already is not None:
+            logger.info(
+                "Webhook %s: inbound %s already ingested as message %s — redelivery ignored",
+                pk,
+                provider_message_id,
+                already.pk,
+            )
+            return
+
     # Get or create contact by phone number (#108 fallback)
     from contacts.services import resolve_or_create_contact
 
@@ -613,18 +679,42 @@ def _ingest_inbound_message(instance, extracted_data: dict, pk: str) -> None:
     # Create a MessageEventIds entry for timeline ordering
     from team_inbox.models import MessageEventIds
 
-    message_event_id = MessageEventIds.objects.create()
+    # Both writes inside one atomic block: the unique index can reject the
+    # message, and without a savepoint here that rejection would poison the
+    # surrounding transaction and take the rest of the batch with it. It also
+    # keeps the timeline numbering from advancing for a row that never landed.
+    try:
+        with transaction.atomic():
+            message_event_id = MessageEventIds.objects.create()
 
-    # Create the Messages entry
-    message = Messages.objects.create(
-        tenant=tenant,
-        message_id=message_event_id,
-        content=content,
-        direction=MessageDirectionChoices.INCOMING,
-        platform=MessagePlatformChoices.WHATSAPP,
-        author=AuthorChoices.CONTACT,
-        contact=contact,
-    )
+            # Create the Messages entry
+            message = Messages.objects.create(
+                tenant=tenant,
+                message_id=message_event_id,
+                content=content,
+                direction=MessageDirectionChoices.INCOMING,
+                platform=MessagePlatformChoices.WHATSAPP,
+                author=AuthorChoices.CONTACT,
+                contact=contact,
+                provider_message_id=provider_message_id or None,
+            )
+    except IntegrityError as exc:
+        # The check above passed and the write still lost: two workers were
+        # handling redeliveries of the same message at once. The row the other
+        # one wrote is the row, so this delivery is done.
+        #
+        # Matched on the constraint name rather than by re-reading the table:
+        # any other integrity failure here is a real bug and must keep
+        # raising, and a re-read would also have to trust the same check that
+        # just proved unreliable.
+        if not provider_message_id or _INBOUND_DEDUPE_CONSTRAINT not in str(exc):
+            raise
+        logger.info(
+            "Webhook %s: inbound %s was ingested concurrently — redelivery ignored",
+            pk,
+            provider_message_id,
+        )
+        return
 
     # Update timestamp to message_actual_time
     if extracted_data.get("message_actual_time"):
