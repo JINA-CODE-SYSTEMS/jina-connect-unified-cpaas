@@ -18,7 +18,8 @@ So the identity moves into the URL::
 ``TenantWAApp.webhook_identifier`` is the opaque string in that path. This
 module is the receiver side of it: resolve it to an app in one indexed query,
 build the URL a client pastes into their own dashboard, count the deliveries
-addressed to identifiers nobody owns, and keep the full value out of the logs.
+addressed to identifiers nobody owns and the ones whose signature could not be
+verified, and keep the full value out of the logs.
 
 BSP-agnostic by construction (#305 D-4). Bring-your-own-app and Embedded Signup
 (#258, gated on Tech Provider status in #190) coexist permanently, so the
@@ -26,17 +27,16 @@ identity layer may not be Meta-shaped: a receiver is registered by adding one
 row to ``_RECEIVER_URL_NAMES`` and the matching pair of URL patterns, and
 nothing else in here knows which BSP it is serving.
 
-What this module deliberately does **not** do:
+``wa.views._verify_meta_signature`` now spends that identity, through
+:func:`select_app_secret` below: on a per-app URL the HMAC is keyed on the
+resolved app's own ``TenantWAApp.meta_app_secret`` (#311's column, #306's second
+half), falling back to the deployment-wide ``settings.META_APP_SECRET`` only
+where an app has none.
 
-* choose a signature secret — #311 added the column
-  (``TenantWAApp.meta_app_secret``), and the verification that reads it is
-  #306's second half. ``wa.views._verify_meta_signature`` still keys on the
-  deployment-wide ``settings.META_APP_SECRET``;
-* validate ``hub.verify_token`` per app — that is #307, which is why
-  :func:`webhook_setup` reports the *scope* of the token it returns rather than
-  implying the handshake already checks a per-app one.
-
-Both are unblocked by this module existing; neither is half-implemented here.
+What this module deliberately does **not** do: validate ``hub.verify_token`` per
+app — that is #307, which is why :func:`verify_token` reports the *scope* of the
+token it returns rather than implying the handshake already checks a per-app one.
+It is unblocked by this module existing, and is not half-implemented here.
 """
 
 from __future__ import annotations
@@ -101,7 +101,12 @@ _MAX_IDENTIFIER_LENGTH = 64
 #: and aggregated with a retention policy, which is a schema and a sweep of its
 #: own; the daily bucketing and the TTL here are the shape that grows into it.
 _UNKNOWN_IDENTIFIER_KEY_PREFIX = "wa:webhook:unknown-identifier"
-UNKNOWN_IDENTIFIER_COUNTER_TTL = 60 * 60 * 24 * 7  # a week of daily buckets
+
+#: How long a daily bucket lives, shared by every rejection counter in this
+#: module so they expire together and one retention answer covers all of them.
+REJECTION_COUNTER_TTL = 60 * 60 * 24 * 7  # a week of daily buckets
+#: Original name, kept so nothing importing it breaks.
+UNKNOWN_IDENTIFIER_COUNTER_TTL = REJECTION_COUNTER_TTL
 
 
 def _counter_key(bsp: str, day=None) -> str:
@@ -109,8 +114,8 @@ def _counter_key(bsp: str, day=None) -> str:
     return f"{_UNKNOWN_IDENTIFIER_KEY_PREFIX}:{bsp}:{day:%Y%m%d}"
 
 
-def record_unknown_identifier(bsp: str) -> int:
-    """Count one delivery to an unowned identifier; return the day's total.
+def _bump(key: str) -> int:
+    """Increment a daily counter atomically; return the new total.
 
     ``cache.add`` then ``cache.incr`` is the house pattern (see
     ``telegram.services.rate_limiter``): the first is atomic create-if-absent,
@@ -120,18 +125,76 @@ def record_unknown_identifier(bsp: str) -> int:
     response — the whole point of this path is to answer 200 and do nothing
     expensive.
     """
-    key = _counter_key(bsp)
-    cache.add(key, 0, timeout=UNKNOWN_IDENTIFIER_COUNTER_TTL)
+    cache.add(key, 0, timeout=REJECTION_COUNTER_TTL)
     try:
         return cache.incr(key)
     except ValueError:
-        cache.set(key, 1, timeout=UNKNOWN_IDENTIFIER_COUNTER_TTL)
+        cache.set(key, 1, timeout=REJECTION_COUNTER_TTL)
         return 1
+
+
+def record_unknown_identifier(bsp: str) -> int:
+    """Count one delivery to an unowned identifier; return the day's total."""
+    return _bump(_counter_key(bsp))
 
 
 def unknown_identifier_rejections(bsp: str, day=None) -> int:
     """How many unowned-identifier deliveries *bsp* has seen on *day* (UTC)."""
     return int(cache.get(_counter_key(bsp, day)) or 0)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Signature-rejection counter (#306)
+# ──────────────────────────────────────────────────────────────────────────────
+
+#: Deliveries refused because their ``X-Hub-Signature-256`` could not be
+#: verified, bucketed per BSP, per reason code, per app and per UTC day.
+#:
+#: This counter is the *only* way a dropped delivery is ever noticed. META must
+#: be answered 200 whatever happens — a non-200 throttles delivery to the whole
+#: deployment — so a client whose app secret rotates goes silently quiet: their
+#: events keep arriving, keep failing the HMAC, and keep being answered "fine".
+#: The reason code separates that case (``invalid_signature``) from "you never
+#: gave us a secret to check against" (``app_secret_not_configured``), and the
+#: app component says *whose* events stopped being believed, which a
+#: deployment-wide total cannot.
+#:
+#: Same storage argument as the unknown-identifier counter above: the endpoint
+#: is public and unauthenticated, so the rejection path may not perform an
+#: unbounded INSERT. #305 D-7 turns both into a durable aggregate.
+_SIGNATURE_REJECTION_KEY_PREFIX = "wa:webhook:signature-rejection"
+
+#: What stands in for the app component when no app could be identified — the
+#: legacy unsuffixed receiver, which has no identity until the body is parsed
+#: and so cannot attribute its own rejections. Deliberately not blank, so a
+#: key is never ambiguous about whether an app was known.
+_NO_APP = "-"
+
+
+def _signature_rejection_key(bsp: str, reason: str, app_pk=None, day=None) -> str:
+    day = day or timezone.now()
+    return f"{_SIGNATURE_REJECTION_KEY_PREFIX}:{bsp}:{reason}:{app_pk or _NO_APP}:{day:%Y%m%d}"
+
+
+def record_signature_rejection(bsp: str, reason: str, wa_app=None) -> int:
+    """Count one signature rejection; return the day's total for that bucket.
+
+    *wa_app* is the app the delivery was attributed to, when one could be
+    identified — which, on a per-app URL, is always, because the path named it
+    before the body was read (#310). ``None`` is the legacy receiver.
+    """
+    return _bump(_signature_rejection_key(bsp, reason, getattr(wa_app, "pk", None)))
+
+
+def signature_rejections(bsp: str, reason: str, wa_app=None, day=None) -> int:
+    """How many deliveries *bsp* refused for *reason* on *day* (UTC).
+
+    Scoped to *wa_app* when given; to the unattributable legacy bucket
+    otherwise. There is no "all apps" total on purpose — the question worth
+    asking is which client went quiet, and summing over a wildcard would need a
+    key scan against Redis on a public code path.
+    """
+    return int(cache.get(_signature_rejection_key(bsp, reason, getattr(wa_app, "pk", None), day)) or 0)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -181,6 +244,66 @@ def resolve_app(identifier: Optional[str]):
 def mask(identifier: Optional[str]) -> str:
     """The part of *identifier* that may be logged. Never the whole of it."""
     return mask_wa_webhook_identifier(identifier)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Which secret verifies this delivery (#306, second half)
+# ──────────────────────────────────────────────────────────────────────────────
+
+#: Where the secret that keyed a delivery's HMAC came from. Every META delivery
+#: — accepted or rejected — is logged with one of these, because "verified"
+#: without saying *against what* is the statement that hid the original
+#: fail-open: a deployment with no secret at all logged one warning and then
+#: reported every forged body as fine.
+SECRET_SCOPE_APP = "app"  # the sending app's own ``meta_app_secret`` (#311)
+SECRET_SCOPE_DEPLOYMENT = "deployment"  # the shared ``settings.META_APP_SECRET``
+SECRET_SCOPE_NONE = "none"  # nothing to check against; the delivery is refused
+
+
+def select_app_secret(wa_app=None) -> tuple[str, str]:
+    """The secret that should key *wa_app*'s HMAC, and which scope it came from.
+
+    Returns ``(secret, scope)``. The scope is part of the answer rather than
+    something the caller infers, because the two non-empty cases mean different
+    things and must be distinguishable in a log line and in a reason code: an
+    app verified against its own secret is authenticated *as that app*, while
+    one verified against the deployment-wide secret is only authenticated as
+    "someone holding this deployment's secret" — correct for a single-app
+    install, and the reason one shared secret can never separate two clients.
+
+    **Per-app first.** ``TenantWAApp.meta_app_secret`` is the client's own Meta
+    app secret, encrypted at rest (#289/#324) and decrypted by
+    ``encrypted_model_fields`` on attribute access — read it, never the raw
+    column, or you get ciphertext and reject everything.
+
+    **Deployment-wide second, not instead.** Dropping the fallback would break
+    every existing install the moment it upgraded: the live deployment and
+    self-hosters have ``META_APP_SECRET`` set and no per-app column filled, and
+    their deliveries must keep verifying. So an app with no secret of its own is
+    not a failure — it is the pre-#311 configuration, and it keeps working.
+
+    ``None`` for *wa_app* is the legacy unsuffixed receiver, which has no
+    identity at this point in the request and so has only the shared secret
+    available. Passing an app is what makes the per-app secret reachable at all.
+
+    The stored value is stripped. ``EncryptedTextField`` renders as a textarea
+    in the admin, so a pasted secret arrives with a trailing newline far more
+    often than not, and an HMAC keyed on ``"<secret>\\n"`` rejects every genuine
+    delivery with ``invalid_signature`` — a failure that looks exactly like a
+    rotated secret and is nearly impossible to diagnose from the outside. The
+    setting is deliberately *not* stripped: that is existing behaviour on a path
+    this ticket is not changing.
+    """
+    if wa_app is not None:
+        own_secret = (getattr(wa_app, "meta_app_secret", "") or "").strip()
+        if own_secret:
+            return own_secret, SECRET_SCOPE_APP
+
+    deployment_secret = getattr(django_settings, "META_APP_SECRET", "") or ""
+    if deployment_secret:
+        return deployment_secret, SECRET_SCOPE_DEPLOYMENT
+
+    return "", SECRET_SCOPE_NONE
 
 
 # ──────────────────────────────────────────────────────────────────────────────

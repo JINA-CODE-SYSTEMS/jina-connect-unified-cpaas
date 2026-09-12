@@ -12,8 +12,11 @@ and that the rejection says *which* of the three failure modes fired, because
 META is always answered with 200 (a non-200 throttles delivery) and the reason
 code is therefore the only thing distinguishing them.
 
-Per-app secret selection is deliberately out of scope: it needs the per-app
-webhook URL identity from #310.
+Everything here posts to the **legacy unsuffixed** receiver, which has no app
+identity at the point the signature is checked and so verifies against the
+deployment-wide secret. That path is unchanged by #306's second half, and these
+tests are what pins it unchanged. Per-app secret selection is covered in
+``wa/tests/test_per_app_signature_verification.py``.
 
 HOW TO RUN:
     .venv/bin/python -m pytest wa/tests/test_meta_webhook_signature.py -v

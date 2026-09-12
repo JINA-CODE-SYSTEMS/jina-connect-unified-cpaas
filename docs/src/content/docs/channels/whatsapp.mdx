@@ -196,6 +196,41 @@ responses, so one client's stale URL must not slow every other client's events
 down. Such rejections are counted per BSP per day, and the identifier is never
 written to a log in full — only a short prefix.
 
+#### How a delivery is authenticated
+
+Meta signs every webhook body with `X-Hub-Signature-256`: an HMAC-SHA256 over the
+raw bytes, keyed on the **app secret of the app that sent it**. Whoever verifies
+a delivery therefore has to hold that app's secret; Meta offers no delegated
+alternative.
+
+So the secret is chosen per app:
+
+1. the app's own secret (`meta_app_secret`, stored encrypted and write-only
+   through the API) when it has one — this is what lets several client-owned Meta
+   apps, each with a different secret, be verified on one deployment;
+2. the deployment-wide `META_APP_SECRET` otherwise, which is how a single-app
+   install has always worked and continues to.
+
+There is no path that skips verification. A delivery that cannot be verified is
+dropped rather than ingested, and answered `200` with a reason:
+
+| `reason` | What happened | Where to look |
+|---|---|---|
+| `invalid_signature` | The signature did not match the secret in use — commonly a rotated app secret, or a URL registered against the wrong app | The client's app secret in the Meta App Dashboard |
+| `app_secret_not_configured` | The app the URL names has no secret stored, and no deployment-wide secret to fall back on | That client's onboarding — store their `meta_app_secret` |
+| `missing_app_secret` | The legacy shared URL was used on a deployment with no `META_APP_SECRET` set | The deployment's own configuration |
+| `malformed_signature_header` | The `X-Hub-Signature-256` header was absent or not a `sha256=` digest | Whatever is posting — genuine Meta traffic always signs |
+
+Every one of those is an HTTP `200`, for the same throttling reason as above, so
+the reason code and the per-app daily counters behind it are the only places a
+dropped delivery is visible. A client whose secret rotates keeps sending events
+that keep failing, and nothing in the response says so.
+
+Secrets and signature digests are never written to a log. Log lines record only
+which *scope* of secret ran — `secret_scope=app` or `secret_scope=deployment` —
+which is also how a half-finished rollout is spotted: an app still reading
+`deployment` is not yet separable from any other app on that shared secret.
+
 ## Subscriptions
 
 Subscribe to webhook events programmatically:

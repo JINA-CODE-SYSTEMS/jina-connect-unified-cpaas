@@ -27,10 +27,14 @@ implementation of it could plausibly get wrong:
   registered in live Meta App Dashboards and an upgrade must not require anyone
   to re-register a URL.
 
-Per-app *signature* verification (#306's second half, needing #311's column) and
-per-app *verify-token* validation (#307) are deliberately out of scope: both are
-unblocked by this, and the tests below pin that the seam is a seam — the
-per-app path still verifies against the deployment-wide secret today.
+Per-app *signature* verification has since landed on top of this (#306's second
+half, over #311's column) and is covered in
+``wa/tests/test_per_app_signature_verification.py``. The apps built here store no
+``meta_app_secret``, so they verify against the deployment-wide secret — the
+fallback every pre-#311 install is in — which is why the deliveries below are
+signed with ``settings.META_APP_SECRET`` and why that is still the right thing
+for this file to assert. Per-app *verify-token* validation (#307) remains out of
+scope.
 
 HOW TO RUN:
     .venv/bin/python -m pytest wa/tests/test_webhook_app_identity.py -v
@@ -535,7 +539,7 @@ def test_resolution_cost_does_not_grow_with_the_number_of_apps(client, settings)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# The seam: per-app secrets and verify tokens are NOT implemented here
+# Identity is not authentication; verify tokens are still #307
 # ─────────────────────────────────────────────────────────────────────────────
 
 
