@@ -371,13 +371,18 @@ instead. This is why the endpoint requires `wa_app.manage` rather than
 
 ### `verify_token_scope` is the contract; its value is not
 
-Today the handshake validates one deployment-wide token
-(`META_WEBHOOK_VERIFY_TOKEN`) on both the legacy and per-app paths, so this
-field reports `"deployment"`. Per-app verify tokens are in flight and will flip
-it to `"app"` with no other change to this response — **it may already say
-`"app"` by the time you read this.** Branch on the field. A client that
-hard-codes `"deployment"`, or that assumes the token it received is shared
-across apps, breaks the day that lands.
+Per-app verify tokens have landed, so **both values are now real** and which one
+you get depends on the app:
+
+- `"app"` — the app has its own `webhook_verify_token`, and the handshake on its
+  per-app URL checks that and only that. Every app created from now on is here.
+- `"deployment"` — the app's column is blank (configured before per-app tokens
+  existed), so the handshake falls back to `META_WEBHOOK_VERIFY_TOKEN`. The
+  legacy unsuffixed path always reports this, because it can only ever check the
+  shared setting.
+
+Branch on the field. A client that hard-codes either value, or that assumes the
+token it received is shared across apps, is wrong for half the estate.
 
 When `verify_token_configured` is `false` the handshake accepts whatever token
 Meta sends, because there is nothing to compare against. Surface that rather

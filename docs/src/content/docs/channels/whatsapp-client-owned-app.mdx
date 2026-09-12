@@ -202,17 +202,23 @@ not be handed to a second**.
 ### `verify_token_scope` is part of the contract — read it, do not assume it
 
 The response reports the **scope** of the token it returns, not just the token.
-Today the handshake in `wa/views.py` validates one deployment-wide token
-(`META_WEBHOOK_VERIFY_TOKEN`) on both the legacy and per-app paths, so the scope
-is `"deployment"`.
 
-<Aside type="caution" title="This may already say &quot;app&quot;">
-Per-app verify tokens are in flight. When that lands, the same field starts
-reporting `"app"` and nothing else about the response changes — which is exactly
-why the field exists. Any client reading this response must branch on
-`verify_token_scope` rather than hard-coding today's value, and must not assume
-the token it received is shared with, or distinct from, any other app's.
+<Aside type="caution" title="Both values are real — read the field">
+Per-app verify tokens have landed, and the same field now answers for two
+configurations with no other change to the response — which is exactly why it
+exists. `"app"` means this app has its own token and the handshake on its per-app
+URL checks that alone; `"deployment"` means its column is blank, so the handshake
+falls back to the shared `META_WEBHOOK_VERIFY_TOKEN`, which is also what the
+legacy unsuffixed path always reports. Any client must branch on
+`verify_token_scope` rather than hard-coding a value, and must not assume the
+token it received is shared with, or distinct from, any other app's.
 </Aside>
+
+One consequence worth passing on to a client who onboarded earlier: if they
+pasted the **deployment-wide** token beside their per-app URL, they must re-copy
+the token from this screen the next time their BSP re-verifies that URL.
+Deliveries in flight are unaffected, because the handshake happens at
+registration.
 
 `verify_token_configured` is the honest answer to "is there a token to paste at
 all". When a deployment has set no verify token, the handshake accepts whatever
