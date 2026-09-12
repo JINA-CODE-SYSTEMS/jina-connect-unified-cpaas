@@ -1,15 +1,21 @@
-"""Tests for the cross-tenant token path on ``/token/`` (#301).
+"""Tests that ``/token/`` refuses to cross a tenant boundary (#327).
 
 The tenant a token is scoped to comes from the ``X-ACCESS-KEY`` header, chosen
-by the caller, and a superuser was exempt from the membership check with a bare
-``pass``. Superuser credentials plus any organisation's access key therefore
-produced a token whose claims were identical to one that organisation's own
-owner would receive.
+by the caller, and a superuser used to be exempt from the membership check.
+Superuser credentials plus any organisation's access key therefore produced a
+token whose claims were identical to one that organisation's own owner would
+receive — unbounded, writable, and needing nothing but the customer's key.
 
-These tests pin the two things that make a borrowed token visible — a WARNING
-in the log and claims on the token — and the boundaries around them: a
-non-superuser is still refused outright, a member's own token is not marked, and
-a revoked key stops working.
+#301 kept that exemption and made it loud, because removing it before there was
+another way to do support work would have locked operators out. #300 shipped
+that other way: ``POST /impersonate/{tenant_id}/``, read-only, 15 minutes,
+non-refreshable, and unusable without a live audit row. So #327 removes the
+exemption, and these tests pin the refusal.
+
+The two things they hold onto while doing it: the refusal must not reach a
+member using a key for an organisation they do belong to, and it must not reach
+a superuser with no membership anywhere — whose token names no organisation, and
+who needs ``/token/`` to start an impersonation session at all.
 
 Run:
     DB_NAME=... .venv/bin/python -m pytest users/tests/test_cross_tenant_token.py
@@ -29,9 +35,13 @@ User = get_user_model()
 PASSWORD = "testpass123"
 TOKEN_LOGGER = "users.viewsets.token"
 
+# Claims that only ever appeared on a borrowed token. No token issued by
+# ``/token/`` may carry one now that a borrowed token cannot be issued.
+BORROWED_CLAIMS = ("cross_tenant", "home_tenant_id")
+
 
 class CrossTenantTokenTests(TestCase):
-    """A superuser reaching an organisation it does not belong to."""
+    """A superuser reaching an organisation it does not belong to: refused."""
 
     @classmethod
     def setUpTestData(cls):
@@ -69,7 +79,7 @@ class CrossTenantTokenTests(TestCase):
             role=TenantRole.objects.get(tenant=cls.tenant_a, slug="agent"),
         )
 
-        # Tenant B's own owner — the token this must stay distinguishable from.
+        # Tenant B's own owner — the token the superuser used to be handed.
         cls.owner_b = User.objects.create_user(
             username="ct_owner_b",
             email="ct_owner_b@test.com",
@@ -89,68 +99,113 @@ class CrossTenantTokenTests(TestCase):
 
     # ── The acceptance criterion ──────────────────────────────────────
 
-    def test_superuser_with_another_tenants_key_is_logged_and_marked(self):
-        """#301: a borrowed token is never issued silently."""
-        with self.assertLogs(TOKEN_LOGGER, level="WARNING") as captured:
+    def test_superuser_with_another_tenants_key_is_refused(self):
+        """#327: the exemption is gone, so this is a 401 and not a token.
+
+        This is the test that fails against the old code, by design — it was
+        written the other way round under #301 to pin the bypass.
+        """
+        response = self._obtain(self.superuser.username, self.key_b)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn("access", response.data)
+        self.assertNotIn("refresh", response.data)
+
+    def test_refusal_is_the_same_for_a_superuser_as_for_anyone_else(self):
+        """Being a superuser buys nothing here any more — same status, same body.
+
+        Pinned as a pair because the whole defect was a superuser taking a
+        different branch through this check than everybody else.
+        """
+        superuser_response = self._obtain(self.superuser.username, self.key_b)
+        member_response = self._obtain(self.member_a.username, self.key_b)
+
+        self.assertEqual(superuser_response.status_code, member_response.status_code)
+        self.assertEqual(str(superuser_response.data["detail"]), str(member_response.data["detail"]))
+
+    def test_nothing_is_logged_because_nothing_is_issued(self):
+        """#301's warning was the audit trail for a token that was still minted.
+
+        There is no token to account for now, so the refusal is an ordinary 401
+        and the warning is gone with the path it described.
+        """
+        with self.assertNoLogs(TOKEN_LOGGER, level="WARNING"):
             response = self._obtain(self.superuser.username, self.key_b)
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-        # The response says so, so a client can show the session is borrowed.
-        self.assertTrue(response.data["cross_tenant"])
-
-        # And so does the token, for everything that only ever sees the token.
-        claims = AccessToken(response.data["access"])
-        self.assertEqual(claims["tenant_id"], self.tenant_b.id)
-        self.assertTrue(claims["cross_tenant"])
-        self.assertEqual(claims["home_tenant_id"], self.tenant_a.id)
-
-        logged = "\n".join(captured.output)
-        self.assertIn("Cross-tenant token issued", logged)
-        self.assertIn(f"tenant_id={self.tenant_b.id}", logged)
-        self.assertIn(self.superuser.username, logged)
-
-    def test_borrowed_token_differs_from_the_tenants_own_owners(self):
-        """#301: the two tokens were indistinguishable; they must not be."""
-        owner_claims = AccessToken(self._obtain(self.owner_b.username, self.key_b).data["access"])
-
-        with self.assertLogs(TOKEN_LOGGER, level="WARNING"):
-            borrowed_claims = AccessToken(self._obtain(self.superuser.username, self.key_b).data["access"])
-
-        # Same tenant reached — that part of the bypass is unchanged for now.
-        self.assertEqual(owner_claims["tenant_id"], borrowed_claims["tenant_id"])
-
-        # But only one of them admits to being borrowed.
-        self.assertNotIn("cross_tenant", owner_claims.payload)
-        self.assertTrue(borrowed_claims["cross_tenant"])
-
-    # ── Boundaries ────────────────────────────────────────────────────
-
-    def test_superuser_with_its_own_tenants_key_is_not_marked(self):
-        """A member's token is an ordinary token, superuser or not."""
-        with self.assertNoLogs(TOKEN_LOGGER, level="WARNING"):
-            response = self._obtain(self.superuser.username, self.key_a)
+    def test_tenant_bs_own_owner_is_unaffected(self):
+        """The fix refuses the borrower, not the organisation's own members."""
+        response = self._obtain(self.owner_b.username, self.key_b)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertNotIn("cross_tenant", response.data)
+        self.assertEqual(AccessToken(response.data["access"])["tenant_id"], self.tenant_b.id)
 
-        claims = AccessToken(response.data["access"])
-        self.assertEqual(claims["tenant_id"], self.tenant_a.id)
-        self.assertNotIn("cross_tenant", claims.payload)
+    def test_no_issued_token_carries_the_borrowed_claims(self):
+        """``cross_tenant``/``home_tenant_id`` marked a token no one can get now.
+
+        The writer is kept in the module pending a check of the web client, so
+        this asserts on the tokens rather than on the code: whichever way that
+        check goes, every token ``/token/`` still issues must be unmarked.
+        """
+        for username, key in (
+            (self.superuser.username, self.key_a),
+            (self.superuser.username, None),
+            (self.owner_b.username, self.key_b),
+            (self.member_a.username, self.key_a),
+        ):
+            with self.subTest(username=username, key=bool(key)):
+                response = self._obtain(username, key)
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+                claims = AccessToken(response.data["access"]).payload
+                for claim in BORROWED_CLAIMS:
+                    self.assertNotIn(claim, claims)
+                    self.assertNotIn(claim, response.data)
+
+    def test_impersonate_is_the_way_in_and_it_still_works(self):
+        """The replacement the removal depends on, driven with a real token.
+
+        If this breaks, #327 has taken away the only way an operator can see a
+        customer's organisation, which is the outcome #301 refused to risk.
+        """
+        login = self._obtain(self.superuser.username, self.key_a)
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
+        response = client.post(reverse("impersonation-start", args=[self.tenant_b.pk]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["read_only"])
+        self.assertEqual(response.data["organisation"]["id"], self.tenant_b.pk)
+        # Time-boxed, and there is nothing to refresh.
+        self.assertEqual(response.data["expires_in"], 15 * 60)
+        self.assertNotIn("refresh", response.data)
+
+    # ── Boundaries the removal must not cross ─────────────────────────
+
+    def test_superuser_with_its_own_tenants_key_still_works(self):
+        """A member's key is their own to use, superuser or not."""
+        response = self._obtain(self.superuser.username, self.key_a)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(AccessToken(response.data["access"])["tenant_id"], self.tenant_a.id)
 
     def test_superuser_without_a_key_gets_its_own_tenant(self):
         """No header means the user's own tenant, which is not a crossing."""
-        with self.assertNoLogs(TOKEN_LOGGER, level="WARNING"):
-            response = self._obtain(self.superuser.username)
+        response = self._obtain(self.superuser.username)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(AccessToken(response.data["access"])["tenant_id"], self.tenant_a.id)
 
     def test_tenantless_superuser_still_gets_a_token(self):
         """A superuser with no TenantUser anywhere — what ``createsuperuser``
-        leaves behind — is not borrowing anything, so it must not be treated as
-        a crossing. Treating it as one would reach for the pk of a tenant that
-        is None and turn every such login into a 500."""
+        leaves behind — belongs to no organisation, so the membership check has
+        nothing to compare against. Its token names no tenant and so reaches no
+        customer's data, and it is the token ``/impersonate/`` is started with:
+        refusing it would lock a fresh platform admin out of the replacement
+        path and make #327 the lockout #301 declined to ship."""
         loner = User.objects.create_superuser(
             username="ct_loner",
             email="ct_loner@test.com",
@@ -158,16 +213,46 @@ class CrossTenantTokenTests(TestCase):
             password=PASSWORD,
         )
 
-        with self.assertNoLogs(TOKEN_LOGGER, level="WARNING"):
-            response = self._obtain(loner.username)
+        response = self._obtain(loner.username)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         claims = AccessToken(response.data["access"])
         self.assertIsNone(claims["tenant_id"])
-        self.assertNotIn("cross_tenant", claims.payload)
+
+    def test_tenantless_superuser_still_cannot_name_another_tenant(self):
+        """Having no organisation of its own is not a licence to borrow one.
+
+        The exemption above is for a token scoped to nothing; presenting a key
+        scopes the token to that organisation, which is the thing being refused.
+        """
+        loner = User.objects.create_superuser(
+            username="ct_loner_key",
+            email="ct_loner_key@test.com",
+            mobile="+919120000005",
+            password=PASSWORD,
+        )
+
+        response = self._obtain(loner.username, self.key_b)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn("access", response.data)
+
+    def test_tenantless_non_superuser_is_still_refused(self):
+        """The narrowed exemption must not have widened for ordinary users."""
+        stray = User.objects.create_user(
+            username="ct_stray",
+            email="ct_stray@test.com",
+            mobile="+919120000006",
+            password=PASSWORD,
+        )
+
+        response = self._obtain(stray.username)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn("access", response.data)
 
     def test_non_superuser_cannot_use_another_tenants_key(self):
-        """The membership check still refuses everyone else outright."""
+        """The membership check always refused everyone else; it still does."""
         response = self._obtain(self.member_a.username, self.key_b)
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -190,7 +275,12 @@ class CrossTenantTokenTests(TestCase):
 
 
 class LoginPatchAccessKeyTests(TestCase):
-    """``/users/user-login-patch/`` provisions accounts on the key alone (#301)."""
+    """``/users/user-login-patch/`` provisions accounts on the key alone (#301).
+
+    Unchanged by #327. The endpoint still has no tenant authorisation behind the
+    shared secret — #301's item 3, reported and not fixed, and deliberately left
+    for its own ticket rather than widened into this one.
+    """
 
     @classmethod
     def setUpTestData(cls):
