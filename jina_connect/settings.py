@@ -1027,3 +1027,8 @@ MOBILE_APP_SCHEME = config("MOBILE_APP_SCHEME", "jinaconnect")
 META_PERM_TOKEN = config("META_PERM_TOKEN", "")
 META_APP_SECRET = config("META_APP_SECRET", "")  # Used for X-Hub-Signature-256 verification
 META_WEBHOOK_VERIFY_TOKEN = config("META_WEBHOOK_VERIFY_TOKEN", "")  # Used for hub.verify_token challenge
+# Development-only escape hatch: accept META webhooks that cannot be verified
+# because no META_APP_SECRET is configured (e.g. replaying captured payloads
+# locally).  Ignored unless DEBUG is also True, so it cannot disable
+# X-Hub-Signature-256 verification on a production deployment.
+META_WEBHOOK_ALLOW_UNSIGNED = config("META_WEBHOOK_ALLOW_UNSIGNED", False, cast=bool)

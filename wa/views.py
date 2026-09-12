@@ -15,6 +15,8 @@ Security:
     - Gupshup endpoint: unauthenticated (HMAC not yet supported by GS).
     - META endpoint: validates ``X-Hub-Signature-256`` (HMAC-SHA256 with
       ``META_APP_SECRET``) and ``hub.verify_token`` during verification.
+      An unverifiable POST is dropped, not accepted: there is no fail-open
+      path when no secret is configured (#306).
     - Rate-limiting should be handled at the reverse-proxy / WAF layer.
 
 URL layout (registered in ``wa/urls.py``):
@@ -172,22 +174,68 @@ def _extract_meta_phone_number_id(payload: Dict[str, Any]) -> Optional[str]:
         return None
 
 
-def _verify_meta_signature(request) -> bool:
+# Reason codes for a rejected META delivery.  META is always answered with
+# 200 (a non-200 throttles delivery), so the ``reason`` in the body and the
+# log line are the only places a rejection is ever visible — keep the three
+# failure modes distinguishable rather than collapsing them into one string.
+SIG_OK = ""
+SIG_UNVERIFIABLE = "missing_app_secret"
+SIG_BAD_HEADER = "malformed_signature_header"
+SIG_MISMATCH = "invalid_signature"
+
+
+def _verify_meta_signature(request) -> str:
     """
     Validate the ``X-Hub-Signature-256`` header against the request body.
 
-    Returns ``True`` if the signature is valid **or** if ``META_APP_SECRET``
-    is not configured (graceful degradation in dev).
+    Returns ``SIG_OK`` (the empty string) when the signature is valid,
+    otherwise the reason code naming *why* the delivery was rejected.
+
+    There is deliberately **no fail-open path**.  An absent secret used to
+    return ``True``, which left this public, unauthenticated endpoint with no
+    authentication at all: any well-formed body was accepted, so anyone who
+    learned or guessed a ``waba_id`` could inject inbound messages, delivery
+    statuses and template decisions into any tenant (#306).
+
+    ``META_WEBHOOK_ALLOW_UNSIGNED`` is a development-only escape hatch for
+    replaying captured payloads locally.  It refuses to engage unless
+    ``DEBUG`` is also true, so setting it on a production deployment cannot
+    silently disable verification.
+
+    One deployment-wide secret cannot serve several client-owned META apps,
+    but selecting a per-app secret needs the per-app webhook URL identity from
+    #310: until the URL itself names the sender, the only identifier available
+    here lives in the body, which cannot be trusted before it is verified.
     """
     app_secret = getattr(django_settings, "META_APP_SECRET", "")
     if not app_secret:
-        logger.warning("META_APP_SECRET not set -- skipping X-Hub-Signature-256 verification")
-        return True
+        allow_unsigned = bool(getattr(django_settings, "META_WEBHOOK_ALLOW_UNSIGNED", False))
+        if allow_unsigned and not django_settings.DEBUG:
+            logger.error(
+                "META webhook: META_WEBHOOK_ALLOW_UNSIGNED is set but DEBUG is False -- "
+                "refusing to bypass X-Hub-Signature-256 verification (reason=%s)",
+                SIG_UNVERIFIABLE,
+            )
+        elif allow_unsigned:
+            logger.warning(
+                "META webhook: X-Hub-Signature-256 verification bypassed by "
+                "META_WEBHOOK_ALLOW_UNSIGNED -- development builds only"
+            )
+            return SIG_OK
+        else:
+            logger.error(
+                "META webhook: no app secret configured -- rejecting unverifiable delivery (reason=%s)",
+                SIG_UNVERIFIABLE,
+            )
+        return SIG_UNVERIFIABLE
 
     signature_header = request.META.get("HTTP_X_HUB_SIGNATURE_256", "")
     if not signature_header.startswith("sha256="):
-        logger.warning("META webhook: missing or malformed X-Hub-Signature-256 header")
-        return False
+        logger.warning(
+            "META webhook: missing or malformed X-Hub-Signature-256 header (reason=%s)",
+            SIG_BAD_HEADER,
+        )
+        return SIG_BAD_HEADER
 
     expected_sig = signature_header[7:]  # strip "sha256=" prefix
     computed_sig = hmac.new(
@@ -196,7 +244,11 @@ def _verify_meta_signature(request) -> bool:
         hashlib.sha256,
     ).hexdigest()
 
-    return hmac.compare_digest(computed_sig, expected_sig)
+    if not hmac.compare_digest(computed_sig, expected_sig):
+        logger.warning("META webhook: X-Hub-Signature-256 mismatch (reason=%s)", SIG_MISMATCH)
+        return SIG_MISMATCH
+
+    return SIG_OK
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -364,9 +416,14 @@ class MetaWebhookView(View):
         from wa.models import WAApp, WAWebhookEvent
 
         # --- verify signature ---------------------------------------------
-        if not _verify_meta_signature(request):
-            logger.warning("META webhook: invalid signature – returning 200 anyway")
-            return JsonResponse({"status": "ignored", "reason": "invalid_signature"}, status=200)
+        # An unverifiable delivery is dropped, never ingested (#306).  The 200
+        # is deliberate and must stay: META throttles delivery on non-200
+        # responses, so the distinct ``reason`` carries what the status code
+        # cannot.
+        signature_reason = _verify_meta_signature(request)
+        if signature_reason:
+            logger.warning("META webhook: dropping unverified delivery (reason=%s)", signature_reason)
+            return JsonResponse({"status": "ignored", "reason": signature_reason}, status=200)
 
         # --- parse body ---------------------------------------------------
         try:
