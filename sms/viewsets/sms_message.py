@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from abstract.viewsets.base import BaseTenantModelViewSet
 from sms.models import SMSOutboundMessage
 from sms.serializers import SMSOutboundMessageSerializer
+from users.impersonation import impersonated_tenant_id
 
 
 class SMSSendMessageSerializer(serializers.Serializer):
@@ -29,6 +30,13 @@ class SMSOutboundMessageViewSet(BaseTenantModelViewSet):
     }
 
     def get_queryset(self):
+        # Impersonation first: this override filters by *membership*, and the
+        # actor of an impersonated session is a member of their own organisation
+        # and not of the one on the banner — so without this the session would be
+        # shown the actor's own SMS traffic under another customer's name (#326).
+        tenant_id = impersonated_tenant_id(self.request)
+        if tenant_id is not None:
+            return SMSOutboundMessage.objects.filter(tenant_id=tenant_id).order_by("-created_at")
         return SMSOutboundMessage.objects.filter(tenant__tenant_users__user=self.request.user).order_by("-created_at")
 
     @action(detail=False, methods=["post"], url_path="send")

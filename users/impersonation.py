@@ -101,6 +101,44 @@ def request_is_impersonated(request) -> bool:
     return bool(impersonated_actor_id(getattr(request, "auth", None)))
 
 
+def impersonated_tenant_id(request):
+    """The id of the one organisation this request may read, or None (#326).
+
+    None means "not an impersonated request" — the caller should leave its
+    queryset alone. An id means every row served must belong to that tenant.
+
+    The id comes from the signed ``tenant_id`` claim, which
+    ``issue_impersonation_token`` writes from the same ``tenant`` it records on
+    the ``ImpersonationSession`` row, so the scope applied here and the
+    organisation named in the audit trail cannot disagree.
+
+    A borrowed token with no ``tenant_id`` cannot be issued by this module, so
+    reaching that state means the claim was lost somewhere between issuing and
+    here. It raises rather than returning None, because returning None would
+    hand the session every organisation — the precise failure #326 exists to
+    close, arrived at by a different route.
+
+    Both claims are read off ``request.user``, where
+    ``CustomJWTAuthentication.get_user`` stamps them, and **not** from
+    ``request.auth`` — unlike ``request_is_impersonated``, which needs the token
+    on the paths that run before the user is resolved. Touching ``request.auth``
+    is not free: on a DRF ``Request`` that has not been authenticated it *runs*
+    authentication, and with no authenticators that replaces ``request.user``
+    with ``AnonymousUser``. This function is called from ``get_queryset``, where
+    the user is already resolved and must stay resolved.
+    """
+    if not getattr(request.user, IMPERSONATED_BY_CLAIM, None):
+        return None
+
+    tenant_id = getattr(request.user, "tenant_id", None)
+    if tenant_id is None:
+        raise PermissionDenied(
+            "This impersonation token names no organisation, so the reads it "
+            "would make cannot be confined to one. Start a new session."
+        )
+    return tenant_id
+
+
 # ── Issuing ─────────────────────────────────────────────────────────────
 
 
