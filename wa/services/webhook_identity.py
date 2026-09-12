@@ -39,7 +39,6 @@ Both are unblocked by this module existing; neither is half-implemented here.
 
 from __future__ import annotations
 
-import logging
 from typing import Optional
 
 from django.conf import settings as django_settings
@@ -52,9 +51,6 @@ from tenants.models import (
     BSPChoices,
     mask_wa_webhook_identifier,
 )
-
-logger = logging.getLogger(__name__)
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Receiver registry

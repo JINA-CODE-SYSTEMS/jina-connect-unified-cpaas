@@ -401,13 +401,14 @@ class GupshupWebhookView(View):
         token = request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
 
+        wa_app = None
         if webhook_identifier is not None:
-            _app, identity_reason = _resolve_webhook_app(BSPChoices.GUPSHUP, webhook_identifier)
+            wa_app, identity_reason = _resolve_webhook_app(BSPChoices.GUPSHUP, webhook_identifier)
             if identity_reason:
                 return JsonResponse({"error": "Unknown webhook URL", "reason": identity_reason}, status=403)
 
-        # SEAM (#307): the app resolved above is the one whose own verify token
-        # this should check. Per-app verify-token validation is #307.
+        # SEAM (#307): ``wa_app`` is the app whose own verify token this should
+        # check. Per-app verify-token validation is #307.
         expected_token = getattr(django_settings, "GUPSHUP_WEBHOOK_VERIFY_TOKEN", "")
 
         if mode == "subscribe" and challenge:
@@ -415,7 +416,10 @@ class GupshupWebhookView(View):
                 logger.warning("Gupshup webhook verification FAILED — hub.verify_token mismatch")
                 return JsonResponse({"error": "Verify token mismatch"}, status=403)
 
-            logger.info("Gupshup webhook verification — echoing challenge")
+            logger.info(
+                "Gupshup webhook verification — echoing challenge (app=%s)",
+                wa_app.pk if wa_app is not None else "legacy-path",
+            )
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
         return JsonResponse({"error": "Invalid verification request"}, status=403)
@@ -588,7 +592,10 @@ class MetaWebhookView(View):
                 )
                 return JsonResponse({"error": "Verify token mismatch"}, status=403)
 
-            logger.info("META webhook verification -- echoing challenge")
+            logger.info(
+                "META webhook verification -- echoing challenge (app=%s)",
+                wa_app.pk if wa_app is not None else "legacy-path",
+            )
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
         return JsonResponse({"error": "Invalid verification request"}, status=403)
