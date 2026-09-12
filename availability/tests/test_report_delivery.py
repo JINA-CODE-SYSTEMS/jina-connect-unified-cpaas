@@ -14,6 +14,9 @@ matter more than the happy path:
   would be worse than sending nothing
 """
 
+import base64
+import re
+import zlib
 from datetime import date
 from io import StringIO
 from unittest import mock
@@ -24,6 +27,8 @@ from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
 from availability.models import DailyAvailability, ProbeTarget
+from availability.services.monthly_report import build_availability_report
+from availability.services.monthly_report_pdf import render_availability_report_pdf
 from tenants.models import SentPartnerReport
 
 RECIPIENTS = ["partner-ops@example.invalid"]
@@ -39,6 +44,27 @@ def _fill(year, month, days, failed=0):
                 failed_checks=failed if (day == 1 and target == ProbeTarget.API) else 0,
                 probe_interval_seconds=120,
             )
+
+
+def _pdf_text(pdf: bytes) -> str:
+    """The words a reader would see, pulled back out of the PDF.
+
+    Asserting on the bytes starting with %PDF only proves a file was produced;
+    what matters contractually is what it says. reportlab compresses each page
+    stream with ASCII85 then Flate and draws text as `(...) Tj`, so the streams
+    are decoded and the drawn strings joined. Line breaks become separate runs,
+    hence the whitespace squeeze — a phrase must match whether or not the
+    layout happened to wrap it.
+    """
+    words = []
+    for stream in re.findall(rb"stream\r?\n(.*?)endstream", pdf, re.S):
+        try:
+            page = zlib.decompress(base64.a85decode(stream.strip(), adobe=True))
+        except Exception:  # not a text stream (fonts, metadata)
+            continue
+        drawn = re.findall(r"\((?:[^()\\]|\\.)*\)", page.decode("latin-1"))
+        words.extend(run[1:-1].replace("\\(", "(").replace("\\)", ")") for run in drawn)
+    return re.sub(r"\s+", " ", " ".join(words))
 
 
 @override_settings(PARTNER_REPORT_RECIPIENTS=RECIPIENTS, AVAILABILITY_COMMITMENT_PERCENT="99.5")
@@ -159,3 +185,63 @@ class CronEntryPointTestCase(TestCase):
 
         paths = [entry[1] for entry in settings.CRONJOBS]
         self.assertIn("availability.cron.send_monthly_availability_report", paths)
+
+
+@override_settings(AVAILABILITY_COMMITMENT_PERCENT="99.5", AVAILABILITY_MIN_DAY_COVERAGE=0.9)
+class PdfStatesItsBasisTestCase(TestCase):
+    """The PDF has to state what changed the number, not just print it.
+
+    A partner reads this to decide whether a service credit is owed. A bare
+    percentage invites the argument; the basis forecloses it.
+    """
+
+    def _pdf(self, days):
+        _fill(2026, 8, days)
+        return _pdf_text(render_availability_report_pdf(build_availability_report(2026, 8)))
+
+    def test_incomplete_coverage_is_stated_when_days_are_missing(self):
+        """The worst case: partial data reads as excellent *because* monitoring failed."""
+        text = self._pdf(20)
+
+        self.assertIn("Incomplete data", text)
+        self.assertIn("11 of 31 days", text)
+        self.assertIn("20/31", text)
+
+    def test_a_complete_month_is_not_flagged_incomplete(self):
+        text = self._pdf(31)
+
+        # The positive assertion first: a helper that silently extracted
+        # nothing would satisfy the assertNotIn below without reading the PDF.
+        self.assertIn("Service Availability Report", text)
+        self.assertNotIn("Incomplete data", text)
+        self.assertIn("31/31", text)
+
+    def test_the_maintenance_exclusion_is_stated(self):
+        self.assertIn("excluded from both sides", self._pdf(31))
+
+    def test_the_summing_decision_is_stated(self):
+        """Summing rather than maxing biases the figure against us; say so."""
+        text = self._pdf(31)
+
+        self.assertIn("summed across probe targets rather than taking the greatest", text)
+
+    def test_the_probe_interval_approximation_is_stated(self):
+        self.assertIn("one full probe interval", self._pdf(31))
+
+
+@override_settings(PARTNER_REPORT_RECIPIENTS=RECIPIENTS, AVAILABILITY_COMMITMENT_PERCENT="99.5")
+class AttachedPdfTestCase(TestCase):
+    """What is asserted about the render must also hold for what is sent."""
+
+    def setUp(self):
+        mail.outbox = []
+
+    def test_the_attached_pdf_states_incomplete_coverage(self):
+        _fill(2026, 8, 20)
+
+        call_command("send_availability_report", "--year", "2026", "--month", "8", stdout=StringIO())
+
+        _name, content, _mimetype = mail.outbox[0].attachments[0]
+        text = _pdf_text(content)
+        self.assertIn("Incomplete data", text)
+        self.assertIn("11 of 31 days", text)

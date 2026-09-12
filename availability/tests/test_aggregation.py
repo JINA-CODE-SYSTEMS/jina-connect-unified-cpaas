@@ -188,10 +188,17 @@ class GrafanaClientTestCase(TestCase):
 
 @override_settings(**CONFIGURED)
 class AggregateCommandTestCase(TestCase):
+    def setUp(self):
+        self.out, self.err = StringIO(), StringIO()
+
     def _run(self, **kwargs):
-        out, err = StringIO(), StringIO()
-        call_command(COMMAND, stdout=out, stderr=err, **kwargs)
-        return out.getvalue(), err.getvalue()
+        """Run the command, returning (stdout, stderr).
+
+        The streams are kept on the instance as well, so a test asserting on
+        what the command said can still read it after a CommandError.
+        """
+        call_command(COMMAND, stdout=self.out, stderr=self.err, **kwargs)
+        return self.out.getvalue(), self.err.getvalue()
 
     def test_it_writes_one_row_per_target_for_yesterday(self):
         with patch(
@@ -226,16 +233,23 @@ class AggregateCommandTestCase(TestCase):
         self.assertEqual(DailyAvailability.objects.count(), 2)
         self.assertEqual({row.failed_checks for row in DailyAvailability.objects.all()}, {11})
 
-    def test_a_day_with_no_data_gets_no_row(self):
-        """A row of zero checks would read as a covered day carrying no evidence."""
+    def test_a_day_with_no_data_gets_no_row_and_the_run_fails(self):
+        """A row of zero checks would read as a covered day carrying no evidence.
+
+        And a run that recorded nothing must not exit 0: cron cannot tell a
+        quiet night from a monitor that stopped reporting, and the monthly
+        report would not notice until the 1st.
+        """
         with patch(
             "availability.management.commands.aggregate_availability.fetch_probe_results",
             return_value=(0, 0),
         ):
-            _, err = self._run()
+            with self.assertRaises(CommandError) as caught:
+                self._run()
 
         self.assertEqual(DailyAvailability.objects.count(), 0)
-        self.assertIn("no check results", err)
+        self.assertIn("no check results", self.err.getvalue())
+        self.assertIn("nothing was recorded", str(caught.exception))
 
     def test_one_target_failing_does_not_stop_the_other(self):
         def per_target(target, *args):
@@ -303,6 +317,104 @@ class AggregateCommandTestCase(TestCase):
         self.assertEqual(DailyAvailability.objects.count(), 0)
         self.assertIn("dry-run", out)
 
+    def test_a_backfill_skips_the_gap_and_still_writes_around_it(self):
+        """The day Grafana lost must not take its neighbours down with it.
+
+        This is the shape of a real backfill: monitoring stopped for one day,
+        somebody notices a week later and re-runs the range.
+        """
+        gap = _yesterday() - timedelta(days=1)
+
+        def per_day(target, start, end, interval):
+            return (0, 0) if start.date() == gap else (720, 0)
+
+        with patch(
+            "availability.management.commands.aggregate_availability.fetch_probe_results",
+            side_effect=per_day,
+        ):
+            _, err = self._run(days=3)
+
+        self.assertEqual(DailyAvailability.objects.count(), 4)
+        self.assertEqual(
+            {row.date for row in DailyAvailability.objects.all()},
+            {_yesterday() - timedelta(days=2), _yesterday()},
+        )
+        self.assertIn(str(gap), err)
+
+    def test_re_running_a_backfill_fills_the_gap_without_duplicating_the_rest(self):
+        """Idempotent across a range, not just for a single day."""
+        gap = _yesterday() - timedelta(days=1)
+
+        def per_day(target, start, end, interval):
+            return (0, 0) if start.date() == gap else (720, 0)
+
+        with patch(
+            "availability.management.commands.aggregate_availability.fetch_probe_results",
+            side_effect=per_day,
+        ):
+            self._run(days=3)
+        with patch(
+            "availability.management.commands.aggregate_availability.fetch_probe_results",
+            return_value=(720, 2),
+        ):
+            self._run(days=3)
+
+        rows = DailyAvailability.objects.all()
+        self.assertEqual(rows.count(), 6)
+        self.assertEqual(rows.filter(date=gap).count(), 2)
+        # Every row carries the second pass's counts: an upsert, not an insert
+        # that happened to dodge the unique constraint.
+        self.assertEqual({row.failed_checks for row in rows}, {2})
+
+    def test_a_rejected_credential_raises_rather_than_recording_zeros(self):
+        """End to end through the HTTP layer: a 401 must not look like uptime.
+
+        A silently-swallowed 401 writes nothing and exits 0, and a month of
+        that is indistinguishable from a month of perfect availability.
+        """
+        with patch("availability.services.grafana.requests.get", return_value=FakeResponse(status_code=401)):
+            with self.assertRaises(CommandError) as caught:
+                self._run()
+
+        self.assertEqual(DailyAvailability.objects.count(), 0)
+        self.assertIn("credentials", str(caught.exception))
+
+    @override_settings(AVAILABILITY_PROBE_INTERVAL_SECONDS=60)
+    def test_counts_are_stored_raw_and_downtime_derives_from_the_stored_interval(self):
+        """Counts, never a percentage — and the interval comes from the row.
+
+        A percentage discards the evidence and cannot be recomputed if the
+        method changes. The interval is stored alongside the counts for the
+        same reason: a row aggregated at 60s must not later be read as 120s
+        because that is the default.
+        """
+        with patch(
+            "availability.management.commands.aggregate_availability.fetch_probe_results",
+            return_value=(1440, 17),
+        ):
+            self._run()
+
+        row = DailyAvailability.objects.get(target=ProbeTarget.API)
+        self.assertEqual(row.total_checks, 1440)
+        self.assertEqual(row.failed_checks, 17)
+        self.assertEqual(row.probe_interval_seconds, 60)
+        self.assertEqual(row.downtime_seconds, 17 * 60)
+
+    def test_a_partial_run_is_still_a_success(self):
+        """One target missing is a warning; the rows that were written are real."""
+
+        def per_target(target, *args):
+            return (0, 0) if target == ProbeTarget.API else (720, 0)
+
+        with patch(
+            "availability.management.commands.aggregate_availability.fetch_probe_results",
+            side_effect=per_target,
+        ):
+            out, _ = self._run()
+
+        self.assertEqual(DailyAvailability.objects.count(), 1)
+        self.assertIn("1 skipped", out)
+
     def test_a_short_day_is_written_and_flagged(self):
         """The evidence is kept; the report decides whether it counts as coverage."""
         with patch(
@@ -359,3 +471,37 @@ class PartialDayCoverageTestCase(TestCase):
         self._write(date(2026, 9, 1), 720, interval=0)
 
         self.assertEqual(build_availability_report(2026, 9).days_covered, 0)
+
+
+class AggregationCronEntryPointTestCase(TestCase):
+    """The job only exists if cron calls it.
+
+    Merged CRONJOBS entries have shipped without being installed on the box
+    more than once, which closes a ticket and changes no behaviour. These
+    assertions cover the half that lives in the repository; `crontab add`
+    still has to be run on the host.
+    """
+
+    def test_the_cron_function_invokes_the_command(self):
+        from availability.cron import aggregate_daily_availability
+
+        with patch("availability.cron.call_command") as called:
+            aggregate_daily_availability()
+
+        called.assert_called_once_with("aggregate_availability")
+
+    def test_the_nightly_job_is_scheduled(self):
+        from django.conf import settings
+
+        paths = [entry[1] for entry in settings.CRONJOBS]
+        self.assertIn("availability.cron.aggregate_daily_availability", paths)
+
+    def test_the_nightly_job_is_scheduled_nightly(self):
+        """Copied from the monthly entry, it would run twelve times a year."""
+        from django.conf import settings
+
+        schedule = next(
+            entry[0] for entry in settings.CRONJOBS if entry[1] == "availability.cron.aggregate_daily_availability"
+        )
+        _minute, _hour, day_of_month, month, _weekday = schedule.split()
+        self.assertEqual((day_of_month, month), ("*", "*"))
