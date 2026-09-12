@@ -1019,6 +1019,17 @@ LOGGING = {
             "level": "DEBUG",
             "propagate": False,
         },
+        # The BSP HTTP clients log a masked "equivalent curl" reconstruction of
+        # every outbound request at DEBUG (#336). Useful when a template is
+        # rejected and worthless the rest of the time, so it is off outside a
+        # debug deployment — one knob for all of Meta, Gupshup and WATI, without
+        # quietening the rest of ``wa``. Nothing here carries a credential; the
+        # masking happens where the string is built, not here.
+        "wa.utility.apis": {
+            "handlers": ["console", "chatflow_file"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
         "wa.tasks": {
             "handlers": ["console", "chatflow_file"],
             "level": "DEBUG",

@@ -1,6 +1,10 @@
+import logging
 from typing import ClassVar, Optional
 
+from ..curl_debug import curl_block, header_args, log_curl, redact_url
 from .waba import WABAAPI
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateAPI(WABAAPI):
@@ -133,15 +137,17 @@ class TemplateAPI(WABAAPI):
             # --form 'file_type="{{FILE_TYPE}}"' → data dict
             data = {"file_type": file_type}
 
-            # Print curl equivalent for debugging
-            print("=" * 80)
-            print("EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:")
-            print("=" * 80)
-            print(f"curl --location --request POST '{url}' \\")
-            print(f"  --header 'Authorization: {self.token}' \\")
-            print(f"  --form 'file_type=\"{file_type}\"' \\")
-            print(f"  --form 'file=@\"{file_path}\"'")
-            print("=" * 80)
+            # Masked curl equivalent for debugging (#336)
+            auth = header_args(headers, quote="'")
+            curl_cmd = curl_block(
+                "EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:",
+                f"curl --location --request POST '{redact_url(url)}'{auth} \\\n"
+                f"  --form 'file_type=\"{file_type}\"' \\\n"
+                f"  --form 'file=@\"{file_path}\"'",
+                secrets=(self.token,),
+            )
+            self._last_curl_command = curl_cmd
+            log_curl(logger, curl_cmd)
 
             response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
@@ -156,7 +162,7 @@ class TemplateAPI(WABAAPI):
 
         result = response.json()
 
-        print(f"Media upload response: {result}")
+        logger.debug("Media upload response: %s", result)
 
         return result
 
@@ -209,14 +215,17 @@ class TemplateAPI(WABAAPI):
         # --form 'file_type="{{FILE_TYPE}}"' → data dict
         data = {"file_type": file_type}
 
-        print("=" * 80)
-        print("EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:")
-        print("=" * 80)
-        print(f"curl --location --request POST '{url}' \\")
-        print(f"  --header 'Authorization: {self.token}' \\")
-        print(f"  --form 'file_type=\"{file_type}\"' \\")
-        print(f"  --form 'file=@\"{filename}\"'")
-        print("=" * 80)
+        # Masked curl equivalent for debugging (#336)
+        auth = header_args(headers, quote="'")
+        curl_cmd = curl_block(
+            "EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:",
+            f"curl --location --request POST '{redact_url(url)}'{auth} \\\n"
+            f"  --form 'file_type=\"{file_type}\"' \\\n"
+            f"  --form 'file=@\"{filename}\"'",
+            secrets=(self.token,),
+        )
+        self._last_curl_command = curl_cmd
+        log_curl(logger, curl_cmd)
 
         response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
@@ -230,7 +239,7 @@ class TemplateAPI(WABAAPI):
             raise Exception(error_msg)
 
         result = response.json()
-        print(f"Media upload response: {result}")
+        logger.debug("Media upload response: %s", result)
         return result
 
     def send_template(self, data: dict, is_marketing: bool = False):

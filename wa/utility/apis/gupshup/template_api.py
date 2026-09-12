@@ -1,4 +1,9 @@
+import logging
+
+from ..curl_debug import curl_block, header_args, log_curl, redact, redact_url
 from .base_api import WAAPI
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateAPI(WAAPI):
@@ -136,15 +141,18 @@ class TemplateAPI(WAAPI):
             # --form 'file_type="{{FILE_TYPE}}"' → data dict
             data = {"file_type": file_type}
 
-            # Print curl equivalent for debugging
-            print("=" * 80)
-            print("EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:")
-            print("=" * 80)
-            print(f"curl --location --request POST '{url}' \\")
-            print(f"  --header 'Authorization: {self.token}' \\")
-            print(f"  --form 'file_type=\"{file_type}\"' \\")
-            print(f"  --form 'file=@\"{file_path}\"'")
-            print("=" * 80)
+            # Masked curl equivalent for debugging (#336): the partner token is
+            # this header's whole value, so it never reaches the log.
+            auth = header_args(headers, quote="'")
+            curl_cmd = curl_block(
+                "EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:",
+                f"curl --location --request POST '{redact_url(url)}'{auth} \\\n"
+                f"  --form 'file_type=\"{file_type}\"' \\\n"
+                f"  --form 'file=@\"{file_path}\"'",
+                secrets=(self.token,),
+            )
+            self._last_curl_command = curl_cmd
+            log_curl(logger, curl_cmd)
 
             response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
@@ -159,7 +167,7 @@ class TemplateAPI(WAAPI):
 
         result = response.json()
 
-        print(f"Media upload response: {result}")
+        logger.debug("Media upload response: %s", result)
 
         return result
 
@@ -212,14 +220,17 @@ class TemplateAPI(WAAPI):
         # --form 'file_type="{{FILE_TYPE}}"' → data dict
         data = {"file_type": file_type}
 
-        print("=" * 80)
-        print("EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:")
-        print("=" * 80)
-        print(f"curl --location --request POST '{url}' \\")
-        print(f"  --header 'Authorization: {self.token}' \\")
-        print(f"  --form 'file_type=\"{file_type}\"' \\")
-        print(f"  --form 'file=@\"{filename}\"'")
-        print("=" * 80)
+        # Masked curl equivalent for debugging (#336).
+        auth = header_args(headers, quote="'")
+        curl_cmd = curl_block(
+            "EQUIVALENT CURL COMMAND FOR MEDIA UPLOAD:",
+            f"curl --location --request POST '{redact_url(url)}'{auth} \\\n"
+            f"  --form 'file_type=\"{file_type}\"' \\\n"
+            f"  --form 'file=@\"{filename}\"'",
+            secrets=(self.token,),
+        )
+        self._last_curl_command = curl_cmd
+        log_curl(logger, curl_cmd)
 
         response = requests.post(url, headers=headers, files=files, data=data, timeout=30)
 
@@ -233,7 +244,7 @@ class TemplateAPI(WAAPI):
             raise Exception(error_msg)
 
         result = response.json()
-        print(f"Media upload response: {result}")
+        logger.debug("Media upload response: %s", result)
         return result
 
     def send_template(self, data: dict, is_marketing: bool = False):
@@ -279,10 +290,11 @@ class TemplateAPI(WAAPI):
         url = self._template_sync
         headers = {**self.headers, "accept": "application/json"}
 
-        # Generate curl for debugging
-        curl_cmd = f"curl -X GET '{url}' -H 'Authorization: {self.token}' -H 'accept: application/json'"
+        # Masked curl for debugging (#336)
+        auth = header_args(headers, quote="'")
+        curl_cmd = redact(f"curl -X GET '{redact_url(url)}'{auth}", self.token)
         self._last_curl_command = curl_cmd
-        print(f"[Gupshup Sync] {curl_cmd}")
+        log_curl(logger, f"[Gupshup Sync] {curl_cmd}")
 
         response = requests.get(url, headers=headers, timeout=30)
 
@@ -314,15 +326,16 @@ class TemplateAPI(WAAPI):
         url = self._templates_base
         params = {"elementName": element_name}
 
-        # Generate curl for debugging
-        curl_cmd = f"curl -X GET '{url}?elementName={element_name}' -H 'Authorization: {self.token}'"
+        # Masked curl for debugging (#336)
+        auth = header_args(self.headers, quote="'")
+        curl_cmd = redact(f"curl -X GET '{redact_url(url)}?elementName={element_name}'{auth}", self.token)
         self._last_curl_command = curl_cmd
-        print(f"[Gupshup GetTemplate] {curl_cmd}")
+        log_curl(logger, f"[Gupshup GetTemplate] {curl_cmd}")
 
         response = requests.get(url, headers=self.headers, params=params, timeout=30)
 
         if response.status_code != 200:
-            print(f"[Gupshup] Failed to fetch template: {response.status_code} - {response.text}")
+            logger.warning("Failed to fetch template: %s - %s", response.status_code, response.text)
             return {}
 
         return response.json()
@@ -356,7 +369,7 @@ class TemplateAPI(WAAPI):
         response = requests.get(url, headers=self.headers, params=params if params else None, timeout=30)
 
         if response.status_code != 200:
-            print(f"[Gupshup] Failed to fetch templates: {response.status_code}")
+            logger.warning("Failed to fetch templates: %s", response.status_code)
             return {"templates": []}
 
         return response.json()
@@ -380,7 +393,7 @@ class TemplateAPI(WAAPI):
         response = requests.get(url, headers=self.headers, timeout=30)
 
         if response.status_code != 200:
-            print(f"[Gupshup] Failed to fetch template {template_id}: {response.status_code}")
+            logger.warning("Failed to fetch template %s: %s", template_id, response.status_code)
             return {}
 
         return response.json()
