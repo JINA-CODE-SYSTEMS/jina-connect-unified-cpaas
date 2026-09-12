@@ -73,10 +73,7 @@ class TriggerEvent:
         logged error naming the offending type, at the site that built it.
         """
         if self.body_text is not None and not isinstance(self.body_text, str):
-            raise TypeError(
-                "TriggerEvent.body_text must be str | None, got "
-                f"{type(self.body_text).__name__}"
-            )
+            raise TypeError(f"TriggerEvent.body_text must be str | None, got {type(self.body_text).__name__}")
 
 
 class BaseTrigger:

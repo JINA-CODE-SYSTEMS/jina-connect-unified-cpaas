@@ -102,8 +102,9 @@ def test_a_usd_deployment_is_unchanged(settings):
 
 def _priced_broadcast(currency_of_prices: str, wallet_currency: str):
     """A broadcast whose template's app prices may disagree with the wallet."""
-    from broadcast.models import Broadcast, BroadcastPlatformChoices
     from django.utils import timezone
+
+    from broadcast.models import Broadcast, BroadcastPlatformChoices
     from message_templates.models import TemplateNumber
     from wa.models import WATemplate
 

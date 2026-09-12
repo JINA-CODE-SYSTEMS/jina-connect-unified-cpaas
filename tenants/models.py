@@ -146,6 +146,7 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         app_name (CharField): Name of the Gupshup app.
         app_id (CharField): Gupshup app ID.
         app_secret (CharField): Gupshup app secret.
+        meta_app_id (CharField): META App ID, when bsp=META.
         wa_number (CharField): WhatsApp number associated with the app.
         authentication_message_price (MoneyField): Price for authentication messages.
         marketing_message_price (MoneyField): Price for marketing messages.
@@ -199,6 +200,16 @@ class TenantWAApp(BaseTenantModelForFilterUser):
     # META identifiers (used when bsp=META)
     waba_id = models.CharField(max_length=100, blank=True, null=True, help_text="WhatsApp Business Account ID")
     phone_number_id = models.CharField(max_length=100, blank=True, null=True, help_text="Phone Number ID from META")
+    # ``app_id`` above is the *Gupshup* app ID by definition, but the META
+    # Resumable Upload API needs the META App ID and had nowhere else to read
+    # it from, so one column carried two providers' identifiers (#275). Nullable
+    # and read second so apps configured before this field keep working.
+    meta_app_id = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="META App ID — used for the Resumable Upload API. Falls back to app_id when unset.",
+    )
 
     # Generic BSP credentials (JSON blob for tokens, secrets, etc.)
     bsp_credentials = models.JSONField(blank=True, null=True, help_text="BSP credentials (access tokens, etc.)")
