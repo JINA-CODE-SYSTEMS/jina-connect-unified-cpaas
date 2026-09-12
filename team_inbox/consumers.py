@@ -21,6 +21,7 @@ from team_inbox.models import MessageEventIds, Messages
 from team_inbox.serializers import MessagesSerializer
 from team_inbox.utils.read_receipts import send_read_receipt
 from tenants.models import DefaultRoleSlugs, TenantUser
+from users.impersonation import impersonated_actor_id
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -686,6 +687,15 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
 
             jwt_auth = JWTAuthentication()
             validated_token = jwt_auth.get_validated_token(token)
+
+            # A "view as organisation" token is read-only (#300). This socket
+            # both reads the inbox and sends messages on it, so there is no
+            # method to refuse — the token does not authenticate here at all.
+            if impersonated_actor_id(validated_token):
+                logger.warning("Team inbox socket refused for an impersonation token (#300): sessions are read-only")
+                self.user = AnonymousUser()
+                return
+
             self.user = await database_sync_to_async(jwt_auth.get_user)(validated_token)
 
         except (InvalidToken, TokenError) as e:
@@ -979,6 +989,13 @@ class NotificationConsumer(AsyncWebsocketConsumer):
 
             jwt_auth = JWTAuthentication()
             validated_token = jwt_auth.get_validated_token(token)
+
+            # Read-only while impersonating (#300) — see TeamInboxConsumer.
+            if impersonated_actor_id(validated_token):
+                logger.warning("Notification socket refused for an impersonation token (#300)")
+                self.user = AnonymousUser()
+                return
+
             self.user = await database_sync_to_async(jwt_auth.get_user)(validated_token)
         except (InvalidToken, TokenError) as e:
             logger.error(f"JWT validation failed for notifications: {str(e)}")

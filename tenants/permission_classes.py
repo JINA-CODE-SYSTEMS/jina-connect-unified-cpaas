@@ -22,6 +22,7 @@ Reference: docs/PRD_RBAC.md — Section 4.2
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from tenants.permissions import has_permission as _check_permission
+from users.impersonation import impersonation_write_denial
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -67,7 +68,8 @@ class TenantRolePermission(BasePermission):
     A viewset that declares no ``required_permissions`` at all is treated as
     having opted out of RBAC entirely and is allowed.
 
-    Superusers always pass.
+    Superusers always pass — **unless** they are impersonating an organisation
+    and the method is not safe (#300).
     """
 
     message = "You do not have the required role permission to perform this action."
@@ -77,6 +79,16 @@ class TenantRolePermission(BasePermission):
 
         # Unauthenticated → deny
         if not user or not user.is_authenticated:
+            return False
+
+        # A "view as organisation" session is read-only (#300). This runs
+        # before the superuser bypass below, and has to: the bypass is what
+        # makes the read possible at all — the platform admin has no role in
+        # the organisation being viewed — so without this check the same line
+        # would also hand them every write in it.
+        denial = impersonation_write_denial(request)
+        if denial:
+            self.message = denial
             return False
 
         # Superusers bypass RBAC
@@ -164,6 +176,14 @@ class _PriorityPermission(BasePermission):
 
         if not user or not user.is_authenticated:
             return False
+
+        # Read-only while impersonating (#300) — before the superuser bypass,
+        # for the same reason as in TenantRolePermission.
+        denial = impersonation_write_denial(request)
+        if denial:
+            self.message = denial
+            return False
+
         if user.is_superuser:
             return True
 

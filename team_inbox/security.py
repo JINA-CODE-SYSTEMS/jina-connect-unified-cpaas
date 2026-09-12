@@ -13,6 +13,8 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
+from users.impersonation import impersonated_actor_id
+
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
@@ -113,6 +115,14 @@ class WebSocketSecurityManager:
 
             # Check token blacklist (for logout/revocation)
             if await self.is_token_blacklisted(token):
+                return None
+
+            # A "view as organisation" token is read-only (#300), and a
+            # WebSocket has no HTTP method for that rule to bite on — the same
+            # socket that reads the inbox sends messages on it. So an
+            # impersonation token does not open a socket at all.
+            if impersonated_actor_id(validated_token):
+                logger.warning("WebSocket refused for an impersonation token (#300): sessions are read-only")
                 return None
 
             user = await database_sync_to_async(jwt_auth.get_user)(validated_token)

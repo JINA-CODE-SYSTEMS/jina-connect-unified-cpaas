@@ -40,6 +40,7 @@ from users.views import (
     reset_password_deep_link,
     verify_email_deep_link,
 )
+from users.viewsets.impersonation import ImpersonationEndView, ImpersonationStartView
 from users.viewsets.token import JwtTokenObtainPairView
 
 
@@ -135,6 +136,11 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("token/", JwtTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    # "View as organisation" (#300) — superuser only, read-only, time-boxed,
+    # audited. The end route is listed first so the literal "end" is never
+    # read as a tenant id.
+    path("impersonate/end/", ImpersonationEndView.as_view(), name="impersonation-end"),
+    path("impersonate/<int:tenant_id>/", ImpersonationStartView.as_view(), name="impersonation-start"),
     # =========================================================================
     # API ENDPOINTS
     # =========================================================================

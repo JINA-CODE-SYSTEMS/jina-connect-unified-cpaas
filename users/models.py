@@ -183,6 +183,102 @@ class EmailVerificationToken(models.Model):
         return True
 
 
+class ImpersonationSession(models.Model):
+    """Audit record of one "view as organisation" session (#300).
+
+    Lives in ``users`` rather than ``tenants`` because the subject of the record
+    is a *platform* user's action, not an organisation's data. Every tenant
+    model in ``tenants`` inherits the tenant-scoped manager
+    (``filter_by_user_tenant``) and is reachable through tenant-scoped
+    endpoints; an organisation being able to enumerate which of our staff
+    looked at it is a different feature with a different threat model, and a
+    record the organisation can reach is a record it can be given reason to
+    dispute. The FK points across app boundaries by name so ``users`` still
+    does not import ``tenants``.
+
+    Each row is the *authority* for a session, not a note about it:
+    ``users.impersonation.live_session_for`` refuses a token whose row is
+    missing, ended or expired. So a token cannot exist without an audit row
+    naming the real user, and exiting a session takes the token away for real
+    rather than only in the client.
+
+    ``actor`` and ``tenant`` are both SET_NULL with the name kept alongside:
+    the audit trail has to outlive the deletion of an employee account or an
+    organisation, and "who" is the part of it that matters.
+    """
+
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="impersonation_sessions",
+        help_text="The real platform user who started the session.",
+    )
+    actor_username = models.CharField(
+        max_length=150,
+        help_text="Username of the real user at the time the session started — kept if the account is deleted.",
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="impersonation_sessions",
+        help_text="The organisation that was viewed.",
+    )
+    tenant_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Name of the organisation at the time the session started.",
+    )
+    token_jti = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text="JTI of the issued access token. One row per token, so a session is never ambiguous.",
+    )
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    expires_at = models.DateTimeField(help_text="When the issued token expires on its own.")
+    ended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the session was exited, if it was exited before expiry.",
+    )
+
+    class Meta:
+        verbose_name = "Impersonation Session"
+        verbose_name_plural = "Impersonation Sessions"
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"{self.actor_username} → {self.tenant_name} at {self.started_at:%Y-%m-%d %H:%M}"
+
+    @classmethod
+    def start(cls, *, actor, tenant, token_jti, expires_at):
+        """Record a session, snapshotting the names that must survive deletion."""
+        return cls.objects.create(
+            actor=actor,
+            actor_username=actor.username,
+            tenant=tenant,
+            tenant_name=tenant.name,
+            token_jti=token_jti,
+            expires_at=expires_at,
+        )
+
+    @property
+    def is_live(self):
+        """Whether the session may still be used: not exited, not yet expired."""
+        return self.ended_at is None and timezone.now() < self.expires_at
+
+    def end(self):
+        """Close the session. Idempotent — the first end is the one recorded."""
+        if self.ended_at is None:
+            self.ended_at = timezone.now()
+            self.save(update_fields=["ended_at"])
+        return self.ended_at
+
+
 class PasswordResetToken(models.Model):
     """
     Model to store password reset tokens.
