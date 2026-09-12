@@ -94,6 +94,13 @@ class HandoffNodeAssignmentValid(NodeRule):
 
     VALID_ASSIGNMENT_TYPES = ("auto", "team", "agent", "round_robin", "least_busy")
 
+    # Assignment types the executor cannot honour: all three route to a team
+    # or across a pool of agents, and this codebase has no Team model and no
+    # queue policy to route with. A handoff configured this way still works —
+    # it drops the conversation in the Team Inbox unassigned queue — but the
+    # author is told here rather than finding out from a customer (#273).
+    UNROUTABLE_ASSIGNMENT_TYPES = ("team", "round_robin", "least_busy")
+
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
     ) -> List[RuleViolation]:
@@ -145,6 +152,26 @@ class HandoffNodeAssignmentValid(NodeRule):
                         severity=RuleSeverity.WARNING,
                         node_id=node.get("id"),
                         details={"field": "agent_id", "assignment_type": assignment_type},
+                    )
+                )
+
+            # Team / pool routing has no implementation behind it
+            if assignment_type in self.UNROUTABLE_ASSIGNMENT_TYPES:
+                violations.append(
+                    RuleViolation(
+                        rule_id=self.rule_id,
+                        message=(
+                            f"Assignment type '{assignment_type}' is not implemented - there is no team "
+                            f"or agent-pool routing yet. The handoff will leave the conversation in the "
+                            f"Team Inbox unassigned queue. Use 'agent' with an agent_id to assign a person."
+                        ),
+                        severity=RuleSeverity.WARNING,
+                        node_id=node.get("id"),
+                        details={
+                            "field": "assignment_type",
+                            "value": assignment_type,
+                            "falls_back_to": "unassigned",
+                        },
                     )
                 )
 

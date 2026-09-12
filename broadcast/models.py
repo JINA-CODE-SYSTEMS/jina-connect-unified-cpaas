@@ -79,6 +79,10 @@ class MessageStatusChoices(models.TextChoices):
     READ = "READ", "Read"
     FAILED = "FAILED", "Failed"
     BLOCKED = "BLOCKED", "Blocked"
+    # Never handed to the provider because the contact opted out of marketing
+    # (#276). Deliberately not FAILED: failures are refunded, and a suppressed
+    # message was never charged in the first place — see billable_recipients().
+    SUPPRESSED = "SUPPRESSED", "Suppressed (opted out)"
 
 
 class BroadcastPlatformChoices(models.TextChoices):
@@ -445,6 +449,21 @@ class Broadcast(BaseTenantModelForFilterUser):
         """
         return Decimal("0")
 
+    def billable_recipients(self):
+        """The recipients this broadcast will actually hand to the provider (#276).
+
+        Marketing traffic skips contacts who have opted out, so counting them
+        here would quote the tenant a price the send never spends. The two
+        sides have to agree: the dispatch loop suppresses exactly this set, and
+        a suppressed message is not refunded later because it was never charged.
+
+        Utility and authentication broadcasts bill every recipient — an
+        opt-out does not reach transactional traffic.
+        """
+        if self.is_marketing_broadcast:
+            return self.recipients.exclude(marketing_opt_out=True)
+        return self.recipients.all()
+
     def calculate_initial_cost(self):
         """
         Calculate the initial cost based on total recipients and price per message.
@@ -456,7 +475,7 @@ class Broadcast(BaseTenantModelForFilterUser):
         if self.pk is None:
             return 0
 
-        recipient_count = self.recipients.count()
+        recipient_count = self.billable_recipients().count()
         if recipient_count == 0:
             return 0
 
@@ -511,9 +530,11 @@ class Broadcast(BaseTenantModelForFilterUser):
         tenant = self.tenant
         svc = RateCardService(tenant)
 
-        # Group recipients by country
+        # Group recipients by country. Opted-out contacts are already out of
+        # billable_recipients(), so they land in no country bucket and cost
+        # nothing (#276).
         country_counts = {}  # {country_code: count}
-        phones = self.recipients.values_list("phone", flat=True)
+        phones = self.billable_recipients().values_list("phone", flat=True)
 
         for phone_str in phones.iterator():
             try:
@@ -551,16 +572,21 @@ class Broadcast(BaseTenantModelForFilterUser):
     def get_failed_message_count(self):
         """
         Get the count of failed messages (FAILED + BLOCKED).
+
+        The no-rows fallbacks count ``billable_recipients()`` rather than every
+        recipient, because that is the set the charge was taken for — refunding
+        opted-out contacts would hand back money never spent (#276). SUPPRESSED
+        rows are absent from the filter for the same reason.
         """
         if hasattr(self, "broadcasts"):
             if not self.broadcasts.exists():
-                return self.recipients.count()
+                return self.billable_recipients().count()
             return self.broadcasts.filter(
                 status__in=[MessageStatusChoices.FAILED, MessageStatusChoices.BLOCKED]
             ).count()
         else:
             # we cancelled before sending any messages
-            return self.recipients.count()
+            return self.billable_recipients().count()
 
     def _country_of(self, phone) -> str:
         """Destination bucket for a phone number, matching the charge path."""

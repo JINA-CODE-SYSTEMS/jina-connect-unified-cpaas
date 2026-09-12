@@ -227,8 +227,9 @@ class WAMessageViewSet(BaseTenantModelViewSet):
             status=MessageStatus.PENDING,
         )
 
-        # TODO: Trigger async task to send message via BSP adapter
-        # send_whatsapp_message.delay(str(message.id))
+        # Nothing to dispatch here: the WAMessage post_save signal
+        # (wa.signals.send_outgoing_message_on_create) queues the send for
+        # every OUTBOUND/PENDING row (#274 — the TODO here was stale).
 
         return Response(WAMessageSerializer(message).data, status=status.HTTP_201_CREATED)
 

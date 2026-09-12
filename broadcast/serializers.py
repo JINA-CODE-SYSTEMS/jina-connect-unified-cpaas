@@ -24,6 +24,7 @@ class BroadcastSerializer(BaseSerializer):
     read_count = serializers.SerializerMethodField()
     failed_count = serializers.SerializerMethodField()
     blocked_count = serializers.SerializerMethodField()
+    suppressed_count = serializers.SerializerMethodField()
     total_messages = serializers.SerializerMethodField()
     success_count = serializers.SerializerMethodField()
     initial_cost = MoneyField(max_digits=14, decimal_places=2, default_currency="USD", read_only=True)
@@ -65,6 +66,12 @@ class BroadcastSerializer(BaseSerializer):
 
     def get_blocked_count(self, obj):
         return getattr(obj, "blocked_count", 0)
+
+    def get_suppressed_count(self, obj):
+        # Recipients who had opted out of marketing, so nothing was sent and
+        # nothing charged (#276). Its own bucket because it is neither a
+        # success nor a failure.
+        return getattr(obj, "suppressed_count", 0)
 
     def get_total_messages(self, obj):
         # Prefer annotated value from queryset; this is used in list/retrieve views.

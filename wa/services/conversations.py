@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 # disables ``USE_TZ`` they break this contract. (#201 review)
 SERVICE_WINDOW = timedelta(hours=24)
 
+SERVICE_WINDOW_CLOSED_CODE = "SERVICE_WINDOW_CLOSED"
+"""``WAMessage.error_code`` for a send this module refused before dispatch.
+
+Not Meta's own 131047: that code means Meta rejected the request, and a
+message that never left is a different fact about the same condition.
+"""
+
 
 def resolve_or_create(*, wa_app, contact, now=None) -> WaConversation:
     """Return the conversation that *inbound* messages on (wa_app,
@@ -116,4 +123,37 @@ def resolve_for_outbound(*, wa_app, contact) -> WaConversation | None:
     return _latest_open(wa_app=wa_app, contact=contact)
 
 
-__all__ = ["SERVICE_WINDOW", "resolve_or_create", "resolve_for_outbound"]
+def outbound_window_error(*, wa_app, contact, now=None) -> str | None:
+    """Why a *free-form* message to this contact cannot be sent, or ``None``.
+
+    The sender had no pre-flight at all (#274): an agent's reply typed after
+    the window shut was POSTed to Graph, rejected with error 131047 and
+    shown as FAILED, while the inbox UI had already greyed the composer out
+    from its own independent countdown.
+
+    Only a window we can *prove* is shut blocks the send. A contact with no
+    conversation row — everyone who predates #189, and anyone whose only
+    inbound arrived before it shipped — is unknown, not closed, and Meta
+    remains the authority for those. Callers must exempt templates
+    themselves; the window says nothing about them.
+    """
+    now = now or timezone.now()
+    conversation = resolve_for_outbound(wa_app=wa_app, contact=contact)
+    if conversation is None or conversation.service_window_expires_at > now:
+        return None
+
+    return (
+        "The 24-hour customer service window closed at "
+        f"{conversation.service_window_expires_at.isoformat()}. WhatsApp only "
+        "accepts free-form messages within 24h of the contact's last inbound "
+        "message (error 131047) — send an approved template instead."
+    )
+
+
+__all__ = [
+    "SERVICE_WINDOW",
+    "SERVICE_WINDOW_CLOSED_CODE",
+    "resolve_or_create",
+    "resolve_for_outbound",
+    "outbound_window_error",
+]
