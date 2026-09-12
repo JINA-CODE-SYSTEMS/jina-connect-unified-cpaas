@@ -276,33 +276,32 @@ def test_a_failed_media_download_does_not_cost_the_other_messages(client, app, g
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "FINDING, not covered by any ticket in #277: inbound ingestion has no "
-        "idempotency key. Meta redelivers a webhook whenever it does not see a "
-        "timely 200 — and sometimes anyway — and `_ingest_inbound_message` "
-        "creates a `Messages` row unconditionally, so the customer's message "
-        "appears twice in the inbox. Nothing anywhere keys on the `wamid`, "
-        "which the row already stores in `content._meta.wa_message_id`. The "
-        "knock-on is in the sibling chat_flow test: the trigger dispatcher's "
-        "replay guard keys on the *new* row's pk, so a replay defeats it too "
-        "and the flow spawns a second time. Flip to a plain assertion once a "
-        "fix lands; strict xfail so it cannot pass unnoticed."
-    ),
-)
 def test_a_redelivered_batch_does_not_double_the_inbox(client, app, graph):
     """Meta retries on anything but a 200, so the same batch arrives twice.
 
+    This was the #330 defect, found by #277 with no ticket behind it:
+    ``_ingest_inbound_message`` created a ``Messages`` row unconditionally and
+    nothing anywhere keyed on the ``wamid``, though the row already carried it
+    at ``content._meta.wa_message_id``. The customer's message appeared twice.
+    The knock-on is asserted by the sibling chat_flow test — the trigger
+    dispatcher's replay guard keys on the *new* row's pk, so a redelivery
+    defeated that too and spawned the flow a second time.
+
     One ``WAWebhookEvent`` per delivery is expected — they are separate
-    deliveries — but the inbox must not gain a second copy of every message.
+    deliveries and recording both is right — but the inbox must not gain a
+    second copy of every message.
     """
+    from wa.models import WAWebhookEvent
+
     payload = inbound_envelope(app, messages_value(app, text_message("wamid.dup", "only once")))
 
     sign_meta_webhook(client, payload)
     sign_meta_webhook(client, payload)
 
     assert _messages(app).count() == 1, "the same wamid was ingested twice"
+    assert WAWebhookEvent.objects.filter(wa_app=app).count() == 2, (
+        "both deliveries are real and both belong in the webhook log"
+    )
 
 
 def test_an_unsigned_batch_is_dropped_before_any_row_is_written(client, app, graph):

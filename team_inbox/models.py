@@ -112,10 +112,54 @@ class Messages(BaseTenantModelForFilterUser):
         blank=True,
         help_text="List of reactions on this message: [{emoji, user_id, timestamp}]",
     )
+    # The provider's own immutable id for this message — the WhatsApp
+    # ``wamid`` — promoted out of ``content["_meta"]["wa_message_id"]`` so
+    # inbound ingestion has an idempotency key the database can enforce
+    # (#330). Meta redelivers a webhook whenever it does not see a timely
+    # 200, and nothing keyed on the wamid, so a redelivery wrote a second
+    # inbox row and re-fired the chat flow.
+    #
+    # Deliberately not ``unique=True``: this table also holds outbound rows
+    # and rows from platforms whose inbound carries no stable provider id, so
+    # most rows leave it unset. A plain unique column would have to promise
+    # every row has one, and the promise differs by backend — Postgres treats
+    # NULLs as distinct, other backends do not, and neither tolerates a
+    # second empty string. The uniqueness lives in the partial unique index
+    # declared in ``Meta.constraints`` instead, whose predicate excludes both
+    # NULL and "" explicitly rather than relying on NULL semantics.
+    #
+    # Distinct from ``external_message_id`` above on purpose: that column is
+    # a status-tracking handle, is written by several channels with ids that
+    # are only unique per chat (a Telegram ``message_id`` repeats across
+    # conversations), and could not carry a uniqueness constraint.
+    provider_message_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text=(
+            "Provider's own message id (WhatsApp wamid) for inbound idempotency. "
+            "Unique per tenant and platform when set; left unset for outbound rows "
+            "and for platforms that give us no stable inbound id."
+        ),
+    )
     name = None
 
     # Custom manager with annotation methods
     objects = MessagesManager()
+
+    class Meta:
+        constraints = [
+            # One inbox row per provider message id, per tenant, per platform.
+            # Scoped to the tenant rather than global: a wamid is unique within
+            # Meta, but a cross-tenant clash (a shared number, a re-imported
+            # history) should not make one customer's ingestion fail on another
+            # customer's row.
+            models.UniqueConstraint(
+                fields=["tenant", "platform", "provider_message_id"],
+                condition=models.Q(provider_message_id__isnull=False) & ~models.Q(provider_message_id=""),
+                name="message_provider_msg_id_uniq",
+            ),
+        ]
 
     @property
     def created_by(self):  # noqa: F811
