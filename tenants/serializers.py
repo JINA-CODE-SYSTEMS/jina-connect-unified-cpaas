@@ -363,6 +363,9 @@ class TenantGupshupAppsSerializer(BaseSerializer):
             "authentication_message_price": {"read_only": True},
             "marketing_message_price": {"read_only": True},
             "utility_message_price": {"read_only": True},
+            # ``__all__`` otherwise returns the live BSP access token in every
+            # GET on this endpoint. Writable, never readable (#275).
+            "bsp_credentials": {"write_only": True},
         }
 
     def update(self, instance, validated_data):
