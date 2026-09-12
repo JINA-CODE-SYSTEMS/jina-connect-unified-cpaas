@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -11,6 +13,8 @@ from wa.serializers import (
     WABroadcastSerializer,
 )
 from wa.serializers.broadcast import WABroadcastLimitedSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class WABroadcastViewSet(BroadcastViewSet):
@@ -385,6 +389,10 @@ class WABroadcastViewSet(BroadcastViewSet):
                 contact_ids=contact_ids,
                 broadcast_id=broadcast_id,
                 template_id=template_id,
+                # Stated here rather than derived in the task: the task's failure
+                # branch needs it, and the likeliest way to reach that branch is
+                # the app not loading (#320).
+                tenant_id=wa_app.tenant_id,
             )
             return Response(
                 {
@@ -437,6 +445,28 @@ class WABroadcastViewSet(BroadcastViewSet):
 
         if cached:
             payload = json.loads(cached)
+
+            # A task id is unique but says nothing about who may read it, and
+            # ids are returned to clients and land in logs. Before #315 pointed
+            # CACHES at Redis this read never hit at all, so the absent check
+            # never mattered; with a shared cache it is a cross-tenant leak of
+            # contact counts, per-country rates and estimated spend (#320).
+            #
+            # Fails closed: an unresolvable caller, or a payload written before
+            # this change and so carrying no tenant, reads as a miss.
+            tenant_user = self._get_tenant_user()
+            caller_tenant_id = getattr(tenant_user, "tenant_id", None)
+            if caller_tenant_id is None or payload.get("tenant_id") != caller_tenant_id:
+                logger.warning(
+                    "charge_breakdown_status: refusing task %s — caller tenant %s does not own it",
+                    task_id,
+                    caller_tenant_id,
+                )
+                return Response(
+                    {"status": "processing", "task_id": task_id},
+                    status=status.HTTP_202_ACCEPTED,
+                )
+
             if payload["status"] == "completed":
                 result = payload["result"]
                 result["balance"] = self._get_balance_info(request)
