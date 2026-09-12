@@ -64,7 +64,10 @@ class WASubscriptionAdmin(admin.ModelAdmin):
         fail_count = 0
 
         for wa_app in WAApp.objects.filter(pk__in=wa_app_ids):
-            webhook_url = webhook_identity.legacy_callback_url(wa_app)
+            # The app's own per-app URL — the same one the client was told to
+            # paste (#334), not the legacy deployment-wide path this used to
+            # re-register behind their back.
+            webhook_url = webhook_identity.registration_callback_url(wa_app)
 
             adapter = get_bsp_adapter(wa_app)
 

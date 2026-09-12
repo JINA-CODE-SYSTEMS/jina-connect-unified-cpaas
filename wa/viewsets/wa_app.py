@@ -444,7 +444,10 @@ class WAAppViewSet(BaseTenantModelViewSet):
                         "bsp": openapi.Schema(type=openapi.TYPE_STRING),
                         "callback_url": openapi.Schema(
                             type=openapi.TYPE_STRING,
-                            description="Register this exact URL with the BSP.",
+                            description=(
+                                "Register this exact URL with the BSP. It is also the URL this "
+                                "deployment registers itself when webhooks are refreshed (#334)."
+                            ),
                         ),
                         "identifier_hint": openapi.Schema(
                             type=openapi.TYPE_STRING,
@@ -453,10 +456,14 @@ class WAAppViewSet(BaseTenantModelViewSet):
                         "verify_token": openapi.Schema(type=openapi.TYPE_STRING),
                         "verify_token_scope": openapi.Schema(
                             type=openapi.TYPE_STRING,
-                            enum=["deployment", "app"],
+                            enum=["app", "deployment", "none"],
                             description=(
-                                "Whose token this is. 'deployment' means the handshake validates one "
-                                "token for the whole instance; per-app verify tokens are #307."
+                                "Whose token this is, and therefore what the handshake on this app's "
+                                "own callback URL will check (#307). 'app' is this app's own token: no "
+                                "other app's token completes its handshake. 'deployment' means this "
+                                "app has none of its own and the instance-wide setting is what the "
+                                "handshake checks — one value shared by every client on the instance. "
+                                "'none' means neither is configured, so the token check is skipped."
                             ),
                         ),
                         "verify_token_configured": openapi.Schema(type=openapi.TYPE_BOOLEAN),

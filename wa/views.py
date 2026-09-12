@@ -12,13 +12,20 @@ Gupshup, META, etc.  They:
    task (``process_webhook_event_task``) that does the heavy processing.
 
 Security:
-    - Gupshup endpoint: unauthenticated (HMAC not yet supported by GS).
+    - Gupshup endpoint: unauthenticated deliveries (HMAC not yet supported by
+      GS); its verification handshake checks ``hub.verify_token`` (#308).
     - META endpoint: validates ``X-Hub-Signature-256`` (HMAC-SHA256 keyed on
       the sending app's own ``TenantWAApp.meta_app_secret`` where it has one,
       and on the deployment-wide ``META_APP_SECRET`` otherwise) and
       ``hub.verify_token`` during verification. An unverifiable POST is
       dropped, not accepted: there is no fail-open path when no secret is
       available (#306).
+    - Both handshakes check ``hub.verify_token`` against the *addressed app's
+      own* ``TenantWAApp.webhook_verify_token`` where it has one, and against
+      the deployment-wide ``<BSP>_WEBHOOK_VERIFY_TOKEN`` setting otherwise
+      (#307). One shared token would have to be handed to every client, which
+      makes it a secret across tenants; a mismatch is 403, counted per app, and
+      logged without the token that was presented.
     - Rate-limiting should be handled at the reverse-proxy / WAF layer.
 
 URL layout (registered in ``wa/urls.py``):
@@ -42,8 +49,9 @@ The two shapes are both permanent, and they differ in one important way:
   URL, a delivery to it is attributed from the URL rather than from the body,
   and it is authenticated against *that app's* own Meta app secret (#306).
 * **The unsuffixed path is single-app.** It authenticates against the
-  deployment-wide ``META_APP_SECRET`` / verify token, so it cannot tell two
-  clients' apps apart and must not be shared between clients. It behaves
+  deployment-wide ``META_APP_SECRET`` / verify token — it has no app to ask for
+  one of its own, on a handshake there is no body to route from — so it cannot
+  tell two clients' apps apart and must not be shared between clients. It behaves
   exactly as it always has — self-hosters and the live deployment have it
   registered in Meta's App Dashboard, and an upgrade must not require anyone to
   re-register a URL.
@@ -270,6 +278,64 @@ def _resolve_webhook_app(bsp: str, webhook_identifier: str):
     return wa_app, ""
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# The verification handshake (#307)
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Both receivers' GET handlers share these two helpers rather than each writing
+# the comparison and the rejection out. The rule is one rule — measure
+# ``hub.verify_token`` against whatever ``select_verify_token`` says this URL
+# expects, which is the addressed app's own token when it has one — and #308
+# shipped because the two handshakes had drifted into two implementations of it,
+# one of which compared nothing at all.
+
+
+def _tokens_match(presented: Optional[str], expected: str) -> bool:
+    """Whether *presented* is *expected*, compared in constant time.
+
+    ``hmac.compare_digest`` for the same reason ``_verify_meta_signature`` uses
+    it on the HMAC: ``!=`` on secrets leaks their shared prefix through timing,
+    and this endpoint takes as many guesses as anyone cares to send it. Tokens
+    are ASCII by construction (``secrets.token_urlsafe`` plus a prefix), but a
+    presented one is arbitrary client input, so both sides are encoded before
+    comparison — ``compare_digest`` refuses non-ASCII ``str``.
+    """
+    return hmac.compare_digest((presented or "").encode("utf-8"), expected.encode("utf-8"))
+
+
+def _refuse_handshake(bsp: str, wa_app=None, token_scope: str = "") -> JsonResponse:
+    """Refuse a verification handshake: count it, log it, answer 403.
+
+    403 rather than the 200 a rejected *delivery* gets. A failed handshake is
+    read by the person clicking "Verify and save" in a BSP dashboard, which is
+    exactly who needs to see it, and it is not the POST traffic META throttles
+    the whole deployment's delivery on.
+
+    Counted because nothing else would notice (#307). A client re-verifying their
+    URL with a stale token and someone guessing at a live one look identical from
+    here, and both matter: the counter is bucketed per app so it says *whose*
+    endpoint is being refused.
+
+    The presented token is never logged, and neither is the expected one. A
+    presented token is a guess at a secret — or another tenant's real token sent
+    to the wrong endpoint — and a log sink is a wider audience than either owner
+    agreed to. ``token_scope`` carries the diagnosis instead: refused against the
+    app's own token means a client holding the wrong value, refused against the
+    deployment-wide one means an app that has no token of its own yet.
+    """
+    from wa.services import webhook_identity
+
+    total = webhook_identity.record_verify_token_rejection(bsp, wa_app=wa_app)
+    logger.warning(
+        "%s webhook verification FAILED -- hub.verify_token mismatch (app=%s, token_scope=%s, today=%s)",
+        bsp,
+        getattr(wa_app, "pk", None) or "legacy-path",
+        token_scope,
+        total,
+    )
+    return JsonResponse({"error": "Verify token mismatch"}, status=403)
+
+
 # Reason codes for a rejected META delivery.  META is always answered with
 # 200 (a non-200 throttles delivery), so the ``reason`` in the body and the
 # log line are the only places a rejection is ever visible — keep the four
@@ -424,15 +490,23 @@ class GupshupWebhookView(View):
         Gupshup sends a GET with ``hub.mode=subscribe``,
         ``hub.verify_token=<your_token>``, and ``hub.challenge=<int>``.
 
-        We verify the presented token against ``GUPSHUP_WEBHOOK_VERIFY_TOKEN``
-        and only then echo back the challenge, so that reaching the endpoint is
-        not by itself enough to claim ownership of it.
+        We verify the presented token against the one this URL expects and only
+        then echo back the challenge, so that reaching the endpoint is not by
+        itself enough to claim ownership of it.
 
-        Unset-secret behaviour: when ``GUPSHUP_WEBHOOK_VERIFY_TOKEN`` is empty
-        the token check is skipped and the challenge is echoed — the same
-        "configure the secret to enable the check" rule ``MetaWebhookView.get``
-        applies to ``META_WEBHOOK_VERIFY_TOKEN``, kept identical on purpose so
-        the two handshakes cannot drift apart.
+        Which token that is comes from
+        ``webhook_identity.select_verify_token`` (#307): on a per-app URL the
+        resolved app's own ``webhook_verify_token``, and
+        ``GUPSHUP_WEBHOOK_VERIFY_TOKEN`` only for an app that has none or on the
+        legacy path, which has no app to ask. One shared token handed to every
+        client is a secret across tenants — any holder could complete the
+        handshake for another client's endpoint.
+
+        Unset-token behaviour: when neither is configured there is nothing to
+        compare against, the check is skipped and the challenge is echoed — the
+        same "configure the secret to enable the check" rule
+        ``MetaWebhookView.get`` applies, kept identical on purpose so the two
+        handshakes cannot drift apart.
 
         The presented token is never logged: it is an attacker-supplied guess
         at a shared secret, and log sinks are a wider audience than the secret.
@@ -442,6 +516,7 @@ class GupshupWebhookView(View):
         that answer is a 403 while an unowned *delivery* is a 200).
         """
         from wa.models import BSPChoices
+        from wa.services import webhook_identity
 
         mode = request.GET.get("hub.mode")
         token = request.GET.get("hub.verify_token")
@@ -453,18 +528,20 @@ class GupshupWebhookView(View):
             if identity_reason:
                 return JsonResponse({"error": "Unknown webhook URL", "reason": identity_reason}, status=403)
 
-        # SEAM (#307): ``wa_app`` is the app whose own verify token this should
-        # check. Per-app verify-token validation is #307.
-        expected_token = getattr(django_settings, "GUPSHUP_WEBHOOK_VERIFY_TOKEN", "")
+        # The app's own token over the deployment-wide setting (#307), selected
+        # through the same registry-driven helper the META handshake uses —
+        # per-app verify tokens are defined for every BSP, not bolted onto one
+        # (#305 D-4).
+        expected_token, token_scope = webhook_identity.select_verify_token(BSPChoices.GUPSHUP, wa_app=wa_app)
 
         if mode == "subscribe" and challenge:
-            if expected_token and token != expected_token:
-                logger.warning("Gupshup webhook verification FAILED — hub.verify_token mismatch")
-                return JsonResponse({"error": "Verify token mismatch"}, status=403)
+            if expected_token and not _tokens_match(token, expected_token):
+                return _refuse_handshake(BSPChoices.GUPSHUP, wa_app=wa_app, token_scope=token_scope)
 
             logger.info(
-                "Gupshup webhook verification — echoing challenge (app=%s)",
+                "Gupshup webhook verification — echoing challenge (app=%s, token_scope=%s)",
                 wa_app.pk if wa_app is not None else "legacy-path",
+                token_scope,
             )
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
@@ -602,8 +679,17 @@ class MetaWebhookView(View):
         META sends a GET with ``hub.mode=subscribe``,
         ``hub.verify_token=<your_token>``, and ``hub.challenge=<int>``.
 
-        We verify the token against ``META_WEBHOOK_VERIFY_TOKEN`` and
-        echo back the challenge.
+        We verify the token against the one this URL expects and echo back the
+        challenge. On a per-app URL that is the resolved app's own
+        ``webhook_verify_token``, and ``META_WEBHOOK_VERIFY_TOKEN`` only for an
+        app that has none or on the legacy path (#307) — see
+        ``webhook_identity.select_verify_token``, which is the same selection
+        ``_verify_meta_signature`` makes for the POST's signing secret. App A's
+        token therefore fails on app B's endpoint, which a single
+        deployment-wide token handed to every client could not achieve.
+
+        Neither the presented token nor the expected one is ever logged; see
+        ``_refuse_handshake``.
 
         On a per-app URL the identifier is resolved first, so a handshake
         against an identifier no app owns cannot be made to echo a challenge —
@@ -613,6 +699,7 @@ class MetaWebhookView(View):
         see it, and it is not the POST traffic META throttles on non-200s.
         """
         from wa.models import BSPChoices
+        from wa.services import webhook_identity
 
         mode = request.GET.get("hub.mode")
         token = request.GET.get("hub.verify_token")
@@ -624,24 +711,19 @@ class MetaWebhookView(View):
             if reason:
                 return JsonResponse({"error": "Unknown webhook URL", "reason": reason}, status=403)
 
-        # SEAM (#307): ``wa_app`` is the app whose own verify token this
-        # handshake should be checking — ``WASubscription.verify_token`` already
-        # exists for it, unwired. Validating it per app is #307 and is
-        # deliberately not done here; until then every handshake, on either
-        # path, checks the one deployment-wide token.
-        expected_token = getattr(django_settings, "META_WEBHOOK_VERIFY_TOKEN", "")
+        # Per app, over the deployment-wide setting (#307) — the same selection
+        # ``_verify_meta_signature`` makes for the POST's HMAC, one line further
+        # down the same identity.
+        expected_token, token_scope = webhook_identity.select_verify_token(BSPChoices.META, wa_app=wa_app)
 
         if mode == "subscribe" and challenge:
-            if expected_token and token != expected_token:
-                logger.warning(
-                    "META webhook verification FAILED -- hub.verify_token mismatch (got=%s)",
-                    token,
-                )
-                return JsonResponse({"error": "Verify token mismatch"}, status=403)
+            if expected_token and not _tokens_match(token, expected_token):
+                return _refuse_handshake(BSPChoices.META, wa_app=wa_app, token_scope=token_scope)
 
             logger.info(
-                "META webhook verification -- echoing challenge (app=%s)",
+                "META webhook verification -- echoing challenge (app=%s, token_scope=%s)",
                 wa_app.pk if wa_app is not None else "legacy-path",
+                token_scope,
             )
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
