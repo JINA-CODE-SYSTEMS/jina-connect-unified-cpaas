@@ -116,7 +116,13 @@ class WAAPI(BaseModel):
             print(f"Data sent: {processed_data}")
             print("=" * 80)
 
-            raise Exception(error_msg)
+            # The response rides out on the exception, ``requests.HTTPError``
+            # style: this raise is the last place the headers exist, and a 429's
+            # Retry-After is what lets the send path delay by the interval the
+            # provider asked for instead of re-queueing blind (#271).
+            failure = Exception(error_msg)
+            failure.response = response
+            raise failure
 
         # 204 No Content — return an empty success dict (common for DELETE)
         if response.status_code == 204 or not response.text:
@@ -182,7 +188,13 @@ class WAAPI(BaseModel):
             print(f"JSON data sent: {json.dumps(data, indent=2)}")
             print("=" * 80)
 
-            raise Exception(error_msg)
+            # The response rides out on the exception, ``requests.HTTPError``
+            # style: this raise is the last place the headers exist, and a 429's
+            # Retry-After is what lets the send path delay by the interval the
+            # provider asked for instead of re-queueing blind (#271).
+            failure = Exception(error_msg)
+            failure.response = response
+            raise failure
 
         return response.json()
 

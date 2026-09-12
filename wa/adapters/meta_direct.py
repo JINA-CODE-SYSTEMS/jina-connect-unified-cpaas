@@ -416,6 +416,10 @@ class MetaDirectAdapter(BaseBSPAdapter):
                 success=False,
                 provider=self.PROVIDER_NAME,
                 error_message=f"META API call failed: {exc}",
+                # A 429 arrives here, not above: the client raises on any
+                # non-2xx. Surfacing the headers is what lets the caller wait
+                # the interval META asked for (#271).
+                response_headers=self._response_headers(exc),
             )
 
         response = response or {}

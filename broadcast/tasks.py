@@ -604,14 +604,21 @@ def _already_sent(message) -> bool:
     return bool(getattr(message, "message_id", "") or "")
 
 
-def _is_transient(error_text: str) -> bool:
+def _is_transient(error_text: str, retry_after: int = 0) -> bool:
     """Whether a provider error deserves another attempt.
 
     A 429 or a 502 says "not now"; an invalid template or a blocked number
     says "not ever". Treating the first as terminal burns the recipient for
     good and — because failures are refunded — quietly turns a rate-limit
     event into a billing event.
+
+    A provider that answered with ``Retry-After`` has already said the failure
+    is temporary, and said it in a header rather than in prose — a stronger
+    signal than any substring match, and one that does not need the error text
+    to be spelled the way we expect (#271).
     """
+    if retry_after:
+        return True
     lowered = (error_text or "").lower()
     return any(marker in lowered for marker in _TRANSIENT_ERROR_MARKERS)
 
@@ -627,6 +634,35 @@ def _is_opted_out(message) -> bool:
     if not message.broadcast.is_marketing_broadcast:
         return False
     return bool(message.contact and message.contact.marketing_opt_out)
+
+
+def _requeue_deferred(message_ids: List[int], countdown: int) -> int:
+    """Put messages waiting on a send window back on the queue, timed to it.
+
+    The countdown is the fix: it is what makes a 429 a *delayed* send rather
+    than a fixed five-minute sweep, and it lives in the broker, so the delay
+    outlives the worker that scheduled it (#271).
+
+    Eager mode has no broker and runs the task inline, ignoring the countdown —
+    which would re-attempt the send inside the very window we are waiting on,
+    and recurse doing it. There the rows are left PENDING and logged; the only
+    place eager mode is on is a dev box with no broker.
+
+    Returns the countdown actually scheduled, or 0 if nothing was queued.
+    """
+    countdown = max(int(countdown or 0), 1)
+
+    if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
+        logger.info(
+            "Eager mode: %s deferred message(s) left in PENDING instead of a %ss countdown",
+            len(message_ids),
+            countdown,
+        )
+        return 0
+
+    process_broadcast_messages_batch.apply_async(args=[message_ids], countdown=countdown)
+    logger.info("Re-queued %s deferred message(s) in %ss", len(message_ids), countdown)
+    return countdown
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -668,6 +704,14 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
         skipped_count = 0
         retryable_count = 0
         suppressed_count = 0
+
+        # Messages waiting on a send window, and the longest wait anyone asked
+        # for. One delayed task carries them all: a batch is normally one
+        # broadcast on one number, so they are waiting on the same window, and a
+        # mixed batch from the retry sweep takes the longest of the waits rather
+        # than re-attempting anybody early (#271).
+        deferred_ids: List[int] = []
+        deferred_countdown = 0
 
         # Process each message
         for message in messages:
@@ -714,6 +758,20 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                 # Route to appropriate platform handler based on broadcast platform
                 result = route_to_platform_handler(message)
 
+                if result.get("deferred"):
+                    # The provider never saw this one — its number is inside a
+                    # window it may not send in. That is not an attempt, so it
+                    # neither spends a retry nor counts as a failure: the row
+                    # goes back to PENDING and the delayed re-queue below owns
+                    # it (#271).
+                    message.status = MessageStatusChoices.PENDING
+                    message.response = result.get("error", "Deferred: waiting on the number's send window")
+                    message.save(update_fields=["status", "response"])
+                    deferred_ids.append(message.id)
+                    deferred_countdown = max(deferred_countdown, int(result.get("retry_after") or 0))
+                    logger.info("Message %s deferred — %s", message.id, message.response)
+                    continue
+
                 if result["success"]:
                     message.status = MessageStatusChoices.SENT
                     message.message_id = result.get("message_id", "")
@@ -741,18 +799,27 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                     error_text = result.get("error", "Unknown error")
                     message.retry_count += 1
                     message.response = error_text
+                    retry_after = int(result.get("retry_after") or 0)
 
-                    if _is_transient(error_text) and message.retry_count <= MAX_MESSAGE_RETRIES:
-                        # Back to PENDING so the sweep picks it up. FAILED here
-                        # would be permanent *and* refunded, turning a 429 into
-                        # a billing event.
+                    if _is_transient(error_text, retry_after) and message.retry_count <= MAX_MESSAGE_RETRIES:
+                        # Back to PENDING for another attempt — the countdown
+                        # below where the provider named one, the sweep
+                        # otherwise. FAILED here would be permanent *and*
+                        # refunded, turning a 429 into a billing event.
                         message.status = MessageStatusChoices.PENDING
                         retryable_count += 1
+                        if retry_after:
+                            # The provider named an interval, so this one is not
+                            # the sweep's to guess at — it goes back on the queue
+                            # timed to the window it was told about (#271).
+                            deferred_ids.append(message.id)
+                            deferred_countdown = max(deferred_countdown, retry_after)
                         logger.warning(
-                            "Message %s hit a transient error (attempt %s/%s), will retry: %s",
+                            "Message %s hit a transient error (attempt %s/%s), retrying in %s: %s",
                             message.id,
                             message.retry_count,
                             MAX_MESSAGE_RETRIES,
+                            f"{retry_after}s at the provider's request" if retry_after else "the next sweep",
                             error_text,
                         )
                     else:
@@ -778,6 +845,8 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                 except Exception as save_error:
                     logger.exception(f"Error saving failed message {message.id}: {str(save_error)}")
 
+        requeued_after = _requeue_deferred(deferred_ids, deferred_countdown) if deferred_ids else 0
+
         result = {
             "status": "completed",
             "processed": processed_count,
@@ -786,6 +855,8 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
             "retryable": retryable_count,
             "skipped_already_sent": skipped_count,
             "suppressed_opted_out": suppressed_count,
+            "deferred": len(deferred_ids),
+            "deferred_countdown": requeued_after,
             "message_ids": processed_ids,
         }
 
@@ -896,8 +967,11 @@ def handle_whatsapp_message(message):
         message (BroadcastMessage): The message to send
 
     Returns:
-        dict: Send result with success status and details
+        dict: Send result with success status and details. ``deferred`` marks a
+        result the provider never saw, so the loop knows not to spend a retry on
+        it; ``retry_after`` is how long the caller must wait (#271).
     """
+    from broadcast.services import rate_limiter
     from wa.adapters import get_bsp_adapter
 
     try:
@@ -915,6 +989,28 @@ def handle_whatsapp_message(message):
         wa_app, wa_template = _wa_app_for_broadcast(message)
         is_marketing = message.broadcast.is_marketing_broadcast
 
+        # Both checks happen before the request, because the request is the
+        # spend: sending into a window this number is already over costs its
+        # quality rating, not just a 429. A message that has to wait comes back
+        # `deferred` rather than failed — the provider never saw it, so it must
+        # not spend a retry either (#271).
+        waiting = rate_limiter.cooldown_seconds_remaining(wa_app)
+        if waiting:
+            return {
+                "success": False,
+                "deferred": True,
+                "retry_after": waiting,
+                "error": f"Provider asked this number to pause; {waiting}s left",
+            }
+
+        if not rate_limiter.reserve_send_slot(wa_app):
+            return {
+                "success": False,
+                "deferred": True,
+                "retry_after": rate_limiter.PACE_WINDOW_SECONDS,
+                "error": f"Number is at its send pace ({rate_limiter.sends_per_minute(wa_app)}/min)",
+            }
+
         result = get_bsp_adapter(wa_app).send_template(
             message.payload,
             is_marketing=is_marketing,
@@ -924,7 +1020,18 @@ def handle_whatsapp_message(message):
         if not result.success:
             msg_type = "marketing" if is_marketing else "transactional"
             logger.error(f"Error sending WhatsApp {msg_type} template: {result.error_message}")
-            return {"success": False, "error": result.error_message}
+            # A 429 that names an interval is the provider saying exactly when it
+            # will take traffic again. Honouring it beats the fixed five-minute
+            # sweep in both directions: sooner when it asks for seconds, and —
+            # the direction that matters — not sooner when it asks for longer,
+            # because re-queueing inside the window earns another 429 (#271).
+            # ``start_cooldown`` returns 0 when the provider sent no usable
+            # header, which leaves the old timing in place.
+            return {
+                "success": False,
+                "error": result.error_message,
+                "retry_after": rate_limiter.start_cooldown(wa_app, result.retry_after_seconds),
+            }
 
         # The adapter normalises the id, so this no longer has to guess at the
         # provider's response shape — the guess here only ever handled META's,
