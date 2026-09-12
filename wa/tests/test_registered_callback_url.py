@@ -125,6 +125,20 @@ class _FakeAdapter:
     def __init__(self, wa_app=None):
         self.wa_app = wa_app
 
+    def supports(self, capability):
+        """Claim every capability, because both real adapters claim this one.
+
+        Added when #259 put a capability gate in front of registration: the task
+        now asks ``adapter.supports("subscriptions")`` before writing a
+        subscription row, so that a BSP which cannot be registered with skips
+        instead of leaving a PENDING row nobody will ever confirm. Both
+        ``GupshupAdapter`` and ``MetaDirectAdapter`` carry ``"subscriptions"`` in
+        their capability frozenset, so answering True here keeps this double
+        faithful to the adapters it stands in for — and keeps these tests about
+        *which URL* gets registered, which is all they are for.
+        """
+        return True
+
     def purge_all_webhooks(self):
         return _FakeResult()
 
