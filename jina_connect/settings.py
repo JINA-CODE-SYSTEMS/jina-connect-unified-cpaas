@@ -1027,3 +1027,4 @@ MOBILE_APP_SCHEME = config("MOBILE_APP_SCHEME", "jinaconnect")
 META_PERM_TOKEN = config("META_PERM_TOKEN", "")
 META_APP_SECRET = config("META_APP_SECRET", "")  # Used for X-Hub-Signature-256 verification
 META_WEBHOOK_VERIFY_TOKEN = config("META_WEBHOOK_VERIFY_TOKEN", "")  # Used for hub.verify_token challenge
+GUPSHUP_WEBHOOK_VERIFY_TOKEN = config("GUPSHUP_WEBHOOK_VERIFY_TOKEN", "")  # Used for hub.verify_token challenge
