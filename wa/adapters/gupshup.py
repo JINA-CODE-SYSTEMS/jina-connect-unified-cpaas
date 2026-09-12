@@ -1046,6 +1046,21 @@ class GupshupAdapter(BaseBSPAdapter):
             TEMPLATE → ["TEMPLATE"]
             BILLING  → ["BILLING"]
             ACCOUNT  → ["ACCOUNT"]
+            PAYMENT  → ["PAYMENTS"]
+
+        ``PAYMENT`` is mapped rather than left to the passthrough fallback
+        below because the two sides spell it differently — ours is singular,
+        Gupshup's mode is ``PAYMENTS`` — and the fallback therefore emitted a
+        mode ``SubscriptionFormData`` rejects outright. Auto-registration asks
+        for every canonical event type, so that single missing row made the
+        whole payload fail pydantic validation before any request was sent:
+        every Gupshup app created since exhausted its retries and registered
+        nothing (found while wiring #259).
+
+        The fallback stays, but it is a hazard worth naming: any
+        ``WebhookEventType`` member with no row here is passed through verbatim
+        and will be refused the same way, without the mapping being the obvious
+        suspect.
         """
         mode_map = {
             "MESSAGE": ["MESSAGE", "ALL"],
@@ -1053,6 +1068,7 @@ class GupshupAdapter(BaseBSPAdapter):
             "TEMPLATE": ["TEMPLATE"],
             "BILLING": ["BILLING"],
             "ACCOUNT": ["ACCOUNT"],
+            "PAYMENT": ["PAYMENTS"],
         }
         modes = []
         for et in event_types:

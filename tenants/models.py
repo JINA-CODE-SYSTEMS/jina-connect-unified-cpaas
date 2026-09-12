@@ -199,6 +199,35 @@ def mask_wa_webhook_identifier(identifier: str | None) -> str:
     return f"{visible}…" if len(identifier) > len(visible) else visible
 
 
+# ── Per-app handshake token (#307) ────────────────────────────────────────────
+# A BSP verifies a callback URL before it will deliver to it: a GET carrying
+# ``hub.mode=subscribe``, ``hub.verify_token=<token>`` and ``hub.challenge``,
+# which the receiver answers by echoing the challenge — but only if the token is
+# the one it expects. That expectation used to be a single deployment-wide
+# setting, so every client bringing their own app had to be handed the *same*
+# value: a secret shared across tenants, and enough for any one holder of it to
+# complete the handshake for another client's endpoint. This column is that
+# token, one per app, so the handshake on an app's own URL can only be completed
+# by whoever holds that app's token (#307, part of #305).
+#
+# Prefixed for the same reason the identifier above is: a bare random string in
+# a support ticket or a proxy log says nothing about what it is.
+WA_WEBHOOK_VERIFY_TOKEN_PREFIX = "whv_"  # nosec B105 — a four-character label, not a secret
+
+
+def generate_wa_webhook_verify_token() -> str:
+    """A fresh per-app webhook verify token.
+
+    24 random bytes from ``secrets`` — ~192 bits, comfortably past the 128 #307
+    asks for — and issued by this deployment rather than chosen by the client,
+    so it cannot be a weak string, a reused one, or the same string as another
+    tenant's. Module level for the same reason
+    :func:`generate_wa_webhook_identifier` is: a field default has to be
+    importable by the migration that freezes it.
+    """
+    return f"{WA_WEBHOOK_VERIFY_TOKEN_PREFIX}{secrets.token_urlsafe(24)}"
+
+
 class TenantWAApp(BaseTenantModelForFilterUser):
     """
     Model to store Gupshup app details for a tenant.
@@ -216,6 +245,7 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         esf_url (URLField): Embedded Signup Flow URL for WhatsApp onboarding.
         esf_url_expires_at (DateTimeField): Expiration time for ESF URL (valid for 4 days).
         webhook_identifier (CharField): Opaque identifier in this app's own callback URL (#310).
+        webhook_verify_token (EncryptedTextField): The token this app's own handshake checks (#307).
     """
 
     filter_by_user_tenant_fk = "tenant__tenant_users__user"
@@ -378,6 +408,40 @@ class TenantWAApp(BaseTenantModelForFilterUser):
             "Opaque identifier carried in this app's own webhook callback URL. "
             "Treat it as a secret: whoever holds it can address this app's receiver. "
             "Generated once and never reused."
+        ),
+    )
+
+    # ── Handshake token (#307) ───────────────────────────────────────────
+    # The token this app's own receiver checks ``hub.verify_token`` against.
+    # One deployment-wide setting could not serve several client-owned apps
+    # without being handed to all of them, and a secret shared across tenants
+    # lets any one holder complete the handshake for another client's endpoint.
+    #
+    # ``editable=False`` and issued by
+    # ``generate_wa_webhook_verify_token``: a client is *given* this value to
+    # paste into their BSP dashboard, never asked to choose one, so it cannot be
+    # weak, guessable or reused between tenants. Encrypted at rest like every
+    # other per-app secret on this model (#289, #311) — it is read back in full
+    # by the handshake and by the setup endpoint, so it cannot be hashed.
+    #
+    # Not ``WASubscription.verify_token``, which exists and stays unread:
+    # subscription rows are deleted and recreated wholesale by every webhook
+    # refresh, there can be several per app, and a Meta bring-your-own-app
+    # client completes this handshake before any subscription row exists. A
+    # token that churns, multiplies and arrives late is not one a receiver can
+    # check. See ``wa.services.webhook_identity.select_verify_token``.
+    #
+    # Blank means "fall back to the deployment-wide setting", which is the
+    # pre-#307 behaviour and what the legacy unsuffixed receiver still does.
+    # ``tenants/0031`` gives every existing row its own value, one at a time.
+    webhook_verify_token = EncryptedTextField(
+        blank=True,
+        default=generate_wa_webhook_verify_token,
+        editable=False,
+        help_text=(
+            "The token this app's own webhook handshake checks hub.verify_token against. "
+            "Issued by this deployment, never chosen by the client, and encrypted at rest. "
+            "Handed over together with the callback URL by the webhook-setup endpoint."
         ),
     )
 
@@ -568,6 +632,16 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         if not self.webhook_identifier:
             self.webhook_identifier = generate_wa_webhook_identifier()
             touched.append("webhook_identifier")
+
+        # Same reasoning for the handshake token (#307): the field default
+        # covers ordinary creation, this covers a row that reached the database
+        # without one — a pre-#307 fixture, or a caller that wrote "". An app
+        # with a blank token falls back to the deployment-wide setting, so the
+        # hole is not a broken handshake but a handshake that still checks a
+        # secret shared with every other tenant, which is the thing being fixed.
+        if not self.webhook_verify_token:
+            self.webhook_verify_token = generate_wa_webhook_verify_token()
+            touched.append("webhook_verify_token")
 
         update_fields = kwargs.get("update_fields")
         if touched and update_fields is not None:

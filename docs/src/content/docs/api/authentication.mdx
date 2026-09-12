@@ -58,50 +58,38 @@ curl http://localhost:8000/tenants/ \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
 ```
 
+### Which organisation the token is scoped to
+
+`/token/` optionally takes an `X-ACCESS-KEY` header naming which of **your own**
+organisations to scope the token to. Without it, your first organisation is used.
+
+```bash
+curl -X POST http://localhost:8000/token/ \
+  -H "X-ACCESS-KEY: <an access key for an organisation you belong to>" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "you@example.com", "password": "your-password"}'
+```
+
+A key for an organisation you are **not** a member of is refused with
+**401 `User does not belong to this tenant`**. There is no superuser exemption to
+this: to look at another organisation, use
+[View as Organisation](/jina-connect-unified-cpaas/api/impersonation/).
+
 ## View as Organisation (impersonation)
 
-A platform superuser can obtain a **read-only, time-boxed** token scoped to any
-organisation, so support questions can be answered from what the customer sees.
+A platform superuser can obtain a **read-only, 15-minute, non-refreshable,
+audited** token scoped to any organisation, so support questions can be answered
+from what the customer sees — without needing anything from the customer.
 
 ```bash
 curl -X POST http://localhost:8000/impersonate/42/ \
   -H "Authorization: Bearer <superuser access token>"
 ```
 
-**Response:**
-```json
-{
-  "access": "eyJhbGciOiJIUzI1NiIs...",
-  "expires_at": "2026-09-12T10:45:00+00:00",
-  "expires_in": 900,
-  "read_only": true,
-  "organisation": { "id": 42, "name": "Acme Ltd" },
-  "impersonated_by": { "id": 7, "username": "ops_admin" },
-  "session_id": 18
-}
-```
-
-There is **no refresh token** — the session ends when the access token expires
-(15 minutes) or when it is exited:
-
-```bash
-curl -X POST http://localhost:8000/impersonate/end/ \
-  -H "Authorization: Bearer <impersonation token>"
-```
-
-The returned token carries `impersonated_by` (the real user's id),
-`impersonated_by_username`, `impersonated_tenant_name` and `read_only: true`
-alongside the usual `tenant_id`. Clients should show a persistent banner
-whenever `impersonated_by` is present.
-
-<Aside type="caution">
-  Every non-safe HTTP method (`POST`, `PUT`, `PATCH`, `DELETE`) is refused with
-  **403** while the token is in use — including direct API calls, and including
-  a second `/impersonate/` call. WebSocket connections are refused outright,
-  since a socket has no method to refuse. `POST /impersonate/end/` is the one
-  exception. Every session writes a `users.ImpersonationSession` audit row
-  naming the real user; deleting that row invalidates the token.
-</Aside>
+See [View as Organisation](/jina-connect-unified-cpaas/api/impersonation/) for
+the full endpoint reference, the limits enforced on the token, what clients
+should show while a session is active, and what replaced the removed
+`X-ACCESS-KEY` cross-organisation path.
 
 ## API Keys
 

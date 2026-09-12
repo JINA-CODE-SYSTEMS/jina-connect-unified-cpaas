@@ -1,0 +1,116 @@
+---
+title: View as Organisation
+description: Read-only, time-boxed, audited impersonation for platform operators — and the X-ACCESS-KEY path that replaced it.
+sidebar:
+  order: 2
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+A platform superuser answering a support question often needs to see what a
+customer sees. `POST /impersonate/{tenant_id}/` is the supported way to do that.
+It is the **only** way: a token obtained from `/token/` is always scoped to an
+organisation the caller belongs to.
+
+<Aside type="caution" title="If you used the X-ACCESS-KEY header for this, it is gone">
+  Presenting another organisation's access key to `/token/` used to return a
+  full, long-lived token for that organisation if you were a superuser. That
+  path has been **removed** — the request is now refused with
+  **401 `User does not belong to this tenant`**, superuser or not. Use
+  `/impersonate/` instead. See [What changed](#what-changed) below.
+</Aside>
+
+## Start a session
+
+Call it with **your own** access token. You need nothing from the customer — no
+access key, no password, no cooperation.
+
+```bash
+curl -X POST http://localhost:8000/impersonate/42/ \
+  -H "Authorization: Bearer <your own access token>"
+```
+
+**Response:**
+```json
+{
+  "access": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_at": "2026-09-12T10:45:00+00:00",
+  "expires_in": 900,
+  "read_only": true,
+  "organisation": { "id": 42, "name": "Acme Ltd" },
+  "impersonated_by": { "id": 7, "username": "ops_admin" },
+  "session_id": 18
+}
+```
+
+Use the returned `access` token as you would any other, in the `Authorization`
+header. Requests made with it read organisation 42.
+
+## End a session
+
+```bash
+curl -X POST http://localhost:8000/impersonate/end/ \
+  -H "Authorization: Bearer <impersonation token>"
+```
+
+The token stops authenticating immediately — exiting is a real control, not just
+a tab being closed — and the audit row records when the session ended. This is
+the one non-safe request an impersonated session is allowed to make.
+
+## The limits
+
+These are enforced server-side, on the API, against the token. None of them is a
+UI convention you can work around by calling the API directly.
+
+| | |
+|---|---|
+| **Read-only** | Every non-safe method (`POST`, `PUT`, `PATCH`, `DELETE`) is refused with **403**. WebSocket connections are refused outright, since a socket has no method to refuse. |
+| **15 minutes** | Fixed lifetime, independent of `ACCESS_TOKEN_LIFETIME`. A tab left open over lunch is already dead. |
+| **Non-refreshable** | No refresh token is issued and the token cannot be refreshed. Starting again is one `POST`. |
+| **Audited** | Each call writes a `users.ImpersonationSession` row naming you. The row is load-bearing: a token whose row is missing, ended, or past its expiry is refused with **401**, so an unaudited impersonation token cannot be used. |
+| **One organisation** | The session reads only the organisation named in its response. It does not widen to every tenant, and it does not carry over your own. |
+| **No chaining** | Starting a session is a `POST`, so an impersonation token cannot start another one. |
+
+Superuser status is checked against the database, not against the `is_superuser`
+claim on your token — a revoked platform admin holding an unexpired token cannot
+start a session.
+
+## What clients should show
+
+The token carries `impersonated_by` (your real user id),
+`impersonated_by_username`, `impersonated_tenant_name` and `read_only: true`
+alongside the usual `tenant_id`. Show a persistent banner naming the
+organisation whenever `impersonated_by` is present, with an exit control that
+calls `/impersonate/end/`.
+
+## What changed
+
+Both paths answered the same question — how does a platform admin act in another
+organisation's context — and only one of them was safe to keep.
+
+| | `X-ACCESS-KEY` on `/token/` (removed) | `/impersonate/` |
+|---|---|---|
+| Bound | none — an ordinary long-lived token | 15 minutes, non-refreshable |
+| Writes | full | refused server-side |
+| Audit | a log line | a row the token needs in order to authenticate |
+| Needs the customer's secret | **yes** | no |
+| Distinguishable from the owner's own token | barely | `impersonated_by`, `read_only` |
+
+The last row was the decisive one. The old path needed an organisation's access
+key, so the practice it encouraged was collecting customers' keys and keeping
+them somewhere. `/impersonate/` needs nothing from the customer, which means
+there is no longer a reason to ask for a key in order to provide support — and
+any key collected for that purpose should be
+[revoked](/jina-connect-unified-cpaas/api/tenants/).
+
+### If a request started failing
+
+`401 User does not belong to this tenant` from `/token/` means the access key
+named an organisation the authenticating user is not a member of. Either use an
+access key for an organisation you belong to, or — if the intent was to look at
+someone else's organisation — use `/impersonate/`.
+
+An access key for an organisation you **do** belong to still works exactly as
+before; this change did not remove the header, only the ability to cross a
+boundary with it. A superuser with no organisation of its own (a fresh
+`createsuperuser`) can still sign in; its token simply names no organisation.

@@ -3566,109 +3566,245 @@ def submit_template_to_meta(template_id: int):
     return submit_template_to_gupshup(template_id)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=15)
-def auto_register_gupshup_webhook(self, wa_app_pk: int):
-    """
-    Auto-register our webhook receiver with Gupshup when a new Gupshup
-    WAApp is created.
+# ──────────────────────────────────────────────────────────────────────────────
+# Automatic webhook registration on app creation (#259)
+# ──────────────────────────────────────────────────────────────────────────────
 
-    Creates a ``WASubscription`` pointing at our public
-    ``/wa/v2/webhooks/gupshup/`` endpoint and calls
-    ``GupshupAdapter.register_webhook()`` to register it with the Gupshup
-    Partner API.
+#: What the log lines below call themselves. The task was
+#: ``auto_register_gupshup_webhook`` and refused to run for anything else; the
+#: name is part of what #259 replaces, so it lives in one place rather than in
+#: eight format strings that can drift from the function they describe.
+_AUTO_REGISTER_LOG = "auto_register_bsp_webhook"
+
+#: The adapter capability that means "this BSP can be told where to deliver".
+#: Declared in ``capabilities.extra`` by every adapter that implements
+#: ``register_webhook`` for real — see #266 for why the flag and the method have
+#: to agree.
+_WEBHOOK_CAPABILITY = "subscriptions"
+
+
+def _auto_register_webhook_for_app(task, wa_app_pk: int) -> dict:
+    """Register this deployment's webhook receiver with whichever BSP the app is on.
+
+    The body behind :func:`auto_register_bsp_webhook` and its deprecated alias,
+    so both registered task names run identical code with their own retry
+    budget. *task* is the bound Celery task, used only for ``retry``.
+
+    **BSP-neutral at this call site.** The previous version opened with
+    ``if wa_app.bsp != BSPChoices.GUPSHUP: return {"reason": "not_gupshup"}``,
+    which is why a Meta Direct app was created with no subscription at all: the
+    only automatic registration in the codebase declined to run for it, and
+    nothing on screen said so — an operator had to know to press *Refresh
+    Webhooks* by hand, per app (#259). The provider difference is real but it
+    belongs to the adapter, not here:
+
+    * **Gupshup** registers a callback URL per app, ``POST
+      /partner/app/{appId}/subscription``.
+    * **Meta** has no API for the callback URL — it is App Dashboard
+      configuration — and instead needs the WABA subscribed to the app, ``POST
+      /{waba_id}/subscribed_apps``, without which it delivers nothing at all
+      (#264).
+
+    Both are spelled ``adapter.register_webhook(subscription)``, so this
+    function selects the path by asking :func:`~wa.adapters.get_bsp_adapter`
+    for an adapter — the division ``check_template_statuses_cron`` already
+    makes — and never by comparing a BSP.
+
+    Reading ``wa_app.bsp`` raw would reintroduce a second bug on top: a blank
+    column is not "no BSP", it is META (#265), so a raw comparison skips every
+    pre-existing row. :func:`~wa.adapters.resolve_bsp` is the only place that
+    question is answered.
 
     Triggered by the ``post_save`` signal on ``TenantWAApp``.
     """
     from django.conf import settings as django_settings
 
-    from tenants.models import BSPChoices, TenantWAApp
-    from wa.adapters import get_bsp_adapter
+    from tenants.models import TenantWAApp
+    from wa.adapters import get_bsp_adapter, resolve_bsp
     from wa.models import SubscriptionStatus, WASubscription, WebhookEventType
     from wa.services import webhook_identity
 
     try:
         wa_app = TenantWAApp.objects.get(pk=wa_app_pk)
     except TenantWAApp.DoesNotExist:
-        logger.error("auto_register_gupshup_webhook: WAApp pk=%s not found", wa_app_pk)
+        logger.error("%s: WAApp pk=%s not found", _AUTO_REGISTER_LOG, wa_app_pk)
         return {"status": "error", "reason": "wa_app_not_found"}
 
-    if wa_app.bsp != BSPChoices.GUPSHUP:
-        return {"status": "skipped", "reason": "not_gupshup"}
+    bsp = resolve_bsp(wa_app)
 
-    # Build the absolute webhook URL from settings. The path comes from the
-    # receiver registry rather than a literal — this function has already
-    # returned unless the app is on Gupshup, so the answer is not in doubt, but
-    # a hardcoded path here is one more place to edit when a receiver moves.
-    base = getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "").rstrip("/")
-    webhook_path = webhook_identity.legacy_callback_path(BSPChoices.GUPSHUP)
-    webhook_url = f"{base}{webhook_path}"
+    # Whether this BSP can be registered with at all is the adapter's answer,
+    # and it is asked before anything is written: a skip must not leave a
+    # PENDING subscription row behind for a provider that will never confirm it.
+    try:
+        adapter = get_bsp_adapter(wa_app)
+    except NotImplementedError as exc:
+        logger.info("%s: no adapter for BSP %s — skipping app %s (%s)", _AUTO_REGISTER_LOG, bsp, wa_app_pk, exc)
+        return {"status": "skipped", "reason": f"no_adapter_for_bsp:{bsp}", "bsp": bsp}
 
+    if not adapter.supports(_WEBHOOK_CAPABILITY):
+        logger.info(
+            "%s: BSP %s does not support webhook registration — skipping app %s",
+            _AUTO_REGISTER_LOG,
+            bsp,
+            wa_app_pk,
+        )
+        return {"status": "skipped", "reason": f"webhook_registration_unsupported:{bsp}", "bsp": bsp}
+
+    # The app's **own** callback URL, identifier included — the same string
+    # ``webhook_identity.webhook_setup`` hands the client to paste into their BSP
+    # dashboard. Registering the legacy deployment-wide path instead (which is
+    # what subscription refresh still does) would register a URL authenticated
+    # against the deployment-wide secret while the client was told to use theirs:
+    # deliveries would arrive somewhere nobody is watching for them, which is the
+    # silent non-delivery #310 exists to prevent. The legacy path stays reachable
+    # and unchanged for whatever is already registered against it.
+    # Asked through ``registration_callback_url`` rather than ``callback_url``
+    # directly: #334 made that the one place "which URL do we register" is
+    # answered, for this task and the three refresh paths alike, so the four
+    # cannot drift apart again. It returns the per-app URL.
+    webhook_url = webhook_identity.registration_callback_url(wa_app)
+
+    base = (getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "") or "").rstrip("/")
     if not base or base.startswith("http://localhost"):
         logger.warning(
-            "auto_register_gupshup_webhook: DEFAULT_WEBHOOK_BASE_URL is %s "
-            "— Gupshup will not be able to reach this. "
+            "%s: DEFAULT_WEBHOOK_BASE_URL is %r — %s will not be able to reach this. "
             "Subscription created locally but BSP registration will likely fail.",
+            _AUTO_REGISTER_LOG,
             base,
+            bsp,
         )
 
-    # Avoid duplicates — if there's already an ACTIVE subscription for this
-    # app pointing at our webhook URL, skip.
-    existing = WASubscription.objects.filter(
-        wa_app=wa_app,
-        webhook_url=webhook_url,
-        status=SubscriptionStatus.ACTIVE,
-    ).exists()
+    # Avoid duplicates. Both URLs count: an app already registered under the
+    # legacy path has a working subscription, and adding a second one would burn
+    # one of Gupshup's five slots per app to say the same thing twice.
+    existing = (
+        WASubscription.objects.filter(
+            wa_app=wa_app,
+            status=SubscriptionStatus.ACTIVE,
+        )
+        .filter(webhook_url__in=[webhook_url, webhook_identity.legacy_callback_url(wa_app)])
+        .exists()
+    )
     if existing:
-        logger.info("auto_register_gupshup_webhook: active subscription already exists for app %s", wa_app_pk)
-        return {"status": "skipped", "reason": "already_exists"}
+        logger.info("%s: active subscription already exists for app %s", _AUTO_REGISTER_LOG, wa_app_pk)
+        return {"status": "skipped", "reason": "already_exists", "bsp": bsp}
 
-    # Create the subscription record
-    all_event_types = [et.value for et in WebhookEventType]
+    # Every event category a provider can actually be asked for. Enumerating
+    # ``WebhookEventType`` wholesale — which is what this did — also asks for
+    # ``UNKNOWN``, which is not a category any BSP offers: it is our own bucket
+    # for an inbound event the classifier could not place. Gupshup's adapter
+    # passes an unmapped event type through verbatim, so ``UNKNOWN`` became an
+    # invalid subscription mode and pydantic refused the whole payload before a
+    # request was sent — the registration then exhausted its retries and
+    # subscribed to nothing at all.
+    requested_event_types = [et.value for et in WebhookEventType if et != WebhookEventType.UNKNOWN]
     subscription = WASubscription.objects.create(
         wa_app=wa_app,
         webhook_url=webhook_url,
-        event_types=all_event_types,
+        event_types=requested_event_types,
         status=SubscriptionStatus.PENDING,
     )
     logger.info(
-        "auto_register_gupshup_webhook: created WASubscription pk=%s for app %s",
+        "%s: created WASubscription pk=%s for app %s on %s",
+        _AUTO_REGISTER_LOG,
         subscription.pk,
         wa_app_pk,
+        bsp,
     )
 
-    # Register with Gupshup via adapter
+    # Register with the BSP via its adapter
     try:
-        adapter = get_bsp_adapter(wa_app)
         result = adapter.register_webhook(subscription)
 
         if result.success:
             logger.info(
-                "auto_register_gupshup_webhook: SUCCESS — bsp_sub_id=%s",
+                "%s: SUCCESS on %s — bsp_sub_id=%s",
+                _AUTO_REGISTER_LOG,
+                bsp,
                 subscription.bsp_subscription_id,
             )
-            return {"status": "success", "subscription_id": str(subscription.pk)}
+            return {"status": "success", "subscription_id": str(subscription.pk), "bsp": bsp}
 
         logger.warning(
-            "auto_register_gupshup_webhook: Gupshup rejected — %s",
+            "%s: %s rejected the registration — %s",
+            _AUTO_REGISTER_LOG,
+            bsp,
             result.error_message,
         )
-        raise self.retry(
+        raise task.retry(
             exc=Exception(result.error_message or "BSP registration failed"),
         )
 
-    except self.MaxRetriesExceededError:
+    except task.MaxRetriesExceededError:
         logger.error(
-            "auto_register_gupshup_webhook: max retries exceeded for app %s",
+            "%s: max retries exceeded for app %s on %s",
+            _AUTO_REGISTER_LOG,
+            wa_app_pk,
+            bsp,
+        )
+        return {"status": "error", "reason": "max_retries_exceeded", "bsp": bsp}
+    except NotImplementedError:
+        # The capability flag above said yes and the method says no. #266 is that
+        # disagreement in the other direction — a flag omitted for a method that
+        # was fully implemented — so it is a mistake this codebase has made once
+        # already, and the likely way in is a new adapter copying its
+        # ``capabilities`` wholesale and leaving ``register_webhook`` a stub.
+        # Retrying cannot make an unimplemented method succeed, so this is the
+        # same skip the capability check would have produced, arrived at late.
+        subscription.status = SubscriptionStatus.FAILED
+        subscription.error_message = f"{bsp} adapter does not implement register_webhook"
+        subscription.save(update_fields=["status", "error_message"])
+        logger.error(
+            "%s: %s declares the %r capability but does not implement register_webhook — skipping app %s",
+            _AUTO_REGISTER_LOG,
+            bsp,
+            _WEBHOOK_CAPABILITY,
             wa_app_pk,
         )
-        return {"status": "error", "reason": "max_retries_exceeded"}
+        return {"status": "skipped", "reason": f"webhook_registration_unsupported:{bsp}", "bsp": bsp}
     except Exception as exc:
         logger.exception(
-            "auto_register_gupshup_webhook: unexpected error for app %s — %s",
+            "%s: unexpected error for app %s on %s — %s",
+            _AUTO_REGISTER_LOG,
             wa_app_pk,
+            bsp,
             exc,
         )
-        raise self.retry(exc=exc)
+        raise task.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=15)
+def auto_register_bsp_webhook(self, wa_app_pk: int):
+    """Auto-register this deployment's webhook receiver for a newly created WAApp.
+
+    Dispatched by name from ``tenants.signals``. See
+    :func:`_auto_register_webhook_for_app` for what it does and why it asks
+    ``get_bsp_adapter`` rather than testing the BSP.
+    """
+    return _auto_register_webhook_for_app(self, wa_app_pk)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=15, name="wa.tasks.auto_register_gupshup_webhook")
+def auto_register_gupshup_webhook(self, wa_app_pk: int):
+    """Deprecated name for :func:`auto_register_bsp_webhook`. Dispatched by nobody.
+
+    Kept registered, and kept behaving identically, for the rolling-deploy
+    window: during a deploy an *old* web process goes on enqueuing
+    ``wa.tasks.auto_register_gupshup_webhook`` while a *new* worker consumes the
+    queue, and a name the new worker does not know is a task that is acked and
+    dropped — which for this task means an app created mid-deploy with no
+    subscription, the exact bug #259 is about. Same shape as #320's ``tenant_id``
+    fallback: the compatibility arm costs three lines and the failure it prevents
+    is silent.
+
+    The reverse direction — a new web process enqueuing ``auto_register_bsp_webhook``
+    to an old worker — cannot be fixed from this side; deploy workers first, and
+    note that the *Refresh Webhooks* admin action remains the recovery for any app
+    that did slip through.
+
+    Safe to delete once no old worker can still be running.
+    """
+    return _auto_register_webhook_for_app(self, wa_app_pk)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

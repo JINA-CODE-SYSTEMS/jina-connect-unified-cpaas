@@ -1,5 +1,3 @@
-import logging
-
 from django.db.models import Q
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -13,22 +11,26 @@ from tenants.models import TenantUser
 from users.models import User
 from users.serializers import JwtUserSerializer
 
-logger = logging.getLogger(__name__)
-
 
 class CrossTenantJwtUserSerializer(JwtUserSerializer):
-    """Mints a token that admits it was issued across a tenant boundary (#301).
+    """Marked a token as issued across a tenant boundary (#301). Now unused.
 
-    A superuser names any tenant with ``X-ACCESS-KEY`` and, until these claims
-    existed, received a token whose claims were identical to one the tenant's
-    own owner would get: same ``tenant_id``, same role, nothing to distinguish
-    it. Nothing downstream — a log line, an audit trail, a UI banner — could
-    tell a borrowed session from a member's.
+    #327 removed the superuser exemption this served: ``/token/`` no longer
+    issues a token for an organisation the user does not belong to, so nothing
+    selects this serializer and no token carries ``cross_tenant`` or
+    ``home_tenant_id`` any more.
 
-    Lives here rather than beside JwtUserSerializer because only this endpoint
-    can decide a token is borrowed, and a serializer nothing else reaches for
-    cannot be picked up by accident. #300 replaces the path outright; these
-    claims are what makes the gap visible until it does.
+    **Kept deliberately rather than deleted.** Nothing in this repository reads
+    either claim — the only readers were the view below and its own test, both
+    changed in #327 — but the web client is a separate repository that could
+    not be checked from here, and a frontend that branches on a claim is not
+    visible from the backend. Retaining an unreachable writer costs nothing;
+    guessing wrong about a deployed client does not.
+
+    Safe to delete once someone has confirmed ``jina-connect-web`` does not
+    read ``cross_tenant`` or ``home_tenant_id``. Note that deletion cannot
+    change the shape of any token that is still issued: the only tokens that
+    ever carried these claims are the borrowed ones #327 refuses outright.
     """
 
     def get_token(self, user):
@@ -55,7 +57,12 @@ class JwtTokenObtainPairView(TokenObtainPairView):
             openapi.Parameter(
                 "X-ACCESS-KEY",
                 openapi.IN_HEADER,
-                description="Tenant access key for authentication",
+                description=(
+                    "Access key naming which of the caller's own organisations to scope the token to. "
+                    "The caller must belong to it: a key for an organisation they are not a member of "
+                    "is refused, superuser or not (#327). To view another organisation, use "
+                    "POST /impersonate/{tenant_id}/, which is read-only, time-boxed and audited."
+                ),
                 type=openapi.TYPE_STRING,
                 required=False,
                 example="your-tenant-access-key-here",
@@ -115,40 +122,34 @@ class JwtTokenObtainPairView(TokenObtainPairView):
             tenant = user.tenant
         # TenantUser mapping check
         is_member = TenantUser.objects.filter(user=user, tenant=tenant).exists()
-        if not is_member and not user.is_superuser:
-            raise AuthenticationFailed("User does not belong to this tenant")
 
-        # #301: the tenant is chosen by the caller, in a request header, not
-        # derived from the authenticated user — so superuser credentials plus
-        # any organisation's access key reach that organisation. The exemption
-        # stays for now, because removing it would lock operators out of support
-        # work before #300 lands an audited replacement, but it is no longer
-        # silent: the warning below is the audit trail, and the serializer marks
-        # the token so a borrowed session can be recognised as one.
+        # #327: a token is only ever issued for an organisation the user belongs
+        # to. Until now a superuser was exempt from this check outright, and the
+        # tenant is chosen by the caller in the X-ACCESS-KEY header rather than
+        # derived from the authenticated user — so superuser credentials plus any
+        # organisation's access key produced a token indistinguishable from that
+        # organisation's own owner's, unbounded and with full write access.
         #
-        # A superuser with no tenant at all is not borrowing anything, so
-        # tenant=None stays off this path instead of filling the log with it.
-        cross_tenant = not is_member and tenant is not None
-        if cross_tenant:
-            logger.warning(
-                "Cross-tenant token issued (#301): superuser %s (user_id=%s) obtained a token for tenant_id=%s "
-                "via X-ACCESS-KEY without a TenantUser membership",
-                user.username,
-                user.pk,
-                tenant.pk,
-            )
+        # #301 kept the exemption and made it loud, because there was no other
+        # way to do support work. There is now: /impersonate/ (#300) is
+        # read-only, expires in 15 minutes, cannot be refreshed, and is refused
+        # unless its audit row is live — and it needs nothing from the customer,
+        # where this path needed their access key.
+        #
+        # The one case that is not a crossing is a superuser with no membership
+        # anywhere, which is what `createsuperuser` leaves behind. Its token
+        # names no organisation at all (`tenant_id: None`), so it reaches no
+        # customer's data; refusing it would lock a fresh platform admin out of
+        # /token/ and so out of /impersonate/, which is started with their own
+        # token. Non-superusers in that state are refused exactly as before.
+        tenantless_superuser = user.is_superuser and tenant is None
+        if not is_member and not tenantless_superuser:
+            raise AuthenticationFailed("User does not belong to this tenant")
 
         # Generate token - pass the actual username for the serializer
         data = request.data.copy()
         data["username"] = user.username  # Use actual username for token generation
-        serializer_class = CrossTenantJwtUserSerializer if cross_tenant else self.get_serializer_class()
-        serializer = serializer_class(data=data, context={"tenant": tenant})
+        serializer = self.get_serializer_class()(data=data, context={"tenant": tenant})
         serializer.is_valid(raise_exception=True)
 
-        response_data = dict(serializer.validated_data)
-        if cross_tenant:
-            # Said in the response body too, so a client can show that this
-            # session is not the organisation's own (#301).
-            response_data["cross_tenant"] = True
-
-        return Response(response_data, status=200)
+        return Response(dict(serializer.validated_data), status=200)
