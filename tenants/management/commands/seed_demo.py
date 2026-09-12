@@ -86,9 +86,14 @@ class Command(BaseCommand):
             )
 
         # ── 4. API key (used by MCP tools) ───────────────────────────────
+        # Keyed by the digest, since the key column holds one now (#301). The
+        # demo key stays a fixed string so the printed instructions below keep
+        # working across re-seeds — it is the one key nobody needs to recover,
+        # because it is in this file.
         TenantAccessKey.objects.get_or_create(
             tenant=tenant,
-            key=DEMO_API_KEY,
+            key_hash=TenantAccessKey.hash_key(DEMO_API_KEY),
+            defaults={"key_prefix": DEMO_API_KEY[: TenantAccessKey.PREFIX_LENGTH]},
         )
         self.stdout.write(self.style.SUCCESS(f"  API key: {DEMO_API_KEY}"))
 

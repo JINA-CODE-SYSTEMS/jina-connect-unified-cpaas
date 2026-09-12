@@ -1,7 +1,10 @@
+import secrets
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, RegexValidator
 from django.db import models
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 from djmoney.models.fields import MoneyField
 from simple_history.models import HistoricalRecords
 
@@ -721,17 +724,126 @@ class TenantUser(BaseTenantModelForFilterUser):
 class TenantAccessKey(BaseModelWithOwner):
     """
     Model to store access keys for a tenant.
+
     Attributes:
         tenant (ForeignKey): Reference to the Tenant model.
-        key (CharField): The access key for the tenant.
+        key_hash (CharField): Keyed digest of the access key — the stored form.
+        key_prefix (CharField): Leading characters of the key, for identification.
+        revoked_at (DateTimeField): When the key was revoked, if it was.
     """
 
+    # The raw key is no longer stored (#301). It is a bearer credential — whoever
+    # holds it names a tenant to the token endpoint and to every MCP tool call —
+    # so a database dump, backup or read replica must not be enough to replay
+    # one. Only the digest is kept, which is why ``issue`` and ``rotate`` return
+    # the plaintext: that return value is the one and only chance to read it.
+    #
+    # Keyed HMAC rather than a bare SHA-256 because operators have chosen short,
+    # guessable access keys in the past; an unkeyed digest of a guessable key is
+    # itself guessable from a stolen dump, which would undo the point.
+    HASH_SALT = "tenants.TenantAccessKey.key"
+
+    # Long enough to tell two of a tenant's keys apart during a rotation,
+    # short enough to be worthless on its own.
+    PREFIX_LENGTH = 8
+
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="access_keys")
-    key = models.CharField(max_length=255, unique=True)
+    key_hash = models.CharField(
+        max_length=64,
+        unique=True,
+        help_text="HMAC-SHA256 digest of the access key. The key itself is never stored.",
+    )
+    key_prefix = models.CharField(
+        max_length=12,
+        blank=True,
+        default="",
+        help_text="First characters of the key, so a key can be named in logs and admin without revealing it.",
+    )
+    revoked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this key was revoked. Set together with is_active=False by revoke().",
+    )
     name = None
 
+    # ── Hashing ───────────────────────────────────────────────────────
+    @classmethod
+    def hash_key(cls, raw_key: str) -> str:
+        """Digest ``raw_key`` the way a stored key was digested."""
+        return salted_hmac(cls.HASH_SALT, raw_key, algorithm="sha256").hexdigest()
+
+    @classmethod
+    def hash_candidates(cls, raw_key: str) -> list:
+        """Every digest ``raw_key`` could be stored under.
+
+        SECRET_KEY_FALLBACKS exists so SECRET_KEY can be rotated without
+        invalidating everything derived from it. Keying the digest on
+        SECRET_KEY without honouring the fallbacks would turn a routine
+        SECRET_KEY rotation into a silent revocation of every tenant's key
+        at once — the kind of outage nobody connects to the rotation.
+        """
+        digests = [cls.hash_key(raw_key)]
+        for secret in getattr(settings, "SECRET_KEY_FALLBACKS", []):
+            digests.append(salted_hmac(cls.HASH_SALT, raw_key, secret=secret, algorithm="sha256").hexdigest())
+        return digests
+
+    @staticmethod
+    def generate_key() -> str:
+        """A fresh access key. Prefixed so a leaked string is recognisable."""
+        return f"jc_{secrets.token_urlsafe(32)}"
+
+    # ── Issue / resolve / rotate / revoke ─────────────────────────────
+    @classmethod
+    def issue(cls, tenant, **kwargs):
+        """Create a key for ``tenant``; return ``(instance, raw_key)``.
+
+        The caller must hand ``raw_key`` to its holder immediately — nothing
+        can recover it afterwards.
+        """
+        raw_key = cls.generate_key()
+        instance = cls.objects.create(
+            tenant=tenant,
+            key_hash=cls.hash_key(raw_key),
+            key_prefix=raw_key[: cls.PREFIX_LENGTH],
+            **kwargs,
+        )
+        return instance, raw_key
+
+    @classmethod
+    def resolve(cls, raw_key: str):
+        """The live key matching ``raw_key``, or None.
+
+        Filters on both flags: ``is_active`` is what BaseModel-aware code
+        already reads and ``revoked_at`` is the record of when, so a row that
+        somehow carries one without the other still stops authenticating.
+        """
+        return (
+            cls.objects.select_related("tenant")
+            .filter(key_hash__in=cls.hash_candidates(raw_key), is_active=True, revoked_at__isnull=True)
+            .first()
+        )
+
+    def rotate(self) -> str:
+        """Replace this key's secret in place; return the new plaintext.
+
+        In-place rotation cuts the old secret off the moment it commits. For a
+        handover with overlap, ``issue`` a second key for the tenant, move the
+        holder across, then ``revoke`` the first — a tenant may hold several.
+        """
+        raw_key = self.generate_key()
+        self.key_hash = self.hash_key(raw_key)
+        self.key_prefix = raw_key[: self.PREFIX_LENGTH]
+        self.save(update_fields=["key_hash", "key_prefix", "updated_at"])
+        return raw_key
+
+    def revoke(self):
+        """Stop this key authenticating, and record when."""
+        self.is_active = False
+        self.revoked_at = timezone.now()
+        self.save(update_fields=["is_active", "revoked_at", "updated_at"])
+
     def __str__(self):
-        return f"{self.tenant.name}: {self.key[:8]}..."
+        return f"{self.tenant.name}: {self.key_prefix}..."
 
 
 class TenantMedia(BaseTenantModelForFilterUser):
