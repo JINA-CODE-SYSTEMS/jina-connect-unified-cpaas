@@ -217,17 +217,35 @@ class GupshupWebhookView(View):
 
     def get(self, request, *args, **kwargs):
         """
-        Gupshup (and META) webhook verification.
+        Gupshup webhook verification.
 
-        Gupshup sends a GET with ``hub.mode``, ``hub.verify_token``, and
-        ``hub.challenge``.  We echo back the challenge to prove ownership.
+        Gupshup sends a GET with ``hub.mode=subscribe``,
+        ``hub.verify_token=<your_token>``, and ``hub.challenge=<int>``.
+
+        We verify the presented token against ``GUPSHUP_WEBHOOK_VERIFY_TOKEN``
+        and only then echo back the challenge, so that reaching the endpoint is
+        not by itself enough to claim ownership of it.
+
+        Unset-secret behaviour: when ``GUPSHUP_WEBHOOK_VERIFY_TOKEN`` is empty
+        the token check is skipped and the challenge is echoed — the same
+        "configure the secret to enable the check" rule ``MetaWebhookView.get``
+        applies to ``META_WEBHOOK_VERIFY_TOKEN``, kept identical on purpose so
+        the two handshakes cannot drift apart.
+
+        The presented token is never logged: it is an attacker-supplied guess
+        at a shared secret, and log sinks are a wider audience than the secret.
         """
         mode = request.GET.get("hub.mode")
-        request.GET.get("hub.verify_token")
+        token = request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
 
+        expected_token = getattr(django_settings, "GUPSHUP_WEBHOOK_VERIFY_TOKEN", "")
+
         if mode == "subscribe" and challenge:
-            # Optional: verify token against WASubscription.verify_token
+            if expected_token and token != expected_token:
+                logger.warning("Gupshup webhook verification FAILED — hub.verify_token mismatch")
+                return JsonResponse({"error": "Verify token mismatch"}, status=403)
+
             logger.info("Gupshup webhook verification — echoing challenge")
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
