@@ -57,10 +57,50 @@ Jina Connect supports WhatsApp Business API through two BSP (Business Solution P
 
 3. **Register webhook URL** with your BSP
 
-   | BSP | Webhook URL |
+   Every app has its own callback URL, carrying an opaque identifier that names
+   it. Read the pair to configure — URL and verify token — from the app:
+
+   ```bash
+   curl http://localhost:8000/wa/v2/apps/<app-id>/webhook-setup/ \
+     -H "Authorization: Bearer <token>"
+   ```
+
+   ```json
+   {
+     "wa_app": "12",
+     "bsp": "META",
+     "callback_url": "https://your-domain.com/wa/v2/webhooks/meta/whk_Xq3…/",
+     "identifier_hint": "whk_Xq3aB9cd…",
+     "verify_token": "your-verify-token",
+     "verify_token_scope": "deployment",
+     "verify_token_configured": true
+   }
+   ```
+
+   Paste `callback_url` into the **Callback URL** field of the client's own Meta
+   App Dashboard (or Gupshup app settings) and `verify_token` beside it. The
+   endpoint needs the `wa_app.manage` permission: the URL is a setup credential,
+   because whoever holds it can post at that app's receiver.
+
+   | BSP | Per-app webhook URL |
    |---|---|
-   | Meta | `https://your-domain.com/wa/v2/webhooks/meta/` |
-   | Gupshup | `https://your-domain.com/wa/v2/webhooks/gupshup/` |
+   | Meta | `https://your-domain.com/wa/v2/webhooks/meta/<webhook-identifier>/` |
+   | Gupshup | `https://your-domain.com/wa/v2/webhooks/gupshup/<webhook-identifier>/` |
+
+   <Aside type="caution" title="The unsuffixed URL is single-app">
+   The older shared paths — `/wa/v2/webhooks/meta/` and
+   `/wa/v2/webhooks/gupshup/`, with no identifier — still work exactly as before,
+   so an upgrade never requires re-registering a URL that is already configured.
+   They authenticate against the deployment-wide `META_APP_SECRET` and verify
+   token, which means they cannot tell two clients' apps apart: **use them for at
+   most one app, and never share one between clients.** A deployment hosting
+   several client-owned Meta apps gives each one its own per-app URL above.
+   </Aside>
+
+   `verify_token_scope` reports whose token the handshake checks. It is
+   `deployment` today — one token for the whole instance; per-app verify tokens
+   are tracked separately. A setup screen should show the token it is given
+   rather than assuming.
 
 </Steps>
 
@@ -138,6 +178,23 @@ Inbound messages and status updates arrive via webhooks:
 | `message` | Incoming message from user |
 | `status` | Delivery status update (sent, delivered, read, failed) |
 | `template_status` | Template approval status change |
+
+#### How a delivery is attributed to an app
+
+On a **per-app URL** the path decides: the identifier is resolved to one app in a
+single indexed lookup, and the body is only read afterwards. Nothing the payload
+claims can move an event to another app.
+
+On the **legacy shared URL** the body decides, as it always has:
+`metadata.phone_number_id` first, then `entry[0].id` (the WABA) when the payload
+carries no number.
+
+A delivery to an identifier no app owns is answered `200 {"status": "ignored",
+"reason": "unknown_webhook_identifier"}` and nothing is written. The `200` is
+deliberate: Meta throttles delivery to the whole deployment on non-200
+responses, so one client's stale URL must not slow every other client's events
+down. Such rejections are counted per BSP per day, and the identifier is never
+written to a log in full — only a short prefix.
 
 ## Subscriptions
 

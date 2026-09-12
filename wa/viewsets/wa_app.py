@@ -60,6 +60,8 @@ class WAAppViewSet(BaseTenantModelViewSet):
         "quota": "wa_app.view",
         "reset_counter": "wa_app.manage",
         "capabilities": "wa_app.view",
+        # The per-app callback URL is a setup credential, not app metadata (#310).
+        "webhook_setup": "wa_app.manage",
         "default": "wa_app.view",
     }
 
@@ -302,3 +304,68 @@ class WAAppViewSet(BaseTenantModelViewSet):
                 "capabilities": sorted(adapter.CAPABILITIES),
             }
         )
+
+    @swagger_auto_schema(
+        operation_description=(
+            "Return the webhook setup pair for this app: the callback URL to paste into the client's own "
+            "BSP dashboard, and the verify token to paste beside it. The URL carries the app's opaque "
+            "webhook identifier, so deliveries to it are attributed from the URL rather than from the "
+            "request body. Treat the response as a credential — whoever holds the URL can address this "
+            "app's receiver."
+        ),
+        operation_summary="Get Webhook Setup",
+        operation_id="get_wa_app_webhook_setup",
+        tags=["WhatsApp Apps (v2)"],
+        responses={
+            200: openapi.Response(
+                description="Webhook setup pair",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "wa_app": openapi.Schema(type=openapi.TYPE_STRING),
+                        "bsp": openapi.Schema(type=openapi.TYPE_STRING),
+                        "callback_url": openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description="Register this exact URL with the BSP.",
+                        ),
+                        "identifier_hint": openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description="Truncated identifier, safe to show in lists and logs.",
+                        ),
+                        "verify_token": openapi.Schema(type=openapi.TYPE_STRING),
+                        "verify_token_scope": openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            enum=["deployment", "app"],
+                            description=(
+                                "Whose token this is. 'deployment' means the handshake validates one "
+                                "token for the whole instance; per-app verify tokens are #307."
+                            ),
+                        ),
+                        "verify_token_configured": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                    },
+                ),
+            ),
+            401: openapi.Response(description="Authentication required"),
+            403: openapi.Response(description="Permission denied"),
+            404: openapi.Response(description="WA App not found"),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="webhook-setup")
+    def webhook_setup(self, request, pk=None):
+        """The callback URL and verify token a client configures (#310).
+
+        Gated on ``wa_app.manage`` rather than ``wa_app.view``: the URL contains
+        the app's webhook identifier, and anyone holding it can POST at the
+        app's receiver. That is a setup credential, so it belongs with the roles
+        that do setup (owner/admin) and not with every role that can read the
+        app list — which is the same line #251 drew for the BSP identifiers.
+
+        ``request`` is passed down only as a fallback for building an absolute
+        URL; ``DEFAULT_WEBHOOK_BASE_URL`` wins when configured, because that is
+        the deployment's own statement of where it lives and the ``Host`` header
+        is not.
+        """
+        from wa.services import webhook_identity
+
+        wa_app = self.get_object()
+        return Response(webhook_identity.webhook_setup(wa_app, request=request))

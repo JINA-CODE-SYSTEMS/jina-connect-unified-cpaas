@@ -20,10 +20,30 @@ Security:
     - Rate-limiting should be handled at the reverse-proxy / WAF layer.
 
 URL layout (registered in ``wa/urls.py``):
-    POST /wa/v2/webhooks/gupshup/         -- Gupshup callback receiver
+    POST /wa/v2/webhooks/gupshup/         -- Gupshup callback receiver (legacy, shared)
     GET  /wa/v2/webhooks/gupshup/         -- Gupshup verification (hub.challenge)
-    POST /wa/v2/webhooks/meta/            -- META Cloud API callback receiver
+    POST /wa/v2/webhooks/gupshup/<id>/    -- Gupshup callback receiver for one app
+    GET  /wa/v2/webhooks/gupshup/<id>/    -- Gupshup verification for one app
+    POST /wa/v2/webhooks/meta/            -- META Cloud API callback receiver (legacy, shared)
     GET  /wa/v2/webhooks/meta/            -- META verification (hub.challenge)
+    POST /wa/v2/webhooks/meta/<id>/       -- META callback receiver for one app
+    GET  /wa/v2/webhooks/meta/<id>/       -- META verification for one app
+
+``<id>`` is ``TenantWAApp.webhook_identifier``: an opaque, unguessable string
+that names the sending app *in the path*, so the app is known before the body is
+parsed and a per-app secret can be selected (#310). See
+``wa.services.webhook_identity``.
+
+The two shapes are both permanent, and they differ in one important way:
+
+* **The suffixed path identifies one app.** Each client registers their own
+  URL, and a delivery to it is attributed from the URL, not from the body.
+* **The unsuffixed path is single-app.** It authenticates against the
+  deployment-wide ``META_APP_SECRET`` / verify token, so it cannot tell two
+  clients' apps apart and must not be shared between clients. It behaves
+  exactly as it always has — self-hosters and the live deployment have it
+  registered in Meta's App Dashboard, and an upgrade must not require anyone to
+  re-register a URL.
 """
 
 from __future__ import annotations
@@ -174,6 +194,79 @@ def _extract_meta_phone_number_id(payload: Dict[str, Any]) -> Optional[str]:
         return None
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Per-app webhook identity (#310)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Reason codes for a delivery addressed to a per-app URL that resolves to
+# nothing usable. Like the signature reasons below, these travel in a 200 body:
+# a non-200 makes META throttle delivery to the whole deployment, so every
+# client's events would slow down because one client's URL is stale.
+APP_UNKNOWN_IDENTIFIER = "unknown_webhook_identifier"
+APP_WRONG_BSP = "identifier_belongs_to_other_bsp"
+
+
+def _mask_webhook_identifier(webhook_identifier: Optional[str]) -> str:
+    """The only form of an identifier that may appear in a log line."""
+    from wa.services import webhook_identity
+
+    return webhook_identity.mask(webhook_identifier)
+
+
+def _resolve_webhook_app(bsp: str, webhook_identifier: str):
+    """Resolve the app a per-app webhook URL names.
+
+    Returns ``(wa_app, reason)``: exactly one of the two is set. A reason means
+    the caller answers 200, writes nothing, and is done.
+
+    One indexed query (see ``webhook_identity.resolve_app``), so the cost is the
+    same whether the instance hosts one app or a hundred.
+
+    The identifier is never logged in full. It is the whole of the authority to
+    address an app's receiver — a log sink is a wider audience than the client
+    who was given the URL — so only the masked hint goes out, which is still
+    enough to tell a burst of scans from one client's stale dashboard entry.
+    """
+    from wa.services import webhook_identity
+
+    wa_app = webhook_identity.resolve_app(webhook_identifier)
+
+    if wa_app is None:
+        # Counted, not stored: a public URL shape invites scanning, and an
+        # unauthenticated INSERT per junk request is a worse problem than the
+        # one being measured. D-7's durable aggregate is its own piece of work.
+        total = webhook_identity.record_unknown_identifier(bsp)
+        logger.warning(
+            "%s webhook: no app owns this webhook identifier (hint=%s, reason=%s, today=%s)",
+            bsp,
+            _mask_webhook_identifier(webhook_identifier),
+            APP_UNKNOWN_IDENTIFIER,
+            total,
+        )
+        return None, APP_UNKNOWN_IDENTIFIER
+
+    from wa.adapters import resolve_bsp
+
+    app_bsp = resolve_bsp(wa_app)
+    if app_bsp != bsp:
+        # The identifier is real but it was pasted under the wrong receiver —
+        # a client copying one URL into another BSP's dashboard. Distinguished
+        # from "unknown" because the fix is different, and counted the same way
+        # because the delivery is still refused.
+        webhook_identity.record_unknown_identifier(bsp)
+        logger.warning(
+            "%s webhook: identifier belongs to a %s app (hint=%s, app=%s, reason=%s)",
+            bsp,
+            app_bsp,
+            _mask_webhook_identifier(webhook_identifier),
+            wa_app.pk,
+            APP_WRONG_BSP,
+        )
+        return None, APP_WRONG_BSP
+
+    return wa_app, ""
+
+
 # Reason codes for a rejected META delivery.  META is always answered with
 # 200 (a non-200 throttles delivery), so the ``reason`` in the body and the
 # log line are the only places a rejection is ever visible — keep the three
@@ -202,10 +295,14 @@ def _verify_meta_signature(request) -> str:
     ``DEBUG`` is also true, so setting it on a production deployment cannot
     silently disable verification.
 
-    One deployment-wide secret cannot serve several client-owned META apps,
-    but selecting a per-app secret needs the per-app webhook URL identity from
-    #310: until the URL itself names the sender, the only identifier available
-    here lives in the body, which cannot be trusted before it is verified.
+    One deployment-wide secret cannot serve several client-owned META apps.
+    #310 removed the reason it had to: on a per-app URL the path names the
+    sending app, so ``MetaWebhookView.post`` knows the app before it reads a
+    byte of the body and can hand the right secret down here. It does not yet,
+    deliberately — the per-app app-secret column is #311 and the verification
+    that reads it is #306's second half. Until those land, both the legacy and
+    the per-app path verify against ``settings.META_APP_SECRET``, which is a
+    correct single-app deployment and an honest unverifiable one otherwise.
     """
     app_secret = getattr(django_settings, "META_APP_SECRET", "")
     if not app_secret:
@@ -263,11 +360,18 @@ class GupshupWebhookView(View):
 
     GET  — Gupshup verification handshake (returns ``hub.challenge``).
     POST — Receives webhook events and creates ``WAWebhookEvent`` rows.
+
+    Served at two paths, the same pair as the META receiver (#310): the
+    unsuffixed legacy path, which identifies the app from ``gs_app_id`` in the
+    body, and ``/wa/v2/webhooks/gupshup/<webhook_identifier>/``, which
+    identifies it from the URL. Per-app identity is defined for every BSP, not
+    only META (#305 D-4) — a Meta-only version of this would have to be undone
+    when Embedded Signup (#258) lands beside bring-your-own-app.
     """
 
     # ── GET: verification handshake ───────────────────────────────────────
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, *args, webhook_identifier=None, **kwargs):
         """
         Gupshup webhook verification.
 
@@ -286,11 +390,25 @@ class GupshupWebhookView(View):
 
         The presented token is never logged: it is an attacker-supplied guess
         at a shared secret, and log sinks are a wider audience than the secret.
+
+        On a per-app URL the identifier is resolved first, so an unowned one
+        cannot be made to echo a challenge (see ``MetaWebhookView.get`` for why
+        that answer is a 403 while an unowned *delivery* is a 200).
         """
+        from wa.models import BSPChoices
+
         mode = request.GET.get("hub.mode")
         token = request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
 
+        wa_app = None
+        if webhook_identifier is not None:
+            wa_app, identity_reason = _resolve_webhook_app(BSPChoices.GUPSHUP, webhook_identifier)
+            if identity_reason:
+                return JsonResponse({"error": "Unknown webhook URL", "reason": identity_reason}, status=403)
+
+        # SEAM (#307): ``wa_app`` is the app whose own verify token this should
+        # check. Per-app verify-token validation is #307.
         expected_token = getattr(django_settings, "GUPSHUP_WEBHOOK_VERIFY_TOKEN", "")
 
         if mode == "subscribe" and challenge:
@@ -298,26 +416,42 @@ class GupshupWebhookView(View):
                 logger.warning("Gupshup webhook verification FAILED — hub.verify_token mismatch")
                 return JsonResponse({"error": "Verify token mismatch"}, status=403)
 
-            logger.info("Gupshup webhook verification — echoing challenge")
+            logger.info(
+                "Gupshup webhook verification — echoing challenge (app=%s)",
+                wa_app.pk if wa_app is not None else "legacy-path",
+            )
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
         return JsonResponse({"error": "Invalid verification request"}, status=403)
 
     # ── POST: event ingestion ─────────────────────────────────────────────
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, *args, webhook_identifier=None, **kwargs):
         """
         Ingest a webhook event from Gupshup.
 
         Flow:
+        0. On a per-app URL, resolve the app from the path (#310).
         1. Parse JSON body.
-        2. Look up ``WAApp`` via ``gs_app_id``.
+        2. On the legacy path, look up ``WAApp`` via ``gs_app_id``.
         3. Classify event type (TEMPLATE, MESSAGE, STATUS, …).
         4. Create ``WAWebhookEvent`` → triggers signal → Celery pipeline.
         5. Return 200 immediately (processing is async).
         """
         from tenants.models import BSPChoices
         from wa.models import WAApp, WAWebhookEvent
+
+        # --- identify the app from the URL, if this is a per-app URL -------
+        # Before the body is parsed, deliberately: the ordering is the point of
+        # #310, and it is the same here as on the META receiver even though
+        # Gupshup offers no signature to verify — a receiver whose two BSPs
+        # answer an unowned URL differently is a receiver someone will have to
+        # reason about twice.
+        url_app = None
+        if webhook_identifier is not None:
+            url_app, identity_reason = _resolve_webhook_app(BSPChoices.GUPSHUP, webhook_identifier)
+            if identity_reason:
+                return JsonResponse({"status": "ignored", "reason": identity_reason}, status=200)
 
         # --- parse body ---------------------------------------------------
         try:
@@ -327,16 +461,33 @@ class GupshupWebhookView(View):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
         # --- identify the WAApp -------------------------------------------
-        gs_app_id = _extract_gs_app_id(payload)
-        if not gs_app_id:
-            logger.warning("Gupshup webhook: no gs_app_id in payload")
-            return JsonResponse({"error": "Missing gs_app_id"}, status=400)
+        if url_app is not None:
+            # The URL said which app this is, so ``gs_app_id`` is not needed and
+            # is not required: an event missing it is no longer unroutable. It is
+            # still cross-checked, because a mismatch means a client pasted one
+            # app's URL into another app's Gupshup settings and nothing else
+            # would ever say so.
+            wa_app = url_app
+            gs_app_id = _extract_gs_app_id(payload)
+            if gs_app_id and wa_app.app_id and gs_app_id != wa_app.app_id:
+                logger.warning(
+                    "Gupshup webhook: per-app URL for app=%s received an event for gs_app_id=%s "
+                    "(app holds %s) -- recorded against the URL's app",
+                    wa_app.pk,
+                    gs_app_id,
+                    wa_app.app_id,
+                )
+        else:
+            gs_app_id = _extract_gs_app_id(payload)
+            if not gs_app_id:
+                logger.warning("Gupshup webhook: no gs_app_id in payload")
+                return JsonResponse({"error": "Missing gs_app_id"}, status=400)
 
-        try:
-            wa_app = WAApp.objects.get(app_id=gs_app_id, bsp=BSPChoices.GUPSHUP)
-        except WAApp.DoesNotExist:
-            logger.warning("Gupshup webhook: no Gupshup app with app_id=%s", gs_app_id)
-            return JsonResponse({"error": "Unknown app"}, status=404)
+            try:
+                wa_app = WAApp.objects.get(app_id=gs_app_id, bsp=BSPChoices.GUPSHUP)
+            except WAApp.DoesNotExist:
+                logger.warning("Gupshup webhook: no Gupshup app with app_id=%s", gs_app_id)
+                return JsonResponse({"error": "Unknown app"}, status=404)
 
         # --- classify & persist -------------------------------------------
         event_type = _classify_cloud_api_event(payload)
@@ -349,9 +500,11 @@ class GupshupWebhookView(View):
         )
 
         logger.info(
-            "Gupshup webhook ingested: event=%s app=%s pk=%s",
+            "Gupshup webhook ingested: event=%s app=%s wa_app=%s hint=%s pk=%s",
             event_type,
             gs_app_id,
+            wa_app.pk,
+            _mask_webhook_identifier(webhook_identifier),
             webhook_event.pk,
         )
 
@@ -381,13 +534,21 @@ class MetaWebhookView(View):
     POST -- Receives webhook events, verifies ``X-Hub-Signature-256``,
            and creates ``WAWebhookEvent`` rows.
 
-    META identifies the app via ``entry[0].id`` (WABA ID) and
+    Served at two paths (#310):
+
+    * ``/wa/v2/webhooks/meta/<webhook_identifier>/`` — one client's app. The
+      path names the app, so it is known before the body is parsed.
+    * ``/wa/v2/webhooks/meta/`` — the legacy, single-app path. Unchanged: it
+      routes from the body and verifies against the deployment-wide secret,
+      because it is the URL already registered in live App Dashboards.
+
+    On the legacy path META identifies the app via ``entry[0].id`` (WABA ID) and
     ``entry[0].changes[0].value.metadata.phone_number_id``.
     """
 
     # ── GET: verification handshake ───────────────────────────────────────
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, *args, webhook_identifier=None, **kwargs):
         """
         META webhook verification.
 
@@ -396,11 +557,31 @@ class MetaWebhookView(View):
 
         We verify the token against ``META_WEBHOOK_VERIFY_TOKEN`` and
         echo back the challenge.
+
+        On a per-app URL the identifier is resolved first, so a handshake
+        against an identifier no app owns cannot be made to echo a challenge —
+        answering it would tell a scanner that the URL shape is live. 403, not
+        the 200 a *delivery* gets: a failed handshake is visible to the person
+        clicking "Verify and save" in a dashboard, which is exactly who needs to
+        see it, and it is not the POST traffic META throttles on non-200s.
         """
+        from wa.models import BSPChoices
+
         mode = request.GET.get("hub.mode")
         token = request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
 
+        wa_app = None
+        if webhook_identifier is not None:
+            wa_app, reason = _resolve_webhook_app(BSPChoices.META, webhook_identifier)
+            if reason:
+                return JsonResponse({"error": "Unknown webhook URL", "reason": reason}, status=403)
+
+        # SEAM (#307): ``wa_app`` is the app whose own verify token this
+        # handshake should be checking — ``WASubscription.verify_token`` already
+        # exists for it, unwired. Validating it per app is #307 and is
+        # deliberately not done here; until then every handshake, on either
+        # path, checks the one deployment-wide token.
         expected_token = getattr(django_settings, "META_WEBHOOK_VERIFY_TOKEN", "")
 
         if mode == "subscribe" and challenge:
@@ -411,22 +592,28 @@ class MetaWebhookView(View):
                 )
                 return JsonResponse({"error": "Verify token mismatch"}, status=403)
 
-            logger.info("META webhook verification -- echoing challenge")
+            logger.info(
+                "META webhook verification -- echoing challenge (app=%s)",
+                wa_app.pk if wa_app is not None else "legacy-path",
+            )
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
         return JsonResponse({"error": "Invalid verification request"}, status=403)
 
     # ── POST: event ingestion ─────────────────────────────────────────────
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, *args, webhook_identifier=None, **kwargs):
         """
         Ingest a webhook event from META Cloud API.
 
         Flow:
+        0. On a per-app URL, resolve the app from the path (#310) — one indexed
+           query, before anything in the body is believed.
         1. Verify ``X-Hub-Signature-256``.
         2. Parse JSON body.
-        3. Look up ``WAApp`` via ``phone_number_id``, falling back to
-           ``waba_id`` for events that carry no number.
+        3. Identify the ``WAApp``: the path on a per-app URL; on the legacy path
+           ``phone_number_id``, falling back to ``waba_id`` for events that carry
+           no number.
         4. Classify event type.
         5. Create ``WAWebhookEvent`` -> triggers signal -> Celery pipeline.
         6. Return 200 immediately.
@@ -434,11 +621,29 @@ class MetaWebhookView(View):
         from tenants.models import BSPChoices
         from wa.models import WAApp, WAWebhookEvent
 
+        # --- identify the app from the URL, if this is a per-app URL -------
+        # First, because this is the step the rest of #305 is waiting on: with
+        # the app known here, the secret used one line below becomes selectable
+        # per app. An unknown identifier is answered 200 with nothing written.
+        url_app = None
+        if webhook_identifier is not None:
+            url_app, identity_reason = _resolve_webhook_app(BSPChoices.META, webhook_identifier)
+            if identity_reason:
+                return JsonResponse({"status": "ignored", "reason": identity_reason}, status=200)
+
         # --- verify signature ---------------------------------------------
         # An unverifiable delivery is dropped, never ingested (#306).  The 200
         # is deliberate and must stay: META throttles delivery on non-200
         # responses, so the distinct ``reason`` carries what the status code
         # cannot.
+        #
+        # SEAM (#306 second half, #311): when ``url_app`` is set, that app's own
+        # secret is the one that should key this HMAC. The column to read it
+        # from is #311 (one more ``EncryptedTextField``, per #289's pattern) and
+        # passing it in is #306's second half. Neither is half-done here: today
+        # both paths verify against the deployment-wide ``META_APP_SECRET``,
+        # which is correct for a single-app deployment and honestly
+        # unverifiable for any other — the same behaviour as before #310.
         signature_reason = _verify_meta_signature(request)
         if signature_reason:
             logger.warning("META webhook: dropping unverified delivery (reason=%s)", signature_reason)
@@ -456,7 +661,53 @@ class MetaWebhookView(View):
             logger.info("META webhook: ignoring non-WBA object=%s", payload.get("object"))
             return JsonResponse({"status": "ignored"}, status=200)
 
-        # --- identify the WAApp -------------------------------------------
+        # --- per-app URL: the path already said which app this is ----------
+        # Returns here rather than falling through, so the body-routing block
+        # below stays exactly what it was for the legacy path: #309's
+        # precedence rule and its ambiguous-WABA branch are not re-litigated by
+        # this ticket, and a URL that names one app has no ambiguity to resolve.
+        if url_app is not None:
+            event_type = _classify_cloud_api_event(payload)
+            webhook_event = WAWebhookEvent.objects.create(
+                wa_app=url_app,
+                event_type=event_type,
+                bsp=BSPChoices.META,
+                payload=payload,
+            )
+
+            # A cross-check, not a gate. The URL is the identity; the body's
+            # identifiers are the sender's claim about itself. They disagreeing
+            # is worth a line — a client pasting one app's URL into another
+            # app's dashboard looks exactly like this — but the event still
+            # belongs to the app whose URL received it, and refusing it would
+            # throw away a delivery we were correctly given.
+            body_phone_number_id = _extract_meta_phone_number_id(payload)
+            if body_phone_number_id and url_app.phone_number_id and body_phone_number_id != url_app.phone_number_id:
+                logger.warning(
+                    "META webhook: per-app URL for app=%s received an event for phone_number_id=%s "
+                    "(app holds %s) -- recorded against the URL's app",
+                    url_app.pk,
+                    body_phone_number_id,
+                    url_app.phone_number_id,
+                )
+
+            logger.info(
+                "META webhook ingested via per-app URL: event=%s app=%s hint=%s pk=%s",
+                event_type,
+                url_app.pk,
+                _mask_webhook_identifier(webhook_identifier),
+                webhook_event.pk,
+            )
+            return JsonResponse(
+                {
+                    "status": "received",
+                    "event_id": str(webhook_event.pk),
+                    "event_type": event_type,
+                },
+                status=200,
+            )
+
+        # --- identify the WAApp (legacy path: from the body) ---------------
         waba_id = _extract_meta_waba_id(payload)
         phone_number_id = _extract_meta_phone_number_id(payload)
 

@@ -64,6 +64,31 @@ class TenantWAAppAdmin(admin.ModelAdmin):
     list_filter = ("bsp", "is_active", "tenant")
     search_fields = ("app_name", "app_id", "wa_number")
     actions = ["reset_and_register_webhooks"]
+    readonly_fields = ("webhook_identifier_hint", "per_app_callback_url")
+
+    @admin.display(description="Webhook identifier")
+    def webhook_identifier_hint(self, obj):
+        """The truncated identifier — enough to match a row to a log line.
+
+        The full value lives in ``per_app_callback_url`` below, where it is
+        there to be copied. This column exists so the list and the change form
+        can *refer* to an identifier without reproducing it (#310).
+        """
+        return obj.webhook_identifier_hint or "—"
+
+    @admin.display(description="Per-app callback URL")
+    def per_app_callback_url(self, obj):
+        """The URL an operator pastes into a client's BSP dashboard (#305 D-2).
+
+        Operator-assisted setup is a supported path, so the URL has to be
+        readable somewhere an operator works. The client-facing equivalent is
+        ``GET /wa/v2/apps/<id>/webhook-setup/``.
+        """
+        from wa.services import webhook_identity
+
+        if not obj.pk or not obj.webhook_identifier:
+            return "—"
+        return webhook_identity.callback_url(obj)
 
     @admin.display(description="Webhook Status")
     def subscription_status(self, obj):
