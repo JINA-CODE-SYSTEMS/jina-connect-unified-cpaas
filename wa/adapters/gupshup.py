@@ -268,6 +268,11 @@ class GupshupAdapter(BaseBSPAdapter):
                 success=False,
                 provider=self.PROVIDER_NAME,
                 error_message=f"Gupshup API call failed: {exc}",
+                # Same reason as META's branch: the client raises on any non-2xx,
+                # so a 429's Retry-After is only reachable from the exception
+                # (#271). Both adapters fill the field, so the caller honouring
+                # the interval never has to ask who answered.
+                response_headers=self._response_headers(exc),
             )
 
         response = response or {}

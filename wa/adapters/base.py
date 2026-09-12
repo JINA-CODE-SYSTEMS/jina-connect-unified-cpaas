@@ -23,6 +23,8 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from jina_connect.platform_choices import PlatformChoices
@@ -41,6 +43,44 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _retry_after_seconds(raw: Any) -> Optional[int]:
+    """Parse a ``Retry-After`` header value into seconds.
+
+    RFC 9110 allows two spellings — delta-seconds and an HTTP-date — and
+    providers use both. Anything else is treated as absent: a malformed header
+    must never take a send down, it just means the caller falls back to its own
+    retry interval (#271).
+
+    A non-positive interval is also "absent": the provider is not asking us to
+    wait, so there is nothing to honour.
+    """
+    if raw is None:
+        return None
+
+    value = str(raw).strip()
+    if not value:
+        return None
+
+    try:
+        # OverflowError as well as ValueError: "inf" parses as a float and then
+        # refuses to be an int.
+        seconds = int(float(value))
+    except (TypeError, ValueError, OverflowError):
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError):
+            return None
+        if when is None:
+            return None
+        # A date with no zone is GMT per the spec; reading it as local time
+        # would move the deadline by hours.
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        seconds = int((when - datetime.now(tz=timezone.utc)).total_seconds())
+
+    return seconds if seconds > 0 else None
+
+
 @dataclass
 class AdapterResult:
     """Uniform result wrapper returned by every adapter operation."""
@@ -50,9 +90,25 @@ class AdapterResult:
     data: Dict[str, Any] = field(default_factory=dict)
     error_message: Optional[str] = None
     raw_response: Optional[Dict[str, Any]] = None  # full provider response for debugging
+    # Response headers with lower-cased keys, so the caller reads one spelling
+    # whichever provider answered. Filled in on the failure path only — the HTTP
+    # clients hand back parsed JSON on success and the headers are gone by then
+    # — which is enough, because the header this exists for arrives with a 429
+    # or a 503 (#271).
+    response_headers: Dict[str, str] = field(default_factory=dict)
 
     def __bool__(self) -> bool:  # lets you do `if result:`
         return self.success
+
+    @property
+    def retry_after_seconds(self) -> Optional[int]:
+        """How long the provider asked us to wait, or ``None`` if it didn't ask.
+
+        A 429 was previously re-queued on a fixed five-minute cron, which is
+        the wrong timing in both directions — and re-queueing inside the
+        provider's window just earns another 429 (#271).
+        """
+        return _retry_after_seconds((self.response_headers or {}).get("retry-after"))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -339,6 +395,30 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
             "cloud_api_message_id": cloud_api_id,
             "provider_message_id": provider_id,
         }
+
+    @staticmethod
+    def _response_headers(source: Any) -> Dict[str, str]:
+        """Pull response headers off whatever the HTTP client handed back.
+
+        Both clients raise on a non-2xx and carry the ``requests`` response on
+        the exception as ``.response`` (the convention ``requests.HTTPError``
+        itself uses), which is the only place a 429's ``Retry-After`` survives
+        — everything after that point is a message string.
+
+        Lives on the base rather than in each adapter so both fill the field in
+        the same way: the caller honouring the interval must not have to know
+        which provider it is talking to (#265, #271).
+        """
+        response = getattr(source, "response", None)
+        headers = getattr(response if response is not None else source, "headers", None)
+        if not headers:
+            return {}
+        try:
+            return {str(key).lower(): str(value) for key, value in dict(headers).items()}
+        except Exception:
+            # A client that puts something other than a mapping on ``.headers``
+            # is not worth failing a send over.
+            return {}
 
     # ── BaseChannelAdapter contract ───────────────────────────────────────
     #
