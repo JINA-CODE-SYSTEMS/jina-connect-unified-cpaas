@@ -68,7 +68,10 @@ class GupshupAdapter(BaseBSPAdapter):
         supports_templates=True,
         supports_template_buttons=True,
         supports_reactions=True,
-        supports_typing_indicator=True,
+        # Dropped (#274): Gupshup's partner API has no typing-indicator
+        # endpoint at all, so unlike META this one could never have been
+        # implemented behind the flag. (#266 rule.)
+        supports_typing_indicator=False,
         # CTWA #192 — Gupshup forwards the Meta referral payload. The
         # ``ctwa_clid`` field landed in a relatively recent Gupshup API
         # version; older tenant integrations will see referral without

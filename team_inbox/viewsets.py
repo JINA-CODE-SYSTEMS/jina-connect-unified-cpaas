@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from abstract.viewsets.base import BaseTenantModelViewSet
 from team_inbox.models import Messages
 from team_inbox.serializers import MessageCreateSerializer, MessageListSerializer, MessagesSerializer
+from team_inbox.utils.read_receipts import send_read_receipt
 from tenants.permission_classes import TenantRolePermission
 
 
@@ -172,6 +173,9 @@ class MessagesViewSet(BaseTenantModelViewSet):
         message.read_by = request.user
         message.save(update_fields=["is_read", "read_at", "read_by"])
 
+        # Tell the customer too, not just the team (#274).
+        send_read_receipt([message])
+
         return Response(
             {
                 "status": "Message marked as read",
@@ -213,6 +217,9 @@ class MessagesViewSet(BaseTenantModelViewSet):
                 read_at=timezone.now(),
                 read_by=request.user,
             )
+            # One receipt covers the batch — META marks every earlier
+            # message of the conversation read with it (#274).
+            send_read_receipt(Messages.objects.filter(id__in=marked_ids))
 
         return Response(
             {
