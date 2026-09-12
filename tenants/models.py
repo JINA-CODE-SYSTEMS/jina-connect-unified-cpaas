@@ -142,6 +142,63 @@ class BSPChoices(models.TextChoices):
     META_RCS = "META_RCS", "Meta RCS"
 
 
+# ── Per-app webhook identity (#310) ──────────────────────────────────────────
+# Every ``TenantWAApp`` owns one opaque string, and that string is what makes
+# its callback URL its own::
+#
+#     POST /wa/v2/webhooks/<bsp>/<webhook_identifier>/
+#
+# Prefixed, for the same reason ``TenantAccessKey.generate_key`` prefixes
+# ``jc_``: a bare random string found in a proxy access log or pasted into a
+# support ticket says nothing about what it is, and what this one is matters —
+# it addresses a tenant's webhook receiver.
+WA_WEBHOOK_IDENTIFIER_PREFIX = "whk_"
+
+#: Characters a generated identifier can contain — the prefix plus
+#: ``secrets.token_urlsafe``'s alphabet. A receiver checks a path segment
+#: against this before it touches the database, so a scan of junk URLs costs
+#: no queries at all.
+WA_WEBHOOK_IDENTIFIER_ALPHABET = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+
+#: How much of an identifier may appear in a log line. Enough to tell two
+#: rejections apart or match one to a row; never enough to replay it, which is
+#: why ``mask_wa_webhook_identifier`` exists at all.
+WA_WEBHOOK_IDENTIFIER_HINT_LENGTH = 12
+
+
+def generate_wa_webhook_identifier() -> str:
+    """A fresh opaque webhook identifier.
+
+    Module level rather than a method because the model field names it as its
+    ``default``, and a field default has to be importable by the migration
+    that freezes it.
+
+    24 random bytes — ~192 bits, 32 URL-safe characters — and nothing else.
+    Not the primary key (a small sequential integer: guessable by counting,
+    and already published in API responses and log lines), not the tenant, not
+    ``waba_id``, not the number. A derived identifier would be *reproduced* by
+    deleting an app and creating another like it, so a client's stale dashboard
+    entry could start delivering into a different app's receiver; random ones
+    cannot collide and cannot come back, because generation consults nothing
+    that exists.
+    """
+    return f"{WA_WEBHOOK_IDENTIFIER_PREFIX}{secrets.token_urlsafe(24)}"
+
+
+def mask_wa_webhook_identifier(identifier: str | None) -> str:
+    """The most of *identifier* that may be written down — a short prefix.
+
+    The identifier is the whole of the authority to address an app's receiver,
+    so a log line that carries it in full has published a callback URL to
+    every sink the logs reach. A prefix is still enough to correlate a burst
+    of rejections or point at a row in the admin.
+    """
+    if not identifier:
+        return ""
+    visible = identifier[:WA_WEBHOOK_IDENTIFIER_HINT_LENGTH]
+    return f"{visible}…" if len(identifier) > len(visible) else visible
+
+
 class TenantWAApp(BaseTenantModelForFilterUser):
     """
     Model to store Gupshup app details for a tenant.
@@ -157,6 +214,7 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         utility_message_price (MoneyField): Price for utility messages.
         esf_url (URLField): Embedded Signup Flow URL for WhatsApp onboarding.
         esf_url_expires_at (DateTimeField): Expiration time for ESF URL (valid for 4 days).
+        webhook_identifier (CharField): Opaque identifier in this app's own callback URL (#310).
     """
 
     filter_by_user_tenant_fk = "tenant__tenant_users__user"
@@ -256,6 +314,31 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         help_text=(
             "Non-secret BSP configuration. Tokens and secrets are stored in the "
             "encrypted bsp_access_token / bsp_partner_app_token columns instead."
+        ),
+    )
+
+    # ── Webhook identity (#310) ──────────────────────────────────────────
+    # Choosing a per-app verification secret means knowing which app sent the
+    # delivery, and the only identifiers that say so — ``entry[0].id`` and
+    # ``metadata.phone_number_id`` — live inside a body that cannot be trusted
+    # until the signature over it has been checked. Chicken and egg. Moving
+    # the identity into the URL breaks the circle: the path names the app, the
+    # app names the secret, and the body is parsed last.
+    #
+    # Defined for every app whatever its ``bsp`` (#305 D-4): bring-your-own-app
+    # and Embedded Signup coexist permanently, so a Meta-only column would
+    # have to be undone. See ``generate_wa_webhook_identifier`` for why the
+    # value is random rather than derived, and ``wa.services.webhook_identity``
+    # for the receiver side.
+    webhook_identifier = models.CharField(
+        max_length=64,
+        unique=True,
+        default=generate_wa_webhook_identifier,
+        editable=False,
+        help_text=(
+            "Opaque identifier carried in this app's own webhook callback URL. "
+            "Treat it as a secret: whoever holds it can address this app's receiver. "
+            "Generated once and never reused."
         ),
     )
 
@@ -416,14 +499,31 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         self.bsp_credentials = remaining
         return tuple(touched)
 
+    # ── Webhook identity helpers ─────────────────────────────────────────
+    @property
+    def webhook_identifier_hint(self) -> str:
+        """The part of the identifier that may be shown or logged."""
+        return mask_wa_webhook_identifier(self.webhook_identifier)
+
     def save(self, *args, **kwargs):
         if self._state.adding:
             self._stamp_platform_currency()
 
-        moved = self._absorb_bsp_secrets()
+        touched = list(self._absorb_bsp_secrets())
+
+        # The field default covers every ordinary creation path, ``bulk_create``
+        # included. This is for the rows it cannot reach: a fixture written
+        # before #310, or a caller that set the column to "". An app without an
+        # identifier has no callback URL of its own, and nothing else would say
+        # so — the legacy path would keep working and the per-app one would
+        # answer "unknown" forever.
+        if not self.webhook_identifier:
+            self.webhook_identifier = generate_wa_webhook_identifier()
+            touched.append("webhook_identifier")
+
         update_fields = kwargs.get("update_fields")
-        if moved and update_fields is not None:
-            kwargs["update_fields"] = list(dict.fromkeys([*update_fields, *moved]))
+        if touched and update_fields is not None:
+            kwargs["update_fields"] = list(dict.fromkeys([*update_fields, *touched]))
 
         super().save(*args, **kwargs)
 
