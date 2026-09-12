@@ -5,8 +5,8 @@ Uses the existing ``wa.utility.apis.meta.template_api.TemplateAPI`` HTTP
 client under the hood.  Credential resolution follows the same priority as
 ``wa.services.meta_template_service``:
 
-    1. ``wa_app.bsp_credentials["access_token"]``  (per-app token)
-    2. ``settings.META_PERM_TOKEN``                 (global permanent token)
+    1. ``wa_app.bsp_access_token``   (per-app token, encrypted at rest)
+    2. ``settings.META_PERM_TOKEN``  (global permanent token)
 
 When the WAApp has ``bsp = "META"`` **or** ``bsp`` is blank/null the adapter
 factory will select this adapter.
@@ -129,11 +129,10 @@ class MetaDirectAdapter(BaseBSPAdapter):
         """
         Resolve the META access token with the same priority used elsewhere.
 
-        1. ``wa_app.bsp_credentials["access_token"]``
+        1. ``wa_app.bsp_access_token`` (per-app, encrypted at rest — #289)
         2. ``settings.META_PERM_TOKEN``
         """
-        creds = self.wa_app.bsp_credentials or {}
-        token = creds.get("access_token")
+        token = self.wa_app.bsp_access_token
         if token:
             return token
 
@@ -159,8 +158,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         token = self._resolve_access_token()
         if not token:
             raise ValueError(
-                "META access token not configured. Set bsp_credentials.access_token "
-                "on the WAApp or META_PERM_TOKEN in settings."
+                "META access token not configured. Set bsp_access_token on the WAApp or META_PERM_TOKEN in settings."
             )
 
         waba_id = self._resolve_waba_id()
@@ -185,8 +183,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         token = self._resolve_access_token()
         if not token:
             raise ValueError(
-                "META access token not configured. Set bsp_credentials.access_token "
-                "on the WAApp or META_PERM_TOKEN in settings."
+                "META access token not configured. Set bsp_access_token on the WAApp or META_PERM_TOKEN in settings."
             )
 
         waba_id = self._resolve_waba_id()
@@ -475,8 +472,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         token = self._resolve_access_token()
         if not token:
             raise ValueError(
-                "META access token not configured. Set bsp_credentials.access_token "
-                "on the WAApp or META_PERM_TOKEN in settings."
+                "META access token not configured. Set bsp_access_token on the WAApp or META_PERM_TOKEN in settings."
             )
 
         phone_number_id = getattr(self.wa_app, "phone_number_id", None)

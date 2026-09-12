@@ -69,8 +69,7 @@ def send_read_receipt(messages) -> dict:
 
         from django.conf import settings
 
-        creds = wa_app.bsp_credentials or {}
-        token = creds.get("access_token") or getattr(settings, "META_PERM_TOKEN", None)
+        token = wa_app.bsp_access_token or getattr(settings, "META_PERM_TOKEN", None)
         if not token or not wa_app.phone_number_id:
             result["reason"] = "no_credentials"
             return result

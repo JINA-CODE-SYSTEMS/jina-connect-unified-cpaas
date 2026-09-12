@@ -20,6 +20,12 @@ Also covers the ``app_id`` overload: ``upload_media`` read it as the META App
 ID while the model documents it as the Gupshup one. ``meta_app_id`` names it,
 with a fallback so apps configured before the field keep uploading.
 
+#289 then moved the secret out of that JSON column into the encrypted
+``bsp_access_token``. The request shape above is what clients send, so it is
+still accepted and still tested here — the difference is where the value comes
+to rest. ``tenants/tests/test_bsp_credentials_encryption.py`` covers the
+encryption itself.
+
 HOW TO RUN:
     .venv/bin/python -m pytest wa/tests/test_per_tenant_meta_token.py -v
 """
@@ -103,7 +109,10 @@ def test_the_token_can_be_set_through_the_v2_api():
 
     assert resp.status_code == 200, resp.data
     wa_app.refresh_from_db()
-    assert wa_app.bsp_credentials == {"access_token": "tenant-token-A"}
+    # The token lands — in the encrypted column, and not in the plaintext JSON
+    # the request put it in (#289).
+    assert wa_app.bsp_access_token == "tenant-token-A"
+    assert wa_app.bsp_credentials == {}
 
 
 @pytest.mark.django_db
@@ -130,7 +139,8 @@ def test_the_token_can_be_set_when_the_app_is_created():
     from wa.models import WAApp
 
     created = WAApp.objects.get(id=resp.data["id"])
-    assert created.bsp_credentials == {"access_token": "tenant-token-on-create"}
+    assert created.bsp_access_token == "tenant-token-on-create"
+    assert created.bsp_credentials == {}
 
 
 @pytest.mark.django_db
@@ -201,6 +211,66 @@ def test_the_v2_api_never_returns_the_token():
         assert resp.status_code == 200, resp.data
         assert "bsp_credentials" not in resp.content.decode()
         assert "tenant-token-" not in resp.content.decode()
+
+
+@pytest.mark.django_db
+def test_the_token_can_be_set_through_its_own_field(settings):
+    """#289 gave the secret a field of its own. It must be writable, or the
+    only way to configure a token stays the JSON column it just left."""
+    settings.META_PERM_TOKEN = "global-platform-token"
+    tenant, _user, client = _tenant_with_owner()
+    wa_app = _wa_app(tenant)
+
+    resp = client.patch(
+        f"/wa/v2/apps/{wa_app.id}/",
+        {"bsp_access_token": "set-through-its-own-field"},
+        format="json",
+    )
+
+    assert resp.status_code == 200, resp.data
+    wa_app.refresh_from_db()
+    assert MetaDirectAdapter(wa_app)._resolve_access_token() == "set-through-its-own-field"
+
+
+@pytest.mark.django_db
+def test_the_v2_api_never_returns_the_token_from_its_own_field():
+    """A write-only field added to ``Meta.fields`` is one ``extra_kwargs`` entry
+    away from being readable — the whole point of #289 undone in a GET."""
+    tenant, _user, client = _tenant_with_owner()
+    wa_app = _wa_app(tenant, bsp_access_token="own-field-token", bsp_partner_app_token="own-field-partner")
+
+    write = client.patch(
+        f"/wa/v2/apps/{wa_app.id}/",
+        {"bsp_access_token": "own-field-token-v2"},
+        format="json",
+    )
+    read = client.get(f"/wa/v2/apps/{wa_app.id}/")
+    listing = client.get("/wa/v2/apps/")
+
+    for resp in (write, read, listing):
+        assert resp.status_code == 200, resp.data
+        body = resp.content.decode()
+        assert "own-field-token" not in body
+        assert "own-field-partner" not in body
+        assert "bsp_access_token" not in body
+        assert "bsp_partner_app_token" not in body
+
+
+@pytest.mark.django_db
+def test_the_legacy_wa_app_endpoint_never_returns_the_token_from_its_own_field():
+    """``fields = "__all__"`` picks up a new model field the moment it is
+    declared, readable by default."""
+    tenant, _user, client = _tenant_with_owner()
+    _wa_app(tenant, bsp_access_token="legacy-endpoint-token", bsp_partner_app_token="legacy-endpoint-partner")
+
+    resp = client.get("/tenants/tenant-gupshup/")
+
+    assert resp.status_code == 200, resp.data
+    body = resp.content.decode()
+    assert "legacy-endpoint-token" not in body
+    assert "legacy-endpoint-partner" not in body
+    assert "bsp_access_token" not in body
+    assert "bsp_partner_app_token" not in body
 
 
 @pytest.mark.django_db

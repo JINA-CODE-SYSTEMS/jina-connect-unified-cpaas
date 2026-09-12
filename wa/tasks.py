@@ -871,8 +871,7 @@ def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) 
         from wa.utility.apis.meta.media_api import MetaMediaAPI
 
         # ── Resolve credentials ───────────────────────────────────
-        creds = wa_app.bsp_credentials or {}
-        token = creds.get("access_token") or getattr(settings, "META_PERM_TOKEN", None)
+        token = wa_app.bsp_access_token or getattr(settings, "META_PERM_TOKEN", None)
         if not token:
             logger.warning("[_download_and_save_meta_media] No META token for wa_app %s", wa_app.pk)
             return ""

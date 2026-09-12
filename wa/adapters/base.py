@@ -124,7 +124,9 @@ class BaseBSPAdapter(BaseChannelAdapter, ABC):
     contract, and adds WhatsApp-BSP-specific template and webhook operations.
 
     Sub-classes are initialised with a WAApp instance which carries the BSP
-    credentials (token, waba_id, bsp_credentials JSON, etc.).
+    credentials: ``waba_id`` and the other identifiers in the clear, and the
+    secrets in the encrypted ``bsp_access_token`` / ``bsp_partner_app_token``
+    columns (#289).
     """
 
     # Canonical channel identifier (BaseChannelAdapter attribute).
