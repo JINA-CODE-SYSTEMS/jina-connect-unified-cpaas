@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
 
-from users.models import EmailVerificationToken, User
+from users.models import EmailVerificationToken, ImpersonationSession, User
 
 
 def duplicate_users(modeladmin, request, queryset):
@@ -93,6 +93,45 @@ class EximUserAdmin(UserAdmin):
 
     # Add mobile to the ordering options
     ordering = ("username",)
+
+
+@admin.register(ImpersonationSession)
+class ImpersonationSessionAdmin(admin.ModelAdmin):
+    """Read the "view as organisation" audit trail (#300).
+
+    Add and change are both off: this is the record of what happened, and an
+    audit trail an admin can edit is not one. Rows are written by
+    ``users.impersonation`` alone.
+    """
+
+    list_display = ("actor_username", "tenant_name", "started_at", "ended_at", "expires_at", "is_live")
+    list_filter = ("started_at", "tenant")
+    search_fields = ("actor_username", "tenant_name", "token_jti")
+    readonly_fields = (
+        "actor",
+        "actor_username",
+        "tenant",
+        "tenant_name",
+        "token_jti",
+        "started_at",
+        "expires_at",
+        "ended_at",
+        "is_live",
+    )
+    raw_id_fields = ("actor", "tenant")
+    ordering = ("-started_at",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def is_live(self, obj):
+        return obj.is_live
+
+    is_live.boolean = True
+    is_live.short_description = "Live"
 
 
 @admin.register(EmailVerificationToken)
