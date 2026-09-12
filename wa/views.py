@@ -407,7 +407,8 @@ class MetaWebhookView(View):
         Flow:
         1. Verify ``X-Hub-Signature-256``.
         2. Parse JSON body.
-        3. Look up ``WAApp`` via ``waba_id`` (and optionally ``phone_number_id``).
+        3. Look up ``WAApp`` via ``phone_number_id``, falling back to
+           ``waba_id`` for events that carry no number.
         4. Classify event type.
         5. Create ``WAWebhookEvent`` -> triggers signal -> Celery pipeline.
         6. Return 200 immediately.
@@ -446,18 +447,42 @@ class MetaWebhookView(View):
             # Always return 200 to Meta — non-200 causes delivery throttling
             return JsonResponse({"status": "ignored", "reason": "missing_waba_id"}, status=200)
 
-        # Try to match by waba_id first, then fallback to phone_number_id.
+        # Match on the most specific identifier the payload carries:
+        # ``phone_number_id`` first, ``waba_id`` only as a fallback.
+        #
+        # One ``TenantWAApp`` holds one number, so a tenant with several
+        # numbers holds several rows — and those rows may share a ``waba_id``.
+        # ``waba_id`` is therefore not a unique routing key. Matching it first
+        # and taking ``.first()`` filed every event for every number on a
+        # shared WABA against whichever row the database happened to return,
+        # and the ``phone_number_id`` fallback could never correct it because
+        # it was guarded on the WABA match having failed (#309).
+        #
         # ``bsp_q`` rather than ``bsp=META`` because a blank column means
         # META too — filtering on the literal answered those apps' webhooks
         # with "unknown_app" while every other path served them (#265).
         from wa.adapters import bsp_q
 
         meta_apps = WAApp.objects.filter(bsp_q(BSPChoices.META))
-        wa_app = meta_apps.filter(waba_id=waba_id).first()
-        if wa_app is None and phone_number_id:
+
+        wa_app = None
+        if phone_number_id:
             wa_app = meta_apps.filter(phone_number_id=phone_number_id).first()
 
+        ambiguous_waba_apps: list = []
         if wa_app is None:
+            # No number in the payload — account-level updates legitimately
+            # carry none — or no row holds it. Fall back to the WABA, but only
+            # when it identifies exactly one app. Two or more and there is no
+            # non-arbitrary answer, which is the same conclusion
+            # ``MetaDirectAdapter.fetch_waba_info`` reaches on a shared WABA.
+            waba_matches = list(meta_apps.filter(waba_id=waba_id).order_by("created_at", "id")[:2])
+            if len(waba_matches) == 1:
+                wa_app = waba_matches[0]
+            elif len(waba_matches) > 1:
+                ambiguous_waba_apps = waba_matches
+
+        if wa_app is None and not ambiguous_waba_apps:
             logger.warning(
                 "META webhook: no META app with waba_id=%s / phone_number_id=%s",
                 waba_id,
@@ -469,6 +494,49 @@ class MetaWebhookView(View):
         # --- classify & persist -------------------------------------------
         event_type = _classify_cloud_api_event(payload)
 
+        if ambiguous_waba_apps:
+            # Recorded, not attributed. The payload is kept so the event is not
+            # lost, but it is stored already-processed with the ambiguity in
+            # ``error_message``, so nothing downstream applies it to an app it
+            # may not belong to. The FK has to point somewhere (it is NOT NULL,
+            # and a migration is out of scope here), so it points at the oldest
+            # matching app — deterministically, not arbitrarily — and the
+            # message says plainly that attribution was refused. An operator
+            # finds these by searching ``error_message`` in the admin, and once
+            # the owning app's ``phone_number_id`` is filled in, the existing
+            # "Reprocess selected webhook events" action replays it.
+            holder = ambiguous_waba_apps[0]
+            detail = (
+                f"Ambiguous routing: waba_id={waba_id} matches {len(ambiguous_waba_apps)} META apps "
+                f"({', '.join(str(app.pk) for app in ambiguous_waba_apps)}) and the payload carries no "
+                f"phone_number_id, so this event was recorded rather than attributed to any of them. "
+                f"Stored against {holder.pk} for retention only (#309)."
+            )
+            webhook_event = WAWebhookEvent.objects.create(
+                wa_app=holder,
+                event_type=event_type,
+                bsp=BSPChoices.META,
+                payload=payload,
+                is_processed=True,
+                error_message=detail,
+            )
+            logger.error(
+                "META webhook: ambiguous waba_id=%s (%s candidate apps, no phone_number_id) -- "
+                "recorded unattributed as pk=%s",
+                waba_id,
+                len(ambiguous_waba_apps),
+                webhook_event.pk,
+            )
+            return JsonResponse(
+                {
+                    "status": "recorded",
+                    "reason": "ambiguous_waba_id",
+                    "event_id": str(webhook_event.pk),
+                    "event_type": event_type,
+                },
+                status=200,
+            )
+
         webhook_event = WAWebhookEvent.objects.create(
             wa_app=wa_app,
             event_type=event_type,
@@ -477,10 +545,11 @@ class MetaWebhookView(View):
         )
 
         logger.info(
-            "META webhook ingested: event=%s waba=%s phone=%s pk=%s",
+            "META webhook ingested: event=%s waba=%s phone=%s app=%s pk=%s",
             event_type,
             waba_id,
             phone_number_id,
+            wa_app.pk,
             webhook_event.pk,
         )
 
