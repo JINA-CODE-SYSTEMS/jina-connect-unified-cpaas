@@ -4,20 +4,27 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('broadcast', '0010_alter_broadcast_initial_cost_currency_and_more'),
+        ("broadcast", "0010_alter_broadcast_initial_cost_currency_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='broadcast',
-            name='charged_rates',
-            field=models.JSONField(blank=True, default=dict, help_text='Per-destination rates actually used to price this broadcast, as {"IN": "0.011385", "__unknown__": "0.10"}. Recorded at charge time so a refund can return what was taken rather than recomputing from a different source (#262).'),
+            model_name="broadcast",
+            name="charged_rates",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text='Per-destination rates actually used to price this broadcast, as {"IN": "0.011385", "__unknown__": "0.10"}. Recorded at charge time so a refund can return what was taken rather than recomputing from a different source (#262).',
+            ),
         ),
         migrations.AddField(
-            model_name='historicalbroadcast',
-            name='charged_rates',
-            field=models.JSONField(blank=True, default=dict, help_text='Per-destination rates actually used to price this broadcast, as {"IN": "0.011385", "__unknown__": "0.10"}. Recorded at charge time so a refund can return what was taken rather than recomputing from a different source (#262).'),
+            model_name="historicalbroadcast",
+            name="charged_rates",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text='Per-destination rates actually used to price this broadcast, as {"IN": "0.011385", "__unknown__": "0.10"}. Recorded at charge time so a refund can return what was taken rather than recomputing from a different source (#262).',
+            ),
         ),
     ]

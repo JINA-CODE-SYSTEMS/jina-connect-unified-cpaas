@@ -192,8 +192,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
         waba_id = self._resolve_waba_id()
         if not waba_id:
             raise ValueError(
-                "WABA ID not configured on the WAApp. Please set wa_app.waba_id before "
-                "registering webhooks."
+                "WABA ID not configured on the WAApp. Please set wa_app.waba_id before registering webhooks."
             )
 
         api = WABAAPI(token=token)
@@ -981,8 +980,7 @@ class MetaDirectAdapter(BaseBSPAdapter):
 
         if not subscribed_ids:
             return _fail(
-                "META accepted the subscription but lists no subscribed app for this WABA. "
-                "Nothing would be delivered."
+                "META accepted the subscription but lists no subscribed app for this WABA. Nothing would be delivered."
             )
 
         # ``wa_app.app_id`` is overloaded — documented as the Gupshup app ID and

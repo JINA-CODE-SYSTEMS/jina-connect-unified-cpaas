@@ -70,8 +70,9 @@ def test_registering_subscribes_the_waba_to_the_app():
     wa_app = _wa_app()
     sub = _subscription(wa_app)
 
-    with patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app") as subscribe, patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=SUBSCRIBED_ONE
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app") as subscribe,
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=SUBSCRIBED_ONE),
     ):
         result = MetaDirectAdapter(wa_app).register_webhook(sub)
 
@@ -97,8 +98,9 @@ def test_success_records_active_and_the_subscribed_app_id():
     wa_app = _wa_app()
     sub = _subscription(wa_app)
 
-    with patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"), patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=SUBSCRIBED_ONE
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"),
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=SUBSCRIBED_ONE),
     ):
         MetaDirectAdapter(wa_app).register_webhook(sub)
 
@@ -134,8 +136,9 @@ def test_an_accepted_post_with_no_listed_app_is_a_failure():
     wa_app = _wa_app()
     sub = _subscription(wa_app)
 
-    with patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"), patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value={"data": []}
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"),
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value={"data": []}),
     ):
         result = MetaDirectAdapter(wa_app).register_webhook(sub)
 
@@ -149,8 +152,9 @@ def test_an_unverifiable_subscription_is_a_failure():
     wa_app = _wa_app()
     sub = _subscription(wa_app)
 
-    with patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"), patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", side_effect=Exception("rate limited")
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"),
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", side_effect=Exception("rate limited")),
     ):
         result = MetaDirectAdapter(wa_app).register_webhook(sub)
 
@@ -200,8 +204,9 @@ def test_a_mismatched_app_id_still_succeeds():
     wa_app = _wa_app(app_id="some-gupshup-value")
     sub = _subscription(wa_app)
 
-    with patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"), patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=SUBSCRIBED_ONE
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"),
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=SUBSCRIBED_ONE),
     ):
         result = MetaDirectAdapter(wa_app).register_webhook(sub)
 
@@ -217,8 +222,9 @@ def test_malformed_rows_in_the_listing_are_skipped():
     sub = _subscription(wa_app)
     listing = {"data": [None, "junk", {}, {"whatsapp_business_api_data": {}}, SUBSCRIBED_ONE["data"][0]]}
 
-    with patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"), patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=listing
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.subscribe_app"),
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_subscribed_apps", return_value=listing),
     ):
         result = MetaDirectAdapter(wa_app).register_webhook(sub)
 
