@@ -162,8 +162,11 @@ figure.
 
 ## When the nightly job fails
 
-It logs to `jina_cron_availability_aggregate.log` in `BASE_DIR` and exits
-non-zero.
+It logs to `jina_cron_availability_aggregate.log` in `BASE_DIR`. A run that
+recorded **nothing at all** exits non-zero: an empty run that exited 0 would
+read, in the log tail and to any wrapper watching it, exactly like a quiet
+night. A partial run — one target, or one day of several — exits 0 with a
+warning naming what it skipped, because the rows it did write are real.
 
 - **`GRAFANA_PROM_TOKEN is not set` / 401** — the access policy token expired
   or was rotated. Re-issue it; retrying tonight will not help.

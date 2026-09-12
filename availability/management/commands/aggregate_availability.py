@@ -11,7 +11,9 @@ Two behaviours are deliberate:
 **A day with no data gets no row.** Writing ``total_checks=0`` would make the
 day look reported while carrying no evidence, and the monthly report counts a
 day as covered when a row exists. A missing row is the honest record of a
-missing day, and the report already says so out loud.
+missing day, and the report already says so out loud. A run that writes no
+rows at all exits non-zero, because a silent zero here is indistinguishable
+from perfect uptime — the one reading a monitoring feature must never invite.
 
 **Re-running is safe.** The unique constraint is ``(date, target)`` and the
 command upserts, so a backfill after a monitoring outage overwrites rather
@@ -81,6 +83,20 @@ class Command(BaseCommand):
 
         verb = "would write" if options["dry_run"] else "wrote"
         summary = f"{verb} {written} row(s) across {days} day(s)"
+
+        # Nothing at all recorded is the failure mode this feature cannot
+        # afford to report as success: a run that writes no rows and exits 0
+        # looks, to cron and to anyone reading the log tail, exactly like a
+        # quiet night. The monthly report would not notice until the 1st.
+        # A partial run — one target, or one day of several — stays a success
+        # with a warning, because the rows it did write are real.
+        if written == 0:
+            raise CommandError(
+                f"{summary} — nothing was recorded. Every target was missing data or unreachable; "
+                f"the errors above say which. The month will be reported as incomplete until this is "
+                f"backfilled, and Grafana drops the day after 14."
+            )
+
         if skipped:
             self.stdout.write(self.style.WARNING(f"{summary}; {skipped} skipped for want of data."))
         else:
