@@ -109,22 +109,16 @@ class TenantWAAppAdmin(admin.ModelAdmin):
         3. Create a fresh subscription covering all event types
         4. Register it with the BSP
         """
-        from django.conf import settings as django_settings
-
         from wa.adapters import get_bsp_adapter
         from wa.models import SubscriptionStatus, WASubscription, WebhookEventType
+        from wa.services import webhook_identity
 
-        base = getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "").rstrip("/")
         all_events = [et.value for et in WebhookEventType]
         success_count = 0
         fail_count = 0
 
         for wa_app in queryset:
-            bsp_path = {
-                "GUPSHUP": "/wa/v2/webhooks/gupshup/",
-                "META": "/wa/v2/webhooks/meta/",
-            }.get(wa_app.bsp, "/wa/v2/webhooks/gupshup/")
-            webhook_url = f"{base}{bsp_path}"
+            webhook_url = webhook_identity.legacy_callback_url(wa_app)
 
             adapter = get_bsp_adapter(wa_app)
 

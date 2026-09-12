@@ -3470,6 +3470,7 @@ def auto_register_gupshup_webhook(self, wa_app_pk: int):
     from tenants.models import BSPChoices, TenantWAApp
     from wa.adapters import get_bsp_adapter
     from wa.models import SubscriptionStatus, WASubscription, WebhookEventType
+    from wa.services import webhook_identity
 
     try:
         wa_app = TenantWAApp.objects.get(pk=wa_app_pk)
@@ -3480,9 +3481,12 @@ def auto_register_gupshup_webhook(self, wa_app_pk: int):
     if wa_app.bsp != BSPChoices.GUPSHUP:
         return {"status": "skipped", "reason": "not_gupshup"}
 
-    # Build the absolute webhook URL from settings
+    # Build the absolute webhook URL from settings. The path comes from the
+    # receiver registry rather than a literal — this function has already
+    # returned unless the app is on Gupshup, so the answer is not in doubt, but
+    # a hardcoded path here is one more place to edit when a receiver moves.
     base = getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "").rstrip("/")
-    webhook_path = "/wa/v2/webhooks/gupshup/"
+    webhook_path = webhook_identity.legacy_callback_path(BSPChoices.GUPSHUP)
     webhook_url = f"{base}{webhook_path}"
 
     if not base or base.startswith("http://localhost"):

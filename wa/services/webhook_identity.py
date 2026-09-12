@@ -240,6 +240,33 @@ def callback_url(wa_app, request=None) -> str:
     return f"{_public_base_url(request)}{callback_path(wa_app)}"
 
 
+def legacy_callback_url(wa_app, request=None) -> str:
+    """The absolute *legacy* callback URL for whichever BSP *wa_app* is on.
+
+    What subscription refresh registers. Three callers built this string
+    themselves — ``wa.admin``, ``tenants.admin`` and the v2 subscription
+    viewset — each from its own copy of a two-entry BSP-to-path dict, and each
+    keyed on the **raw** ``bsp`` column with a Gupshup fallback. A blank column
+    means META everywhere else (:func:`wa.adapters.resolve_bsp`, #265), so those
+    three handed a blank-BSP app the Gupshup receiver and registered a callback
+    that would answer its own deliveries with ``unknown_app``.
+
+    Resolving through :func:`~wa.adapters.resolve_bsp` is therefore not a
+    tidy-up: it changes the answer for that case, to the right one. The other
+    two cases produce byte-identical strings to what the inline dicts produced,
+    which is what the tests pin.
+
+    This is deliberately *not* :func:`callback_url`. The per-app URL is the one
+    a client should be given; this one authenticates against the
+    deployment-wide secret and so can only ever serve a single app. Registering
+    it is what existing deployments already do, and changing that is #307's
+    decision to make, not this helper's.
+    """
+    from wa.adapters import resolve_bsp
+
+    return f"{_public_base_url(request)}{legacy_callback_path(resolve_bsp(wa_app))}"
+
+
 def verify_token(wa_app) -> tuple[str, str]:
     """The verify token for *wa_app*'s handshake, and the scope it has.
 
