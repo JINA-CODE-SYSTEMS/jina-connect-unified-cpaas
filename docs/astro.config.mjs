@@ -40,27 +40,27 @@ export default defineConfig({
       sidebar: [
         {
           label: "Getting Started",
-          autogenerate: { directory: "getting-started" },
+          items: [{ autogenerate: { directory: "getting-started" } }],
         },
         {
           label: "Architecture",
-          autogenerate: { directory: "architecture" },
+          items: [{ autogenerate: { directory: "architecture" } }],
         },
         {
           label: "Channels",
-          autogenerate: { directory: "channels" },
+          items: [{ autogenerate: { directory: "channels" } }],
         },
         {
           label: "API Reference",
-          autogenerate: { directory: "api" },
+          items: [{ autogenerate: { directory: "api" } }],
         },
         {
           label: "MCP Server",
-          autogenerate: { directory: "mcp" },
+          items: [{ autogenerate: { directory: "mcp" } }],
         },
         {
           label: "Deployment",
-          autogenerate: { directory: "deployment" },
+          items: [{ autogenerate: { directory: "deployment" } }],
         },
       ],
     }),
