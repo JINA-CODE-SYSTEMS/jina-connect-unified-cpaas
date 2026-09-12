@@ -1032,3 +1032,4 @@ META_WEBHOOK_VERIFY_TOKEN = config("META_WEBHOOK_VERIFY_TOKEN", "")  # Used for 
 # locally).  Ignored unless DEBUG is also True, so it cannot disable
 # X-Hub-Signature-256 verification on a production deployment.
 META_WEBHOOK_ALLOW_UNSIGNED = config("META_WEBHOOK_ALLOW_UNSIGNED", False, cast=bool)
+GUPSHUP_WEBHOOK_VERIFY_TOKEN = config("GUPSHUP_WEBHOOK_VERIFY_TOKEN", "")  # Used for hub.verify_token challenge
