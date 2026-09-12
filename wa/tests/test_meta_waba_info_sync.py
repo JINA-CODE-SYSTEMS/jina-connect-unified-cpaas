@@ -61,8 +61,9 @@ def _wa_app(**overrides):
 
 
 def _fetch(wa_app, numbers=None, account=None):
-    with patch("wa.utility.apis.meta.waba.WABAAPI.get_phone_numbers", return_value=numbers or _numbers()), patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_account_status", return_value=account or {}
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_phone_numbers", return_value=numbers or _numbers()),
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_account_status", return_value=account or {}),
     ):
         return MetaDirectAdapter(wa_app).fetch_waba_info()
 
@@ -126,7 +127,9 @@ def test_the_right_number_is_selected_on_a_shared_waba():
 @pytest.mark.django_db
 def test_an_unmatched_number_on_a_shared_waba_is_refused_not_guessed():
     """Picking the first row would attribute another app's rating to this one."""
-    numbers = {"data": [{"id": "a", "messaging_limit_tier": "TIER_50"}, {"id": "b", "messaging_limit_tier": "TIER_10K"}]}
+    numbers = {
+        "data": [{"id": "a", "messaging_limit_tier": "TIER_50"}, {"id": "b", "messaging_limit_tier": "TIER_10K"}]
+    }
     result = _fetch(_wa_app(phone_number_id="not-listed"), numbers=numbers)
 
     assert result.success is False
@@ -201,8 +204,9 @@ def test_the_account_call_failing_does_not_discard_the_tier():
     """Account review status is additive; losing it must not lose the tier."""
     wa_app = _wa_app()
 
-    with patch("wa.utility.apis.meta.waba.WABAAPI.get_phone_numbers", return_value=_numbers()), patch(
-        "wa.utility.apis.meta.waba.WABAAPI.get_account_status", side_effect=Exception("boom")
+    with (
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_phone_numbers", return_value=_numbers()),
+        patch("wa.utility.apis.meta.waba.WABAAPI.get_account_status", side_effect=Exception("boom")),
     ):
         result = MetaDirectAdapter(wa_app).fetch_waba_info()
 
@@ -234,9 +238,7 @@ def test_absent_keys_do_not_blank_stored_values():
     """Meta reports no docker_status; a Meta sync must not erase Gupshup's."""
     wa_app = _wa_app()
     # A WABAInfo row is created alongside the app, so seed the existing one.
-    WABAInfo.objects.update_or_create(
-        wa_app=wa_app, defaults={"docker_status": "LIVE", "messaging_limit": "TIER_250"}
-    )
+    WABAInfo.objects.update_or_create(wa_app=wa_app, defaults={"docker_status": "LIVE", "messaging_limit": "TIER_250"})
 
     WABAInfo.update_from_adapter_data(wa_app, {"messaging_limit": "TIER_100K"})
 

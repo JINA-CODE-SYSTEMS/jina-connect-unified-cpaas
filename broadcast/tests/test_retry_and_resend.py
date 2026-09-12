@@ -87,7 +87,9 @@ def _message(broadcast, contact, **overrides):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("status", [MessageStatusChoices.SENT, MessageStatusChoices.DELIVERED, MessageStatusChoices.READ])
+@pytest.mark.parametrize(
+    "status", [MessageStatusChoices.SENT, MessageStatusChoices.DELIVERED, MessageStatusChoices.READ]
+)
 def test_a_terminal_status_means_do_not_resend(broadcast, contact, status):
     assert _already_sent(_message(broadcast, contact, status=status)) is True
 
@@ -105,7 +107,9 @@ def test_a_provider_message_id_means_do_not_resend(broadcast, contact):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("status", [MessageStatusChoices.PENDING, MessageStatusChoices.QUEUED, MessageStatusChoices.FAILED])
+@pytest.mark.parametrize(
+    "status", [MessageStatusChoices.PENDING, MessageStatusChoices.QUEUED, MessageStatusChoices.FAILED]
+)
 def test_unsent_messages_remain_sendable(broadcast, contact, status):
     assert _already_sent(_message(broadcast, contact, status=status)) is False
 
@@ -256,9 +260,7 @@ def test_the_sweep_requeues_a_message_awaiting_retry(broadcast, contact, monkeyp
     from broadcast import cron, tasks
 
     message = _message(broadcast, contact, status=MessageStatusChoices.PENDING, retry_count=1)
-    BroadcastMessage.objects.filter(pk=message.pk).update(
-        updated_at=timezone.now() - timezone.timedelta(minutes=10)
-    )
+    BroadcastMessage.objects.filter(pk=message.pk).update(updated_at=timezone.now() - timezone.timedelta(minutes=10))
 
     queued = []
     monkeypatch.setattr(tasks.process_broadcast_messages_batch, "delay", lambda ids: queued.append(list(ids)))
@@ -287,9 +289,7 @@ def test_the_sweep_ignores_messages_that_never_failed(broadcast, contact, monkey
     from broadcast import cron, tasks
 
     message = _message(broadcast, contact, status=MessageStatusChoices.PENDING, retry_count=0)
-    BroadcastMessage.objects.filter(pk=message.pk).update(
-        updated_at=timezone.now() - timezone.timedelta(minutes=10)
-    )
+    BroadcastMessage.objects.filter(pk=message.pk).update(updated_at=timezone.now() - timezone.timedelta(minutes=10))
 
     monkeypatch.setattr(tasks.process_broadcast_messages_batch, "delay", lambda ids: None)
     assert cron.retry_transient_message_failures() == {"requeued": 0}

@@ -27,7 +27,10 @@ WABA = "waba-acct-1"
 
 
 def _payload(field: str, value: dict) -> dict:
-    return {"object": "whatsapp_business_account", "entry": [{"id": WABA, "changes": [{"field": field, "value": value}]}]}
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [{"id": WABA, "changes": [{"field": field, "value": value}]}],
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

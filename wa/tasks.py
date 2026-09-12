@@ -517,7 +517,6 @@ def process_message_webhook(pk: str):
         raise Exception(f"Failed to process message webhook: {str(e)}")
 
 
-
 def _split_meta_message_payloads(payload: dict) -> list[dict]:
     """Split one META webhook into one payload per inbound message.
 
@@ -841,8 +840,13 @@ def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) 
         3. Save to ``incoming_media/<tenant_id>/<uuid>.<ext>``
         4. Return absolute URL
 
-    If any step fails the function logs a warning and returns the raw
-    ``media_id`` string so the caller can still store *something*.
+    If any step fails the function logs and returns ``""``. It used to
+    return the raw ``media_id`` "so the caller can still store
+    *something*", but that something was a bare ID sitting in
+    ``content["image"]["url"]`` — an un-renderable string the inbox drew
+    as a blank bubble with no error marker and no way to retry (#274).
+    ``_build_team_inbox_content`` turns the empty string into an explicit
+    failed-attachment instead.
 
     Args:
         wa_app: ``TenantWAApp`` instance (must have META credentials)
@@ -850,8 +854,8 @@ def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) 
         mime_type: Optional MIME type (used to derive the file extension)
 
     Returns:
-        Absolute URL string to the saved file, or the original
-        ``media_id`` if download failed.
+        Absolute URL string to the saved file, or ``""`` if the download
+        failed.
     """
     import mimetypes
     import uuid
@@ -869,7 +873,7 @@ def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) 
         token = creds.get("access_token") or getattr(settings, "META_PERM_TOKEN", None)
         if not token:
             logger.warning("[_download_and_save_meta_media] No META token for wa_app %s", wa_app.pk)
-            return media_id
+            return ""
 
         phone_number_id = wa_app.phone_number_id or ""
 
@@ -880,7 +884,7 @@ def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) 
         download_url = media_info.get("url")
         if not download_url:
             logger.warning("[_download_and_save_meta_media] get_media_url returned no url for %s", media_id)
-            return media_id
+            return ""
 
         # Use MIME from API response if we didn't get one from the webhook
         if not mime_type:
@@ -890,7 +894,7 @@ def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) 
         content_bytes = api.download_media(download_url)
         if not content_bytes:
             logger.warning("[_download_and_save_meta_media] download_media returned empty for %s", media_id)
-            return media_id
+            return ""
 
         # 3. Determine file extension from MIME type
         # Strip codec params (e.g. "audio/ogg; codecs=opus" → "audio/ogg")
@@ -927,7 +931,7 @@ def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) 
 
     except Exception as exc:
         logger.error("[_download_and_save_meta_media] Failed for media_id=%s: %s", media_id, exc)
-        return media_id
+        return ""
 
 
 def _parse_meta_message_payload(payload: dict, wa_app=None) -> dict:
@@ -1148,6 +1152,11 @@ def _trigger_body_text(content: dict | None) -> str | None:
     return None
 
 
+#: Normalised inbound types that carry a file. Both parsers lower-case the
+#: type, and stickers are rewritten to "image" before they get here.
+_MEDIA_MESSAGE_TYPES = frozenset({"image", "video", "audio", "document"})
+
+
 def _build_team_inbox_content(extracted_data: dict, instance) -> dict:
     """
     Build the ``content`` JSONField value for a team_inbox ``Messages`` entry
@@ -1185,6 +1194,21 @@ def _build_team_inbox_content(extracted_data: dict, instance) -> dict:
         content["audio"] = {"url": extracted_data["audio_link"]}
         if extracted_data.get("mime_type"):
             content["audio"]["mime_type"] = extracted_data["mime_type"]
+    elif extracted_data.get("message_type") in _MEDIA_MESSAGE_TYPES:
+        # The customer sent media but no URL survived — the META download
+        # failed, or the BSP gave us a payload with no link. Keep the
+        # bubble typed as the media it is and say so, rather than letting
+        # it fall through to an empty text bubble or (before #274) drawing
+        # a broken image from a bare media ID.
+        media_type = extracted_data["message_type"]
+        content["type"] = media_type
+        content[media_type] = {"url": "", "error": "download_failed"}
+        if extracted_data.get("mime_type"):
+            content[media_type]["mime_type"] = extracted_data["mime_type"]
+        if extracted_data.get("text"):
+            content[media_type]["caption"] = extracted_data["text"]
+        if media_type == "document" and extracted_data.get("file_name"):
+            content[media_type]["filename"] = extracted_data["file_name"]
     elif extracted_data.get("button_title"):
         content["type"] = "button_reply"
         content["body"] = {"text": extracted_data["button_title"]}
@@ -1234,9 +1258,7 @@ _ACCOUNT_EVENT_TO_SEND_STATE = {
     "ACCOUNT_RESTORED": "AVAILABLE",
 }
 
-_KNOWN_TIERS = frozenset(
-    {"TIER_50", "TIER_250", "TIER_1K", "TIER_10K", "TIER_100K", "TIER_UNLIMITED", "TIER_NOT_SET"}
-)
+_KNOWN_TIERS = frozenset({"TIER_50", "TIER_250", "TIER_1K", "TIER_10K", "TIER_100K", "TIER_UNLIMITED", "TIER_NOT_SET"})
 
 
 @shared_task
@@ -1355,6 +1377,7 @@ def _process_meta_template_webhook(instance, payload: dict):
         }
     """
     from tenants.models import BSPChoices, TenantWAApp
+    from wa.adapters.meta_direct import MetaDirectAdapter
     from wa.models import TemplateCategory, TemplateStatus, WATemplate
     from wa.services.template_notifications import TemplateNotificationService
 
@@ -1409,13 +1432,12 @@ def _process_meta_template_webhook(instance, payload: dict):
             ).first()
         return None
 
+    # One vocabulary for META's lifecycle, kept with the adapter that also
+    # polls it. FAILED is not one of META's own states — it is what the
+    # Gupshup-shaped payloads say — so it is added here rather than there.
     status_map = {
-        "APPROVED": TemplateStatus.APPROVED,
-        "REJECTED": TemplateStatus.REJECTED,
+        **MetaDirectAdapter.LIFECYCLE_STATUS_MAP,
         "FAILED": TemplateStatus.REJECTED,
-        "PENDING": TemplateStatus.PENDING,
-        "DISABLED": TemplateStatus.DISABLED,
-        "PAUSED": TemplateStatus.PAUSED,
     }
     category_map = {
         "MARKETING": TemplateCategory.MARKETING,
@@ -1451,19 +1473,23 @@ def _process_meta_template_webhook(instance, payload: dict):
 
         elif field == "template_category_update":
             # ── Category change ───────────────────────────────────────
+            # META re-categorises an approved template without re-opening
+            # review, so the status must not move. Knocking it back to
+            # PENDING is Gupshup's semantics, and it took the template out of
+            # every chat flow — they gate on APPROVED — until the two-minute
+            # cron polled it back (#272).
             new_category_str = (value.get("new_category") or "").upper()
             template = _find_template()
             if template and new_category_str:
                 old_category = template.category
-                old_status = template.status
                 template.category = category_map.get(new_category_str, template.category)
-                template.status = TemplateStatus.PENDING
-                template.save(update_fields=["category", "status"])
+                template.save(update_fields=["category"])
                 logger.info(
-                    "META template %s category: %s→%s, status→PENDING",
+                    "META template %s category: %s→%s (status %s unchanged)",
                     template.element_name,
                     old_category,
                     new_category_str,
+                    template.status,
                 )
                 TemplateNotificationService.send_category_change_notification(
                     template=template,
@@ -1489,6 +1515,19 @@ def _process_meta_template_webhook(instance, payload: dict):
                 if reason:
                     template.error_message = reason
                     update_fields.append("error_message")
+                    if event in ("REJECTED", "FAILED"):
+                        # The review verdict belongs in rejection_reason —
+                        # the field the UI shows next to a REJECTED template
+                        # and the one the poller writes. Writing only
+                        # error_message left it null for ever, because the
+                        # cron polls PENDING rows and this one is now
+                        # REJECTED (#272).
+                        template.rejection_reason = reason
+                        update_fields.append("rejection_reason")
+                if event == "APPROVED" and template.rejection_reason:
+                    # An earlier verdict, now overtaken by this one.
+                    template.rejection_reason = None
+                    update_fields.append("rejection_reason")
                 template.save(update_fields=update_fields)
                 logger.info(
                     "META template %s status: %s→%s",
@@ -1525,6 +1564,7 @@ def _process_meta_template_webhook(instance, payload: dict):
                     status=new_status,
                     category=category,
                     error_message=reason,
+                    rejection_reason=reason if event in ("REJECTED", "FAILED") else None,
                     needs_sync=True,
                 )
                 logger.info(
@@ -1784,7 +1824,7 @@ def send_outgoing_message(pk: str):
     from django.conf import settings
 
     from tenants.models import BSPChoices
-    from wa.models import MessageStatus, WAMessage
+    from wa.models import MessageStatus, MessageType, WAMessage
 
     result = {
         "outgoing_message_pk": str(pk),
@@ -1814,6 +1854,41 @@ def send_outgoing_message(pk: str):
         wa_app = instance.wa_app
         if not wa_app:
             raise Exception("No WA app associated with this message")
+
+        # ── 24h service-window pre-flight (#274) ──────────────────────────
+        # Outside the customer-care window WhatsApp rejects free-form sends
+        # with error 131047, and the agent saw only FAILED — the team_inbox
+        # serializer surfaced no reason at all. The window state is already
+        # maintained per conversation on every inbound (``resolve_or_create``),
+        # so read it here instead of paying for the rejection. Templates are
+        # exempt: they are the one thing WhatsApp accepts outside the window.
+        from wa.services.conversations import SERVICE_WINDOW_CLOSED_CODE, outbound_window_error
+
+        is_template = (
+            instance.message_type == MessageType.TEMPLATE or (instance.raw_payload or {}).get("type") == "template"
+        )
+        window_error = None
+        if not is_template and instance.contact:
+            window_error = outbound_window_error(wa_app=wa_app, contact=instance.contact)
+        if window_error:
+            instance.status = MessageStatus.FAILED
+            instance.failed_at = timezone.now()
+            instance.error_code = SERVICE_WINDOW_CLOSED_CODE
+            instance.error_message = window_error
+            instance.save(update_fields=["status", "error_code", "error_message", "failed_at"])
+            logger.info("Message %s not sent — %s", pk, window_error)
+
+            result["status"] = "failed"
+            result["error"] = window_error
+
+            # Still land in the timeline: a reply that was never sent has to
+            # be visible as a failure, not vanish from the agent's thread.
+            team_inbox_result = _create_team_inbox_message_v2(instance, wa_app)
+            result["team_inbox_created"] = team_inbox_result.get("created", False)
+            result["team_inbox_message_id"] = team_inbox_result.get("message_id")
+            result["team_inbox_error"] = team_inbox_result.get("error")
+            _broadcast_message_status_update_v2(instance, result["status"])
+            return result
 
         # Initialize the Session Message API (BSP-aware)
         bsp = getattr(wa_app, "bsp", None)

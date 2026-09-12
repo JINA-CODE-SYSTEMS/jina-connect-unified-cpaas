@@ -15,6 +15,7 @@ Rules (from RULES.MD):
 
 from typing import Any, Dict, List
 
+from ..constants import SESSION_MESSAGE_TYPES, canonical_session_message_type, is_valid_session_message_type
 from .base import FlowRule, NodeRule, RuleCategory, RuleSeverity, RuleViolation
 from .registry import register
 
@@ -45,10 +46,17 @@ class SessionMessageSingleOutgoingEdgeRule(FlowRule):
             buttons = node_data.get("buttons", [])
             msg_type = node_data.get("message_type", "")
 
-            # Message nodes with interactive buttons (interactive_button / interactive_list)
-            # are allowed one edge per button — skip the single-edge rule for them.
-            has_interactive_buttons = buttons and msg_type in ("interactive_button", "interactive_list")
-            if has_interactive_buttons:
+            # Message nodes with interactive buttons (interactive_button) or
+            # list rows (interactive_list) are allowed one edge per option —
+            # skip the single-edge rule for them.  List rows live under
+            # 'sections', not 'buttons', so a list node with per-row edges used
+            # to trip this rule despite being correctly authored (#273).
+            sections = node_data.get("sections", [])
+            canonical = canonical_session_message_type(msg_type)
+            has_options = (buttons and canonical == "interactive_button") or (
+                canonical == "interactive_list" and any(s.get("rows") for s in sections)
+            )
+            if has_options:
                 continue
 
             outgoing_count = sum(1 for e in edges if e.get("source") == node_id)
@@ -203,6 +211,21 @@ class SessionMessageInteractiveListLimitRule(NodeRule):
 
         sections = node_data.get("sections", [])
 
+        # A list with no rows is not a list. WhatsApp rejects it, and the
+        # executor can only fall back to sending the body as a paragraph —
+        # which leaves the flow waiting for a row reply that can never
+        # arrive (#273). Catch it here, where the author can still fix it.
+        if not any(s.get("rows") for s in sections):
+            violations.append(
+                RuleViolation(
+                    rule_id=self.rule_id,
+                    message=f"List message '{node_id}' has no rows - add at least one row for the customer to pick",
+                    node_id=node_id,
+                    severity=self.severity,
+                    details={"section_count": len(sections), "total_rows": 0},
+                )
+            )
+
         # Check section count
         if len(sections) > self.MAX_SECTIONS:
             violations.append(
@@ -320,3 +343,41 @@ class SessionMessageUniqueButtonIdsRule(NodeRule):
             )
 
         return violations
+
+
+@register
+class SessionMessageTypeSupportedRule(NodeRule):
+    """Session message types must be ones the executor can actually send."""
+
+    rule_id = "SESSION_006"
+    description = "Session message 'message_type' must be a type the executor can send"
+    category = RuleCategory.SESSION_MESSAGE
+    applies_to_node_type = "message"
+
+    def validate_node(self, node: Dict[str, Any], flow_data: Dict[str, Any]) -> List[RuleViolation]:
+        node_id = node.get("id")
+        node_data = node.get("data", {})
+        message_type = node_data.get("message_type")
+
+        # A node that never set a type sends text, which is always supported.
+        if not message_type:
+            return []
+
+        if is_valid_session_message_type(message_type):
+            return []
+
+        # Before #273 an unrecognised type was accepted here and quietly sent
+        # as a plain paragraph at runtime: the author saw a working node and
+        # the customer got prose. Reject it while the author is still looking.
+        return [
+            RuleViolation(
+                rule_id=self.rule_id,
+                message=(
+                    f"Session message '{node_id}' has unsupported message_type "
+                    f"'{message_type}'. Supported: {', '.join(SESSION_MESSAGE_TYPES)}"
+                ),
+                node_id=node_id,
+                severity=self.severity,
+                details={"message_type": message_type, "supported": list(SESSION_MESSAGE_TYPES)},
+            )
+        ]

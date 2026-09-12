@@ -18,6 +18,7 @@ class MessagesSerializer(serializers.ModelSerializer):
     outgoing_delivered_at = serializers.ReadOnlyField()  # Property field from model
     outgoing_read_at = serializers.ReadOnlyField()  # Property field from model
     outgoing_failed_at = serializers.ReadOnlyField()  # Property field from model
+    outgoing_error = serializers.ReadOnlyField()  # Property field from model (#274)
     read_by_name = serializers.SerializerMethodField()
     read_by_id = serializers.IntegerField(source="read_by.id", read_only=True, allow_null=True)
     platform_display = serializers.SerializerMethodField()
@@ -48,6 +49,7 @@ class MessagesSerializer(serializers.ModelSerializer):
             "outgoing_delivered_at",
             "outgoing_read_at",
             "outgoing_failed_at",
+            "outgoing_error",
             "reactions",
             "edited_at",
         ]
@@ -68,6 +70,7 @@ class MessagesSerializer(serializers.ModelSerializer):
             "outgoing_delivered_at",
             "outgoing_read_at",
             "outgoing_failed_at",
+            "outgoing_error",
             "reactions",
             "edited_at",
         ]

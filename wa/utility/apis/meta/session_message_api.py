@@ -1,9 +1,11 @@
 """
 META Direct (Cloud API) Session Message API.
 
-Sends free-form (session) messages via META's Cloud API.
+Sends free-form (session) messages and read receipts via META's Cloud API.
 
 Endpoint: POST https://graph.facebook.com/{version}/{phone_number_id}/messages
+(both operations share it — a read receipt is the same POST carrying
+``status: read`` instead of a message body).
 
 Session messages can only be sent within the 24-hour customer-care window
 (i.e. after the contact has last messaged you).
@@ -79,5 +81,35 @@ class SessionMessageAPI(WAAPI):
             "url": url,
             "headers": self.json_headers,
             "data": data,
+        }
+        return self.make_json_request(request_data)
+
+    def mark_read(self, message_id: str) -> dict:
+        """
+        Send a read receipt for an inbound message — the customer's blue ticks.
+
+        Same endpoint as :meth:`send_message`, with ``status`` instead of a
+        message body. META marks every *earlier* message in the conversation
+        read alongside the one named here, so a caller acknowledging a batch
+        only needs the newest inbound ID rather than one call per message.
+
+        Args:
+            message_id: ``wamid`` of the inbound message being acknowledged.
+
+        Returns:
+            dict – META response, ``{"success": true}``.
+
+        Raises:
+            Exception: on non-200/201 response (raised by ``make_json_request``).
+        """
+        request_data = {
+            "method": "POST",
+            "url": self._send_message_url,
+            "headers": self.json_headers,
+            "data": {
+                "messaging_product": "whatsapp",
+                "status": "read",
+                "message_id": message_id,
+            },
         }
         return self.make_json_request(request_data)

@@ -352,6 +352,17 @@ class WAMessageCreateSerializer(BaseSerializer):
         validated_data.pop("gupshup_model", None)
         validated_data.pop("payload", None)
 
+        # Back-fill media_url from the media library when the client sent a
+        # bare media_id (#274). The Cloud API payload must keep using ``id``
+        # — META Direct's session upload returns an ID and no URL, and the
+        # API rejects both keys together — but the team-inbox timeline
+        # renders ``media_url``, so with neither the agent's own image came
+        # out as an empty bubble in their own thread.
+        if validated_data.get("media_id") and not validated_data.get("media_url"):
+            resolved_url = self._media_library_url(validated_data.get("wa_app"), validated_data["media_id"])
+            if resolved_url:
+                validated_data["media_url"] = resolved_url
+
         # Build raw_payload BEFORE popping order fields — the payload builder needs them
         raw_payload = getattr(self, "_legacy_raw_payload", None)
         if not raw_payload:
@@ -366,6 +377,51 @@ class WAMessageCreateSerializer(BaseSerializer):
         validated_data.pop("footer_text", None)
 
         return super().create(validated_data)
+
+    @staticmethod
+    def _media_library_url(wa_app, media_id):
+        """Absolute URL of the uploaded file behind *media_id*, or ``None``.
+
+        ``TenantMedia.upload_to_wa`` stores what the BSP handed back in
+        ``media_id`` for carousel cards and in ``wa_handle_id["handleId"]``
+        for everything else, so both columns are searched. Media uploaded
+        straight to the provider, without passing through the library, has
+        nothing to find — the caller keeps the ID and no URL.
+        """
+        if not wa_app or not media_id:
+            return None
+
+        from django.db.models import Q
+
+        from tenants.models import TenantMedia
+
+        tenant_media = (
+            TenantMedia.objects.filter(tenant_id=wa_app.tenant_id)
+            .filter(Q(media_id=media_id) | Q(wa_handle_id__handleId=media_id))
+            .first()
+        )
+        if not tenant_media or not tenant_media.media:
+            return None
+
+        try:
+            url = tenant_media.media.url
+        except Exception as exc:  # noqa: BLE001 — an unreadable file must not block the send
+            logger.warning("Could not resolve media URL for media_id=%s: %s", media_id, exc)
+            return None
+
+        if url.startswith("http"):
+            return url
+
+        # Local storage hands back a relative path; the timeline is rendered
+        # by a browser that is not necessarily on this host.
+        from django.conf import settings
+        from django.contrib.sites.models import Site
+
+        try:
+            return f"https://{Site.objects.get(id=1).domain}{url}"
+        except Exception:  # noqa: BLE001
+            base = getattr(settings, "BASE_URL", "")
+            return f"{base}{url}" if base else url
 
     def _build_raw_payload(self, data):
         """
