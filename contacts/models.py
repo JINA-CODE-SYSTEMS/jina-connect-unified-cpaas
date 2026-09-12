@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.utils import timezone
 from phonenumber_field.modelfields import PhoneNumberField
 
 from abstract.models import BaseTenantModelForFilterUser
@@ -50,6 +51,19 @@ class TicketStatusChoices(models.TextChoices):
 
     OPEN = "OPEN", "Open"
     CLOSED = "CLOSED", "Closed"
+
+
+class MarketingOptOutSource(models.TextChoices):
+    """How a contact's marketing opt-out state was last set (#276).
+
+    Kept because the three are not equally trustworthy: a KEYWORD opt-out is
+    the contact's own word and must never be undone by a bulk operation, while
+    an IMPORT value is only as good as the file it came from.
+    """
+
+    KEYWORD = "KEYWORD", "Inbound keyword"
+    AGENT = "AGENT", "Agent or admin action"
+    IMPORT = "IMPORT", "Import"
 
 
 class TenantContact(BaseTenantModelForFilterUser):
@@ -137,6 +151,26 @@ class TenantContact(BaseTenantModelForFilterUser):
     rcs_capable = models.BooleanField(null=True, help_text="Whether this contact supports RCS messaging")
     rcs_checked_at = models.DateTimeField(null=True, blank=True, help_text="When RCS capability was last checked")
 
+    # Marketing opt-out (#276). Distinct from ``dnc`` above, which suppresses
+    # voice calls: a contact may refuse marketing broadcasts and still accept
+    # calls. The scope is marketing only — Meta treats utility and
+    # authentication messages as transactional and an opt-out does not reach
+    # them.
+    marketing_opt_out = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Contact has opted out of marketing messages",
+    )
+    marketing_opt_out_at = models.DateTimeField(
+        null=True, blank=True, help_text="When the marketing opt-out state was last changed"
+    )
+    marketing_opt_out_source = models.CharField(
+        max_length=20,
+        choices=MarketingOptOutSource.choices,
+        blank=True,
+        help_text="What last set the marketing opt-out state",
+    )
+
     # Ticket/conversation status
     status = models.CharField(
         max_length=10,
@@ -197,6 +231,30 @@ class TenantContact(BaseTenantModelForFilterUser):
         elif self.assigned_by_type == AssigneeTypeChoices.CHATFLOW:
             return f"ChatFlow #{self.assigned_by_id}" if self.assigned_by_id else "ChatFlow"
         return None
+
+    def set_marketing_opt_out(self, *, opted_out: bool, source: str) -> bool:
+        """Record a marketing opt-out or opt-in and where it came from (#276).
+
+        Returns whether the state actually changed. Customers send STOP more
+        than once; restamping ``marketing_opt_out_at`` each time would lose the
+        date they first asked, which is the date that matters if the opt-out is
+        ever questioned.
+        """
+        if self.marketing_opt_out == opted_out:
+            return False
+
+        self.marketing_opt_out = opted_out
+        self.marketing_opt_out_at = timezone.now()
+        self.marketing_opt_out_source = source
+        self.save(
+            update_fields=[
+                "marketing_opt_out",
+                "marketing_opt_out_at",
+                "marketing_opt_out_source",
+                "updated_at",
+            ]
+        )
+        return True
 
     class Meta:
         verbose_name = "Tenant Contact"

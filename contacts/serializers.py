@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from abstract.serializers import BaseSerializer
-from contacts.models import AssigneeTypeChoices, TenantContact
+from contacts.models import AssigneeTypeChoices, MarketingOptOutSource, TenantContact
 
 User = get_user_model()
 
@@ -15,7 +15,39 @@ class TenantContactSerializer(BaseSerializer):
     class Meta:
         model = TenantContact
         fields = "__all__"
-        read_only_fields = ["tenant", "assigned_at", "assigned_by_type", "assigned_by_id", "assigned_by_user"]
+        # The opt-out audit pair is stamped, never supplied: a client that
+        # could post its own timestamp and source could make a keyword
+        # opt-out look like an agent's, and that record is the only evidence
+        # the contact ever asked (#276).
+        read_only_fields = [
+            "tenant",
+            "assigned_at",
+            "assigned_by_type",
+            "assigned_by_id",
+            "assigned_by_user",
+            "marketing_opt_out_at",
+            "marketing_opt_out_source",
+        ]
+
+    def create(self, validated_data):
+        """A contact created already opted out still needs a source (#276).
+
+        Without this the flag would be set with a blank timestamp and source —
+        exactly the ambiguity those two fields exist to remove.
+        """
+        opted_out = validated_data.pop("marketing_opt_out", False)
+        contact = super().create(validated_data)
+        if opted_out:
+            contact.set_marketing_opt_out(opted_out=True, source=MarketingOptOutSource.AGENT)
+        return contact
+
+    def update(self, instance, validated_data):
+        """Toggling ``marketing_opt_out`` through the API is an agent action (#276)."""
+        opted_out = validated_data.pop("marketing_opt_out", None)
+        contact = super().update(instance, validated_data)
+        if opted_out is not None:
+            contact.set_marketing_opt_out(opted_out=opted_out, source=MarketingOptOutSource.AGENT)
+        return contact
 
 
 class ContactAssignmentSerializer(serializers.Serializer):
