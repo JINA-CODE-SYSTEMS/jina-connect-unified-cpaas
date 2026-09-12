@@ -517,7 +517,6 @@ def process_message_webhook(pk: str):
         raise Exception(f"Failed to process message webhook: {str(e)}")
 
 
-
 def _split_meta_message_payloads(payload: dict) -> list[dict]:
     """Split one META webhook into one payload per inbound message.
 
@@ -1223,9 +1222,7 @@ _ACCOUNT_EVENT_TO_SEND_STATE = {
     "ACCOUNT_RESTORED": "AVAILABLE",
 }
 
-_KNOWN_TIERS = frozenset(
-    {"TIER_50", "TIER_250", "TIER_1K", "TIER_10K", "TIER_100K", "TIER_UNLIMITED", "TIER_NOT_SET"}
-)
+_KNOWN_TIERS = frozenset({"TIER_50", "TIER_250", "TIER_1K", "TIER_10K", "TIER_100K", "TIER_UNLIMITED", "TIER_NOT_SET"})
 
 
 @shared_task
