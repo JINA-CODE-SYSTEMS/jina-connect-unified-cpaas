@@ -41,7 +41,6 @@ User = get_user_model()
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-
 #: Directories the source sweeps below never descend into.
 #:
 #: ``.claude`` earns its place alongside the virtualenvs: a nested ``git

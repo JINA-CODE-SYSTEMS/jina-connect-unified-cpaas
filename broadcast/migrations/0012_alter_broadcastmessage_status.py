@@ -4,15 +4,28 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('broadcast', '0011_broadcast_charged_rates'),
+        ("broadcast", "0011_broadcast_charged_rates"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='broadcastmessage',
-            name='status',
-            field=models.CharField(choices=[('PENDING', 'Pending'), ('QUEUED', 'Queued'), ('SENDING', 'Sending'), ('SENT', 'Sent Successfully'), ('DELIVERED', 'Delivered'), ('READ', 'Read'), ('FAILED', 'Failed'), ('BLOCKED', 'Blocked'), ('SUPPRESSED', 'Suppressed (opted out)')], default='PENDING', max_length=20),
+            model_name="broadcastmessage",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("PENDING", "Pending"),
+                    ("QUEUED", "Queued"),
+                    ("SENDING", "Sending"),
+                    ("SENT", "Sent Successfully"),
+                    ("DELIVERED", "Delivered"),
+                    ("READ", "Read"),
+                    ("FAILED", "Failed"),
+                    ("BLOCKED", "Blocked"),
+                    ("SUPPRESSED", "Suppressed (opted out)"),
+                ],
+                default="PENDING",
+                max_length=20,
+            ),
         ),
     ]

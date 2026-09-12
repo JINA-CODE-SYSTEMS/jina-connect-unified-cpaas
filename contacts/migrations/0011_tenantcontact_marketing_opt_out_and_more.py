@@ -4,25 +4,33 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('contacts', '0010_add_import_to_contact_source'),
+        ("contacts", "0010_add_import_to_contact_source"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='tenantcontact',
-            name='marketing_opt_out',
-            field=models.BooleanField(db_index=True, default=False, help_text='Contact has opted out of marketing messages'),
+            model_name="tenantcontact",
+            name="marketing_opt_out",
+            field=models.BooleanField(
+                db_index=True, default=False, help_text="Contact has opted out of marketing messages"
+            ),
         ),
         migrations.AddField(
-            model_name='tenantcontact',
-            name='marketing_opt_out_at',
-            field=models.DateTimeField(blank=True, help_text='When the marketing opt-out state was last changed', null=True),
+            model_name="tenantcontact",
+            name="marketing_opt_out_at",
+            field=models.DateTimeField(
+                blank=True, help_text="When the marketing opt-out state was last changed", null=True
+            ),
         ),
         migrations.AddField(
-            model_name='tenantcontact',
-            name='marketing_opt_out_source',
-            field=models.CharField(blank=True, choices=[('KEYWORD', 'Inbound keyword'), ('AGENT', 'Agent or admin action'), ('IMPORT', 'Import')], help_text='What last set the marketing opt-out state', max_length=20),
+            model_name="tenantcontact",
+            name="marketing_opt_out_source",
+            field=models.CharField(
+                blank=True,
+                choices=[("KEYWORD", "Inbound keyword"), ("AGENT", "Agent or admin action"), ("IMPORT", "Import")],
+                help_text="What last set the marketing opt-out state",
+                max_length=20,
+            ),
         ),
     ]
