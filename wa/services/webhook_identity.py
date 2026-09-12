@@ -33,14 +33,19 @@ resolved app's own ``TenantWAApp.meta_app_secret`` (#311's column, #306's second
 half), falling back to the deployment-wide ``settings.META_APP_SECRET`` only
 where an app has none.
 
-What this module deliberately does **not** do: validate ``hub.verify_token`` per
-app — that is #307, which is why :func:`verify_token` reports the *scope* of the
-token it returns rather than implying the handshake already checks a per-app one.
-It is unblocked by this module existing, and is not half-implemented here.
+The GET handshake spends the same identity, through :func:`select_verify_token`
+(#307): ``hub.verify_token`` is measured against the resolved app's own
+``TenantWAApp.webhook_verify_token``, and against the deployment-wide
+``<BSP>_WEBHOOK_VERIFY_TOKEN`` setting only for an app that has none and on the
+legacy path, which has no app to ask. The two selectors are deliberate siblings —
+one request, one identity, spent twice — and :func:`verify_token` reports which
+scope answered so the client-facing setup screen can only ever show a token the
+receiver will actually check.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from django.conf import settings as django_settings
@@ -53,6 +58,8 @@ from tenants.models import (
     BSPChoices,
     mask_wa_webhook_identifier,
 )
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Receiver registry
@@ -71,10 +78,12 @@ _RECEIVER_URL_NAMES: dict[str, tuple[str, str]] = {
     BSPChoices.GUPSHUP: ("wa:gupshup-webhook", "wa:gupshup-webhook-app"),
 }
 
-#: Deployment setting holding the verify token each receiver's handshake
-#: currently checks. One per BSP, deployment-wide — #307 replaces the *source*
-#: of these with the app's own token; the shape of this mapping is what it
-#: replaces, not the callers.
+#: Deployment setting holding each receiver's *fallback* verify token: what the
+#: legacy unsuffixed path checks, and what a per-app URL falls back to for an app
+#: with no token of its own. One per BSP, and the only deployment-wide half left
+#: since #307 — :func:`select_verify_token` prefers the sending app's own
+#: ``webhook_verify_token``. Registered here rather than branched on anywhere, so
+#: a third BSP's handshake gets per-app tokens from the shape (#305 D-4).
 _VERIFY_TOKEN_SETTINGS: dict[str, str] = {
     BSPChoices.META: "META_WEBHOOK_VERIFY_TOKEN",
     BSPChoices.GUPSHUP: "GUPSHUP_WEBHOOK_VERIFY_TOKEN",
@@ -198,6 +207,52 @@ def signature_rejections(bsp: str, reason: str, wa_app=None, day=None) -> int:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Handshake-rejection counter (#307)
+# ──────────────────────────────────────────────────────────────────────────────
+
+#: Handshakes refused because ``hub.verify_token`` did not match, bucketed per
+#: BSP, per app and per UTC day.
+#:
+#: Counted for two different readers. A burst against one app is someone
+#: guessing at that app's token, or a client re-verifying their URL with a stale
+#: one — the two look the same from here, and both are worth a look. A spread
+#: across many apps is a scan, which the unknown-identifier counter cannot see
+#: because a scanner who has a real callback URL passes that check.
+#:
+#: The presented token is deliberately *not* part of the key. It is an
+#: attacker-supplied guess at a secret — or, just as often, another tenant's
+#: real token sent to the wrong endpoint — and a cache key is written down in
+#: exactly the places a secret must not be (#307). Same storage argument as the
+#: counters above: the handshake is public and unauthenticated, so its rejection
+#: path may not perform an unbounded INSERT.
+_VERIFY_TOKEN_REJECTION_KEY_PREFIX = "wa:webhook:verify-token-rejection"
+
+
+def _verify_token_rejection_key(bsp: str, app_pk=None, day=None) -> str:
+    day = day or timezone.now()
+    return f"{_VERIFY_TOKEN_REJECTION_KEY_PREFIX}:{bsp}:{app_pk or _NO_APP}:{day:%Y%m%d}"
+
+
+def record_verify_token_rejection(bsp: str, wa_app=None) -> int:
+    """Count one failed handshake; return the day's total for that bucket.
+
+    *wa_app* is the app whose URL was addressed, which on a per-app URL is
+    always known because the path named it (#310). ``None`` is the legacy
+    unsuffixed receiver, which has no identity to attribute a handshake to.
+    """
+    return _bump(_verify_token_rejection_key(bsp, getattr(wa_app, "pk", None)))
+
+
+def verify_token_rejections(bsp: str, wa_app=None, day=None) -> int:
+    """How many handshakes *bsp* refused on *day* (UTC), for *wa_app*'s URL.
+
+    Scoped to *wa_app* when given; to the legacy receiver's bucket otherwise.
+    No "all apps" total, for the reason given at :func:`signature_rejections`.
+    """
+    return int(cache.get(_verify_token_rejection_key(bsp, getattr(wa_app, "pk", None), day)) or 0)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Resolution
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -307,20 +362,115 @@ def select_app_secret(wa_app=None) -> tuple[str, str]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Which token completes this handshake (#307)
+# ──────────────────────────────────────────────────────────────────────────────
+
+#: Whose verify token a handshake is checked against. The same three scopes
+#: :func:`select_app_secret` reports, and reported for the same reason: a
+#: handshake that "passed" without naming the token it passed against is the
+#: sentence that hid a deployment-wide secret being shared between tenants.
+VERIFY_TOKEN_SCOPE_APP = "app"  # the addressed app's own ``webhook_verify_token``
+VERIFY_TOKEN_SCOPE_DEPLOYMENT = "deployment"  # the shared ``<BSP>_WEBHOOK_VERIFY_TOKEN`` setting
+VERIFY_TOKEN_SCOPE_NONE = "none"  # nothing configured anywhere; the check cannot run
+
+
+def deployment_verify_token(bsp: str) -> str:
+    """The deployment-wide verify token setting for *bsp*, or ``""``.
+
+    Read through :data:`_VERIFY_TOKEN_SETTINGS` rather than by naming a setting,
+    so a BSP added to the registry gets a handshake without this module growing
+    a branch for it.
+    """
+    setting_name = _VERIFY_TOKEN_SETTINGS.get(bsp, "")
+    return (getattr(django_settings, setting_name, "") if setting_name else "") or ""
+
+
+def select_verify_token(bsp: str, wa_app=None) -> tuple[str, str]:
+    """The token *wa_app*'s handshake must present, and which scope it came from.
+
+    Returns ``(token, scope)``. Deliberately the same shape, the same precedence
+    and the same three scopes as :func:`select_app_secret`: one move, made twice
+    on the same request — the POST picks a secret per app, the GET picks a token
+    per app — and two conventions for it would be two things to keep in step.
+
+    **Per-app first, and per-app only.** ``TenantWAApp.webhook_verify_token``
+    (#307's column) is the app's own token, and when it has one that is the
+    *whole* of what its URL accepts. There is no second chance at the
+    deployment-wide value here, and that omission is the ticket: a fallback
+    would mean every holder of the shared token could still complete the
+    handshake for every client's endpoint, which is exactly the cross-tenant
+    secret being removed. Encrypted at rest, decrypted by
+    ``encrypted_model_fields`` on attribute access — read the attribute, never
+    the raw column.
+
+    **Deployment-wide for an app that has none.** That is the pre-#307
+    configuration, and an upgrade must not break a handshake that works today:
+    the column is blank until ``tenants/0031`` fills it, and a fixture or a row
+    written around ``save()`` can still be blank afterwards.
+
+    ``None`` for *wa_app* is the legacy unsuffixed receiver, which has no
+    identity during a handshake — there is no body to route from — and so has
+    only the deployment-wide setting available. That path is unchanged on
+    purpose: it is registered in live dashboards (#310).
+
+    The stored token is stripped, for the reason given at
+    :func:`select_app_secret`: a value that arrives through a textarea arrives
+    with a trailing newline more often than not, and a token compared as
+    ``"<token>\\n"`` refuses every genuine handshake. The setting is left alone,
+    which is existing behaviour on the path this ticket does not change.
+    """
+    if wa_app is not None:
+        own_token = (getattr(wa_app, "webhook_verify_token", "") or "").strip()
+        if own_token:
+            return own_token, VERIFY_TOKEN_SCOPE_APP
+
+    deployment_token = deployment_verify_token(bsp)
+    if deployment_token:
+        return deployment_token, VERIFY_TOKEN_SCOPE_DEPLOYMENT
+
+    return "", VERIFY_TOKEN_SCOPE_NONE
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # The URLs a client configures
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+def has_receiver(bsp: str) -> bool:
+    """Whether *bsp* has a receiver of its own, rather than a borrowed one.
+
+    The question :func:`_url_names` cannot answer in its return value, since it
+    answers with a URL either way (#334). Ask this before believing a callback
+    URL for a BSP that might not be META or Gupshup.
+    """
+    return bsp in _RECEIVER_URL_NAMES
 
 
 def _url_names(bsp: str) -> tuple[str, str]:
     """The (legacy, per-app) URL names for *bsp*.
 
     Falls back to the Gupshup receiver for a BSP with no receiver of its own,
-    which is what ``wa.admin`` and the subscription viewset already do when
-    they build a webhook URL. Wrong is better than absent here: the fallback is
+    which is what ``wa.admin`` and the subscription viewset already did when
+    they built a webhook URL. Wrong is better than absent here: the fallback is
     visible in the URL a client is handed, where an exception at setup time
     would instead be an unexplained 500 on an unrelated screen.
+
+    It is no longer *silent*, though (#334). A borrowed path cannot be spotted
+    in the URL by anyone who does not already know which receivers exist, so the
+    fallback says so in the log — and :func:`has_receiver` is the same answer for
+    a caller that would rather not ask at all.
     """
-    return _RECEIVER_URL_NAMES.get(bsp, _RECEIVER_URL_NAMES[BSPChoices.GUPSHUP])
+    names = _RECEIVER_URL_NAMES.get(bsp)
+    if names is not None:
+        return names
+
+    logger.warning(
+        "wa webhook: no receiver is registered for bsp=%s — falling back to the %s receiver, "
+        "so this callback URL names a path that will not recognise its own deliveries",
+        bsp,
+        BSPChoices.GUPSHUP,
+    )
+    return _RECEIVER_URL_NAMES[BSPChoices.GUPSHUP]
 
 
 def callback_path(wa_app) -> str:
@@ -365,10 +515,42 @@ def callback_url(wa_app, request=None) -> str:
     return f"{_public_base_url(request)}{callback_path(wa_app)}"
 
 
+def registration_callback_url(wa_app, request=None) -> str:
+    """The URL this deployment registers with a BSP for *wa_app* (#334).
+
+    The per-app one — the same string :func:`webhook_setup` tells the client to
+    paste, byte for byte, which is the whole point of this function existing.
+    Until #334 the two disagreed: the setup screen handed over
+    ``/wa/v2/webhooks/<bsp>/<identifier>/`` while every registration path sent
+    the BSP the legacy ``/wa/v2/webhooks/<bsp>/``, and the two surfaces sit in
+    the same header in WhatsApp settings. A client pastes ours, somebody later
+    presses "Refresh Webhooks" — which reads as routine maintenance — and the
+    deployment quietly re-registers a different path. Whether the new one wins is
+    the BSP's business; inbound messages stopping with both sides looking
+    correctly configured is the failure #310 exists to prevent.
+
+    Safe to move because the legacy path is permanent (#310): every deployment
+    that has it registered keeps working, this only changes what *we* register
+    from here on, and the per-app URL is the one that can be authenticated per
+    app — its own app secret keys the HMAC (#306) and its own token completes the
+    handshake (#307), neither of which the shared path can do for a second
+    client.
+
+    One function rather than four call sites choosing for themselves: the API
+    refresh action, both admin "reset & re-register" actions and the Gupshup
+    auto-register task all ask here, so "which URL do we register" has one
+    answer and cannot drift back into two.
+    """
+    return callback_url(wa_app, request=request)
+
+
 def legacy_callback_url(wa_app, request=None) -> str:
     """The absolute *legacy* callback URL for whichever BSP *wa_app* is on.
 
-    What subscription refresh registers. Three callers built this string
+    No longer what subscription refresh registers — that is
+    :func:`registration_callback_url` since #334 — but still what the receiver
+    serves and what deployments registered before it, which is why this keeps
+    composing the same string from the same one place. Three callers built it
     themselves — ``wa.admin``, ``tenants.admin`` and the v2 subscription
     viewset — each from its own copy of a two-entry BSP-to-path dict, and each
     keyed on the **raw** ``bsp`` column with a Gupshup fallback. A blank column
@@ -381,11 +563,10 @@ def legacy_callback_url(wa_app, request=None) -> str:
     two cases produce byte-identical strings to what the inline dicts produced,
     which is what the tests pin.
 
-    This is deliberately *not* :func:`callback_url`. The per-app URL is the one
-    a client should be given; this one authenticates against the
-    deployment-wide secret and so can only ever serve a single app. Registering
-    it is what existing deployments already do, and changing that is #307's
-    decision to make, not this helper's.
+    This is deliberately *not* :func:`callback_url`. This path authenticates
+    against the deployment-wide secret and token, so it can only ever serve a
+    single app and must not be handed to a second client — which is why #334
+    moved registration off it rather than moving it here.
     """
     from wa.adapters import resolve_bsp
 
@@ -395,22 +576,21 @@ def legacy_callback_url(wa_app, request=None) -> str:
 def verify_token(wa_app) -> tuple[str, str]:
     """The verify token for *wa_app*'s handshake, and the scope it has.
 
-    Returns ``(token, scope)`` where scope is ``"deployment"`` or ``"app"``.
+    Returns ``(token, scope)`` where scope is ``"app"``, ``"deployment"`` or
+    ``"none"``.
 
-    Today it is always the deployment-wide one, because that is what the
-    handshake in ``wa.views`` actually validates. Returning an app-scoped token
-    that nothing checks would be worse than returning none: the client would
-    paste a token, the handshake would accept some *other* token, and the
-    mismatch would surface as "verification works" until the day it is relied
-    on. #307 wires ``WASubscription.verify_token`` into the handshake and flips
-    this to ``"app"`` — the scope field is here so the screen consuming it does
-    not have to change when that happens.
+    The same call the receiver makes, through the same
+    :func:`select_verify_token`, which is the whole of the contract this function
+    is for: a setup screen may only show a token the handshake will actually
+    check. Showing an app-scoped token that the receiver ignores would read as
+    "verification works" right up to the day it is relied on, so the scope is
+    not a label applied here — it is whatever the receiver would answer for this
+    app, and it says ``"app"`` exactly when the app's own column is what the
+    challenge will be measured against.
     """
     from wa.adapters import resolve_bsp
 
-    setting_name = _VERIFY_TOKEN_SETTINGS.get(resolve_bsp(wa_app), "")
-    token = getattr(django_settings, setting_name, "") if setting_name else ""
-    return token or "", "deployment"
+    return select_verify_token(resolve_bsp(wa_app), wa_app=wa_app)
 
 
 def webhook_setup(wa_app, request=None) -> dict:
@@ -418,8 +598,12 @@ def webhook_setup(wa_app, request=None) -> dict:
 
     The one payload behind the "webhook setup" endpoint: the URL to paste into
     their BSP dashboard's callback field, and the token to paste beside it. The
-    two are issued together because they are configured together, and because
-    #307 will change where the token comes from without changing that.
+    two are issued together because they are configured together, and both are
+    now this app's own — ``verify_token_scope`` says ``"app"`` when the token
+    shown is the one the receiver will measure the challenge against (#307), and
+    ``callback_url`` is the same string this deployment itself registers (#334),
+    so the screen and the refresh button can no longer disagree about which URL
+    is authoritative.
     """
     from wa.adapters import resolve_bsp
 

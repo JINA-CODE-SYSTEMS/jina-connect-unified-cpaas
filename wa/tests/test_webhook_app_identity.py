@@ -33,8 +33,15 @@ half, over #311's column) and is covered in
 ``meta_app_secret``, so they verify against the deployment-wide secret — the
 fallback every pre-#311 install is in — which is why the deliveries below are
 signed with ``settings.META_APP_SECRET`` and why that is still the right thing
-for this file to assert. Per-app *verify-token* validation (#307) remains out of
-scope.
+for this file to assert.
+
+Per-app *verify-token* validation has since landed too (#307) and is covered in
+``wa/tests/test_per_app_verify_token.py``. It changes the handshake assertions
+here: an app carries its own ``webhook_verify_token`` from the moment it is
+created, so a handshake on its own URL presents *that* token and not the
+deployment-wide setting — which on a per-app URL is now refused. The legacy
+unsuffixed path still checks the setting, and the tests for it below are
+unchanged.
 
 HOW TO RUN:
     .venv/bin/python -m pytest wa/tests/test_webhook_app_identity.py -v
@@ -565,15 +572,20 @@ def test_the_per_app_path_still_verifies_the_signature(client, settings):
 
 @pytest.mark.django_db
 def test_the_verify_token_reports_the_scope_it_actually_has(settings):
-    """#307 is not done, and the endpoint says so rather than implying a
-    per-app token is being checked when the handshake checks a global one."""
+    """The scope is what the handshake would actually check, never a label.
+
+    #307 landed, so an app with a token of its own reports ``"app"`` — and the
+    deployment-wide setting being configured at the same time does not change
+    that, because it is not what this app's URL measures a challenge against.
+    """
     settings.META_WEBHOOK_VERIFY_TOKEN = "deployment-wide-token"
     app = _wa_app()
 
     token, scope = webhook_identity.verify_token(app)
 
-    assert token == "deployment-wide-token"
-    assert scope == "deployment"
+    assert token == app.webhook_verify_token
+    assert token != "deployment-wide-token"
+    assert scope == "app"
 
 
 @pytest.mark.django_db
@@ -592,7 +604,11 @@ def test_the_setup_pair_follows_the_apps_bsp(settings):
 
     assert body["bsp"] == "GUPSHUP"
     assert body["callback_url"] == (f"https://hooks.example.test/wa/v2/webhooks/gupshup/{app.webhook_identifier}/")
-    assert body["verify_token"] == "gupshup-deployment-token"
+    # The app's own token, on a Gupshup app, without this module or the one
+    # under test growing a second branch for the second BSP (#307 over D-4).
+    assert body["verify_token"] == app.webhook_verify_token
+    assert body["verify_token_scope"] == "app"
+    assert body["verify_token"] not in ("gupshup-deployment-token", "meta-deployment-token")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -603,13 +619,17 @@ def test_the_setup_pair_follows_the_apps_bsp(settings):
 @pytest.mark.django_db
 def test_the_handshake_on_an_apps_own_url_echoes_the_challenge(client, settings):
     """Meta's dashboard verifies the URL it is given, which is the per-app one,
-    so the handshake has to work there or the URL cannot be registered."""
+    so the handshake has to work there or the URL cannot be registered.
+
+    The token presented is the app's own since #307 — see
+    ``test_per_app_verify_token.py`` for the rest of that story, including the
+    deployment-wide token no longer being accepted here."""
     settings.META_WEBHOOK_VERIFY_TOKEN = "tok-310"
     app = _wa_app()
 
     response = client.get(
         _meta_url(app),
-        {"hub.mode": "subscribe", "hub.verify_token": "tok-310", "hub.challenge": "4242"},
+        {"hub.mode": "subscribe", "hub.verify_token": app.webhook_verify_token, "hub.challenge": "4242"},
     )
 
     assert response.status_code == 200
@@ -836,8 +856,10 @@ def test_the_webhook_setup_endpoint_returns_the_pair_a_client_configures(setting
         "bsp": "META",
         "callback_url": f"https://hooks.example.test/wa/v2/webhooks/meta/{app.webhook_identifier}/",
         "identifier_hint": webhook_identity.mask(app.webhook_identifier),
-        "verify_token": "tok-310",
-        "verify_token_scope": "deployment",
+        # The app's own token since #307, even with the deployment-wide setting
+        # configured — the screen shows what the receiver will check.
+        "verify_token": app.webhook_verify_token,
+        "verify_token_scope": "app",
         "verify_token_configured": True,
     }
 
@@ -895,17 +917,26 @@ def test_the_identifier_is_not_exposed_through_the_ordinary_app_payloads():
 @pytest.mark.django_db
 def test_an_unconfigured_verify_token_is_reported_as_unconfigured(settings):
     """A setup screen has to be able to say "configure the token first" rather
-    than showing an empty field that looks like a value."""
+    than showing an empty field that looks like a value.
+
+    Since #307 that needs both halves to be empty: an app issued its own token
+    always has one. Blanking the column is what a row written before #307's
+    migration, or around ``save()``, looks like.
+    """
+    from wa.models import WAApp
+
     settings.META_WEBHOOK_VERIFY_TOKEN = ""
 
     tenant = _tenant()
     app = _wa_app(tenant)
+    WAApp.objects.filter(pk=app.pk).update(webhook_verify_token="")
     api = _api_client_for(tenant)
 
     body = api.get(f"/wa/v2/apps/{app.pk}/webhook-setup/").data
 
     assert body["verify_token"] == ""
     assert body["verify_token_configured"] is False
+    assert body["verify_token_scope"] == "none"
 
 
 @pytest.mark.django_db

@@ -118,7 +118,10 @@ class TenantWAAppAdmin(admin.ModelAdmin):
         fail_count = 0
 
         for wa_app in queryset:
-            webhook_url = webhook_identity.legacy_callback_url(wa_app)
+            # The per-app URL shown in ``per_app_callback_url`` above and handed
+            # to the client by the webhook-setup endpoint — one answer to "which
+            # URL is registered", where there used to be two (#334).
+            webhook_url = webhook_identity.registration_callback_url(wa_app)
 
             adapter = get_bsp_adapter(wa_app)
 

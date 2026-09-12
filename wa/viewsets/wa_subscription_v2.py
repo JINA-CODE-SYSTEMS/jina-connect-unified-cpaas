@@ -568,9 +568,15 @@ class WASubscriptionV2ViewSet(BaseTenantModelViewSet):
         WASubscription.objects.filter(wa_app=wa_app).delete()
 
         # ── Step 3: Determine webhook URL ────────────────────────────────
+        # The app's own per-app URL, which is the same string the webhook-setup
+        # screen tells the client to paste (#334). It used to be the legacy
+        # deployment-wide path, so this button — which reads as routine
+        # maintenance — re-registered a *different* URL than the one the client
+        # had been given, and whether that silently stopped inbound delivery was
+        # up to the BSP's own semantics.
         webhook_url = request.data.get("webhook_url")
         if not webhook_url:
-            webhook_url = webhook_identity.legacy_callback_url(wa_app, request=request)
+            webhook_url = webhook_identity.registration_callback_url(wa_app, request=request)
 
         # ── Step 4: Create a single subscription covering all events ─────
         all_event_types = [et.value for et in WebhookEventType]
