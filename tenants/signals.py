@@ -21,25 +21,39 @@ def create_waba_info_on_wa_app_creation(sender, instance, created, **kwargs):
     Signal to automatically create a WABAInfo entry when a TenantWAApp is created.
     This ensures every WA app has a corresponding WABA info record.
 
-    For Gupshup apps, also queues auto-registration of our webhook receiver
-    so template approval/rejection callbacks arrive automatically.
+    Also queues auto-registration of this deployment's webhook receiver, so
+    inbound messages, delivery statuses and template decisions start arriving
+    without anyone pressing anything.
+
+    **Queued for every app, whatever its BSP.** This used to be gated on
+    ``instance.bsp == BSPChoices.GUPSHUP`` — the second of the two BSP tests
+    #259 is about, and the one that actually decided nothing was dispatched:
+    creating a Meta Direct app queued no task at all, so its WABA was never
+    subscribed and it received nothing until an operator found *Refresh
+    Webhooks*. Which BSPs can be registered with is
+    ``auto_register_bsp_webhook``'s question to put to ``get_bsp_adapter``, and
+    it answers it with a skip that names the BSP; a gate here can only turn that
+    into silence.
+
+    A raw ``instance.bsp`` comparison was wrong twice over, because a blank
+    column is META rather than "no BSP" (#265) — so every pre-existing row fell
+    through the gate as well.
     """
     if created:
-        from tenants.models import BSPChoices, WABAInfo
+        from tenants.models import WABAInfo
 
         # Create WABAInfo entry for the new WA app
         WABAInfo.objects.get_or_create(wa_app=instance)
         logger.info(f"Created WABAInfo entry for TenantWAApp {instance.id} ({instance.app_name})")
 
-        # Auto-register our webhook receiver for Gupshup apps
-        if instance.bsp == BSPChoices.GUPSHUP:
-            if settings.CELERY_BROKER_URL:
-                from wa.tasks import auto_register_gupshup_webhook
+        # Auto-register our webhook receiver with whichever BSP this app is on
+        if settings.CELERY_BROKER_URL:
+            from wa.tasks import auto_register_bsp_webhook
 
-                auto_register_gupshup_webhook.delay(instance.pk)
-                logger.info(f"Queued auto webhook registration for Gupshup app {instance.pk}")
-            else:
-                logger.info(f"Skipping auto webhook registration for app {instance.pk} (no Celery broker configured)")
+            auto_register_bsp_webhook.delay(instance.pk)
+            logger.info(f"Queued auto webhook registration for app {instance.pk}")
+        else:
+            logger.info(f"Skipping auto webhook registration for app {instance.pk} (no Celery broker configured)")
 
 
 def upload_media_to_whatsapp(tenant_media_instance, method="upload_media"):
