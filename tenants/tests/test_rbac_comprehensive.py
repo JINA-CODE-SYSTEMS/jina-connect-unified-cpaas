@@ -14,6 +14,10 @@ Run with:
     python manage.py test tenants.tests.test_rbac_comprehensive --verbosity=2 --no-input
 """
 
+import os
+import pathlib
+import tempfile
+
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 from rest_framework import status
@@ -35,6 +39,49 @@ User = get_user_model()
 # ═══════════════════════════════════════════════════════════════════════════
 # Shared helpers
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+#: Directories the source sweeps below never descend into.
+#:
+#: ``.claude`` earns its place alongside the virtualenvs: a nested ``git
+#: worktree`` — this project keeps parallel agent checkouts under
+#: ``.claude/worktrees/`` — puts a second copy of every source file inside the
+#: repo root, and a sweep that walks into it reports the copy as a finding. A
+#: security check that cries wolf is one people learn to skip.
+_SWEEP_PRUNED_DIRS = frozenset(
+    {
+        ".git",
+        ".claude",
+        ".venv",
+        "venv",
+        "node_modules",
+        "site-packages",
+        "__pycache__",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+    }
+)
+
+
+def _iter_source_files(root):
+    """Yield repo-relative paths of every first-party ``.py`` file under *root*.
+
+    Pruning happens in ``os.walk`` itself rather than by filtering paths
+    afterwards, so a nested checkout is never descended into at all — which is
+    both faster and the only way to be sure a copied file cannot be read.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SWEEP_PRUNED_DIRS]
+        for fn in filenames:
+            if not fn.endswith(".py"):
+                continue
+            rel_fwd = os.path.relpath(os.path.join(dirpath, fn), root).replace("\\", "/")
+            # Pre-existing exclusion: the sweeps check shipped code, and test
+            # files legitimately name the things they assert about.
+            if "test" in rel_fwd:
+                continue
+            yield rel_fwd
 
 
 class _FakeView:
@@ -2994,8 +3041,6 @@ class PreProductionSweepTests(RBACIntegrationBase):
         #255: AllowAny should only appear on login, register, token,
         webhook receivers, and onboarding options.
         """
-        import os
-
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         allowed_files = {
             "users/viewsets/user_login_patch.py",  # Login
@@ -3015,26 +3060,47 @@ class PreProductionSweepTests(RBACIntegrationBase):
             "jina_connect/urls.py",  # Swagger config (commented out)
         }
 
-        for dirpath, _dirnames, filenames in os.walk(root):
-            for fn in filenames:
-                if not fn.endswith(".py"):
-                    continue
-                fp = os.path.join(dirpath, fn)
-                rel = os.path.relpath(fp, root)
-                rel_fwd = rel.replace("\\", "/")
-                if "__pycache__" in rel_fwd or "venv/" in rel_fwd or "test" in rel_fwd or "site-packages" in rel_fwd:
-                    continue
-                try:
-                    with open(fp) as f:
-                        content = f.read()
-                except Exception:
-                    continue
-                if "AllowAny" in content:
-                    self.assertIn(
-                        rel_fwd,
-                        allowed_files,
-                        f"Unexpected AllowAny in {rel_fwd}",
-                    )
+        for rel_fwd in _iter_source_files(root):
+            try:
+                with open(os.path.join(root, rel_fwd)) as f:
+                    content = f.read()
+            except Exception:
+                continue
+            if "AllowAny" in content:
+                self.assertIn(
+                    rel_fwd,
+                    allowed_files,
+                    f"Unexpected AllowAny in {rel_fwd}",
+                )
+
+    def test_the_source_sweep_ignores_nested_checkouts(self):
+        """A nested checkout must not be mistaken for first-party source.
+
+        Regression guard for the sweep above. Parallel agent worktrees live
+        under ``.claude/worktrees/``, inside the repo root, so before pruning
+        the sweep found a second copy of every file — including
+        ``jina_connect/urls.py``, whose ``AllowAny`` is allowed at its real
+        path and therefore a failure at its copied one. The sweep reported a
+        security finding that was really a checkout artefact.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "app").mkdir()
+            (root / "app" / "views.py").write_text("AllowAny\n")
+
+            for buried in (
+                ".claude/worktrees/agent-1/app",
+                ".venv/lib/python3.11/site-packages/pkg",
+                "node_modules/thing",
+                "app/__pycache__",
+            ):
+                nested = root / buried
+                nested.mkdir(parents=True)
+                (nested / "views.py").write_text("AllowAny\n")
+
+            found = set(_iter_source_files(str(root)))
+
+        self.assertEqual(found, {"app/views.py"})
 
     # ── 3. JWT Token Claims ────────────────────────────────────────────
 
