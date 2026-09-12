@@ -7,14 +7,20 @@ Frontend uses this to manage connected WhatsApp accounts.
 
 from django_filters import rest_framework as filters
 from drf_yasg import openapi
-from drf_yasg.utils import swagger_auto_schema
+from drf_yasg.utils import no_body, swagger_auto_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from abstract.viewsets.base import BaseTenantModelViewSet
 from wa.models import BSPChoices, WAApp
-from wa.serializers import WAAppListSerializer, WAAppSafeSerializer, WAAppSerializer
+from wa.serializers import (
+    WAAppCreateSerializer,
+    WAAppListSerializer,
+    WAAppSafeCreateSerializer,
+    WAAppSafeSerializer,
+    WAAppSerializer,
+)
 
 
 class WAAppFilter(filters.FilterSet):
@@ -62,6 +68,10 @@ class WAAppViewSet(BaseTenantModelViewSet):
         "capabilities": "wa_app.view",
         # The per-app callback URL is a setup credential, not app metadata (#310).
         "webhook_setup": "wa_app.manage",
+        # Reads the stored credentials and talks to META with them. Same gate as
+        # the writes that put them there, not the gate that reads app metadata
+        # (#311).
+        "preflight": "wa_app.manage",
         "default": "wa_app.view",
     }
 
@@ -70,13 +80,28 @@ class WAAppViewSet(BaseTenantModelViewSet):
         #251: ADMIN/OWNER (priority >= 80) get full BSP identifiers.
         MANAGER and below get WAAppSafeSerializer (no app_id, waba_id, phone_number_id).
         List action uses WAAppListSerializer for all roles (already minimal).
+
+        #311: create gets the matching *create* serializer, which is the one
+        carrying the META required-identifier validation. That validation was
+        written, exported and never reached from here, so ``POST /wa/v2/apps/``
+        accepted ``bsp: "META"`` with neither identifier set.
+
+        The privilege branch is applied first and the create variant chosen
+        inside it, deliberately: each create serializer subclasses the serializer
+        that role already gets, so wiring this in adds a rule without adding a
+        readable or writable field to either level. A role below priority 80 that
+        holds ``wa_app.manage`` sees exactly the field surface it saw before.
         """
         if self.action == "list":
             return WAAppListSerializer
+
         tu = self._get_tenant_user()
-        if tu and tu.role and tu.role.priority >= 80:
-            return WAAppSerializer
-        return WAAppSafeSerializer
+        privileged = bool(tu and tu.role and tu.role.priority >= 80)
+
+        if self.action == "create":
+            return WAAppCreateSerializer if privileged else WAAppSafeCreateSerializer
+
+        return WAAppSerializer if privileged else WAAppSafeSerializer
 
     @swagger_auto_schema(
         operation_description="List all WhatsApp Business Apps for the current tenant",
@@ -144,7 +169,7 @@ class WAAppViewSet(BaseTenantModelViewSet):
         operation_summary="Create WA App",
         operation_id="create_wa_app",
         tags=["WhatsApp Apps (v2)"],
-        request_body=WAAppSerializer,
+        request_body=WAAppCreateSerializer,
         responses={
             201: openapi.Response(description="WA App created successfully", schema=WAAppSerializer()),
             400: openapi.Response(description="Validation error"),
@@ -304,6 +329,99 @@ class WAAppViewSet(BaseTenantModelViewSet):
                 "capabilities": sorted(adapter.CAPABILITIES),
             }
         )
+
+    @swagger_auto_schema(
+        operation_description=(
+            "Check this app's stored META credentials against META, without changing anything. "
+            "Three checks: the access token can read the WABA, phone_number_id is one of that WABA's "
+            "numbers, and the WABA is subscribed to an app (to the configured meta_app_id, when one "
+            "is set). Returns 200 when every check passes and 400 with one error per failing check, "
+            "keyed on the field to correct. Re-runnable as often as needed — it reads what is stored "
+            "and no credential has to be re-entered."
+        ),
+        operation_summary="Preflight META Credentials",
+        operation_id="preflight_wa_app",
+        tags=["WhatsApp Apps (v2)"],
+        request_body=no_body,
+        responses={
+            200: openapi.Response(
+                description="Every check passed",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "ok": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "token_source": openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            enum=["app", "deployment", "none"],
+                            description=(
+                                "Whose access token was used: the app's own, or the deployment-wide "
+                                "META_PERM_TOKEN it still falls back to."
+                            ),
+                        ),
+                        "checks": openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    "check": openapi.Schema(type=openapi.TYPE_STRING),
+                                    "passed": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                                    "field": openapi.Schema(type=openapi.TYPE_STRING),
+                                    "detail": openapi.Schema(type=openapi.TYPE_STRING),
+                                },
+                            ),
+                        ),
+                        "observations": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            description="What META reported in passing — the WABA name, the subscribed app ids.",
+                        ),
+                    },
+                ),
+            ),
+            400: openapi.Response(description="One or more checks failed, or the app is not a META app"),
+            401: openapi.Response(description="Authentication required"),
+            403: openapi.Response(description="Permission denied"),
+            404: openapi.Response(description="WA App not found"),
+        },
+    )
+    @action(detail=True, methods=["post"], url_path="preflight")
+    def preflight(self, request, pk=None):
+        """Re-run the META credential checks against META on demand (#311).
+
+        A preflight at create time catches the typo that was made that day. This
+        exists because credentials go stale afterwards for reasons nothing local
+        can see: a token is revoked, a WABA is moved between portfolios, someone
+        unsubscribes the app. POST rather than GET because it makes outbound
+        calls on the caller's behalf, and it is the only write-shaped thing here
+        that writes nothing — the app is not touched, so a failing preflight
+        never degrades a working app.
+
+        Gated on ``wa_app.manage``, the same gate as the writes that stored the
+        credentials: the report names the WABA and the subscribed app ids, which
+        are the identifiers #251 keeps away from lower roles.
+        """
+        from wa.services import meta_preflight
+
+        wa_app = self.get_object()
+
+        if wa_app.bsp != BSPChoices.META:
+            # The checks are Graph-shaped; claiming to have verified a Gupshup
+            # app by not calling Meta would be worse than declining.
+            return Response(
+                {"bsp": f"Preflight checks META credentials; this app's BSP is {wa_app.bsp}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        report = meta_preflight.run_meta_preflight(wa_app)
+        body = report.as_dict()
+        if report.ok:
+            return Response(body)
+
+        # Field errors, in the shape DRF raises them, plus the full report — the
+        # passing checks are how an operator tells "wrong number id" from
+        # "nothing about this app works".
+        payload = dict(report.as_field_errors())
+        payload["preflight"] = body
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         operation_description=(

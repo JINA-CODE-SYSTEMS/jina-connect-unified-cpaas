@@ -48,7 +48,13 @@ from wa.serializers.subscription import SubscriptionSerializer
 from wa.serializers.template import WATemplateSerializer
 
 # WAApp Serializers
-from wa.serializers.wa_app import WAAppCreateSerializer, WAAppListSerializer, WAAppSafeSerializer, WAAppSerializer
+from wa.serializers.wa_app import (
+    WAAppCreateSerializer,
+    WAAppListSerializer,
+    WAAppSafeCreateSerializer,
+    WAAppSafeSerializer,
+    WAAppSerializer,
+)
 
 # WAMessage Serializers
 from wa.serializers.wa_message import WAMessageCreateSerializer, WAMessageListSerializer, WAMessageSerializer
@@ -82,6 +88,7 @@ __all__ = [
     "WAAppListSerializer",
     "WAAppSafeSerializer",
     "WAAppCreateSerializer",
+    "WAAppSafeCreateSerializer",
     # WATemplate Serializers
     "WATemplateV2Serializer",
     "WATemplateV2ListSerializer",

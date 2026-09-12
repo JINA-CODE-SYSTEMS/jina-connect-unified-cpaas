@@ -370,7 +370,22 @@ class TenantGupshupAppsSerializer(BaseSerializer):
             "bsp_credentials": {"write_only": True},
             "bsp_access_token": {"write_only": True},
             "bsp_partner_app_token": {"write_only": True},
+            # The client's own META app secret (#311). Same reason, and this is
+            # the endpoint that would have leaked it first: ``__all__`` here
+            # picked the column up the moment it was declared on the model.
+            "meta_app_secret": {"write_only": True},
         }
+
+    def validate_bsp_credentials(self, value):
+        """The same guard the v2 endpoint applies (#311).
+
+        Imported inside the method to keep this module free of an import-time
+        dependency on ``wa.serializers``. Both endpoints write this column, so a
+        guard on only one of them would be a signpost to the other.
+        """
+        from wa.serializers.wa_app import reject_app_secret_in_bsp_credentials
+
+        return reject_app_secret_in_bsp_credentials(value)
 
     def update(self, instance, validated_data):
         """

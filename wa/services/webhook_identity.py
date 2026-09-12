@@ -28,8 +28,10 @@ nothing else in here knows which BSP it is serving.
 
 What this module deliberately does **not** do:
 
-* choose a signature secret — the per-app app-secret column is #311 and the
-  verification that reads it is #306's second half;
+* choose a signature secret — #311 added the column
+  (``TenantWAApp.meta_app_secret``), and the verification that reads it is
+  #306's second half. ``wa.views._verify_meta_signature`` still keys on the
+  deployment-wide ``settings.META_APP_SECRET``;
 * validate ``hub.verify_token`` per app — that is #307, which is why
   :func:`webhook_setup` reports the *scope* of the token it returns rather than
   implying the handshake already checks a per-app one.
