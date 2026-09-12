@@ -4,7 +4,6 @@ Handles deduction and refund of credits for broadcast messages.
 """
 
 import logging
-from decimal import Decimal
 
 from django.db import transaction as db_transaction
 from djmoney.money import Money
