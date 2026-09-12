@@ -567,6 +567,7 @@ class ContactsViewSet(BaseTenantModelViewSet):
 
         from django.db.models import Count, Q
 
+        from team_inbox.models import MessageDirectionChoices, MessagePlatformChoices
         from wa.models import MessageDirection, WAMessage
 
         # ── Period parsing ──────────────────────────────────────────
@@ -622,6 +623,36 @@ class ContactsViewSet(BaseTenantModelViewSet):
             active_percent = 0.0
             inactive_percent = 0.0
 
+        # ── What counts as "engaged" (#294) ─────────────────────────
+        # Inbound lands in ``team_inbox.Messages``, never in ``WAMessage``:
+        # every WAMessage creation site is an outbound send, and
+        # ``_ingest_inbound_message`` writes only an inbox row. Filtering
+        # WAMessage on INBOUND therefore matched nothing on any deployment,
+        # so both figures below read a structural zero rather than an empty
+        # one. Counting from team_inbox is correct immediately, keeps
+        # WAMessage outbound-only (what it has always been in practice) and
+        # leaves the ingest path alone.
+        #
+        # ``timestamp``, not ``created_at``: ingest overwrites ``timestamp``
+        # with the BSP's reported message time, while ``created_at`` records
+        # when our worker got to the webhook — which drifts on retries and
+        # backlogs, so period buckets would move with queue depth.
+        #
+        # ``messages__tenant`` is redundant with the tenant-scoped
+        # ``all_contacts``, but stated anyway: this is per-tenant analytics
+        # and a cross-tenant leak would be worse than the zero we are fixing.
+        #
+        # WhatsApp-only, to stay comparable with ``messaged_count`` below,
+        # which counts outbound WhatsApp. Folding in voice/SMS/Telegram
+        # inbound could report more engaged than messaged and invert the
+        # funnel.
+        engaged_filter = Q(
+            messages__tenant=tenant,
+            messages__direction=MessageDirectionChoices.INCOMING,
+            messages__platform=MessagePlatformChoices.WHATSAPP,
+            messages__timestamp__gte=period_start,
+        )
+
         # ── Top segment (tag with highest engagement rate) ──────────
         top_segment = {"name": None, "contact_count": 0, "engagement_rate": 0.0}
         tag_stats = (
@@ -629,14 +660,7 @@ class ContactsViewSet(BaseTenantModelViewSet):
             .values("tag")
             .annotate(
                 contact_count=Count("id", distinct=True),
-                engaged_count=Count(
-                    "id",
-                    filter=Q(
-                        wa_messages__direction=MessageDirection.INBOUND,
-                        wa_messages__created_at__gte=period_start,
-                    ),
-                    distinct=True,
-                ),
+                engaged_count=Count("id", filter=engaged_filter, distinct=True),
             )
             .filter(contact_count__gte=5)
             .order_by("-contact_count")[:100]
@@ -661,14 +685,9 @@ class ContactsViewSet(BaseTenantModelViewSet):
             .distinct()
             .count()
         )
-        engaged_count = (
-            all_contacts.filter(
-                wa_messages__direction=MessageDirection.INBOUND,
-                wa_messages__created_at__gte=period_start,
-            )
-            .distinct()
-            .count()
-        )
+        # Same source and same window as the top-segment rate above — one Q so
+        # the two figures cannot drift apart (#294).
+        engaged_count = all_contacts.filter(engaged_filter).distinct().count()
 
         return Response(
             {
