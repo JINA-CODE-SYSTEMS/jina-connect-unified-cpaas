@@ -530,10 +530,9 @@ class WASubscriptionV2ViewSet(BaseTenantModelViewSet):
         calls delete-all on the BSP side first, cleans up local records,
         then creates one new subscription and registers it.
         """
-        from django.conf import settings as django_settings
-
         from wa.adapters import get_bsp_adapter
         from wa.models import SubscriptionStatus, WAApp, WASubscription, WebhookEventType
+        from wa.services import webhook_identity
 
         wa_app_pk = request.data.get("wa_app")
         if not wa_app_pk:
@@ -571,13 +570,7 @@ class WASubscriptionV2ViewSet(BaseTenantModelViewSet):
         # ── Step 3: Determine webhook URL ────────────────────────────────
         webhook_url = request.data.get("webhook_url")
         if not webhook_url:
-            bsp_path_map = {
-                "GUPSHUP": "/wa/v2/webhooks/gupshup/",
-                "META": "/wa/v2/webhooks/meta/",
-            }
-            base = getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "").rstrip("/")
-            path = bsp_path_map.get(wa_app.bsp, "/wa/v2/webhooks/gupshup/")
-            webhook_url = f"{base}{path}"
+            webhook_url = webhook_identity.legacy_callback_url(wa_app, request=request)
 
         # ── Step 4: Create a single subscription covering all events ─────
         all_event_types = [et.value for et in WebhookEventType]
