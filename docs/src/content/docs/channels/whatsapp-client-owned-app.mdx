@@ -1,0 +1,286 @@
+---
+title: Client-Owned Meta App
+description: Onboard a client's own Meta WhatsApp app end to end — handover values, preflight, webhook setup, and what is still manual.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+This is the **bring-your-own-app** route: the client keeps their own Meta app,
+their own WhatsApp Business Account (WABA) and their own phone number, and hands
+Jina Connect four values so it can send on their behalf and receive their
+webhooks. It needs no Meta App Review and no Tech Provider status, so it works
+on a fresh self-hosted deployment on day one.
+
+<Aside type="note" title="Every statement here was read out of the merged code">
+This page documents behaviour in `wa/serializers/wa_app.py`,
+`wa/viewsets/wa_app.py`, `wa/services/meta_preflight.py`,
+`wa/services/webhook_identity.py` and `tenants/permissions.py`. Where something
+is not yet automated, it says so rather than describing the intended end state.
+The field-by-field request and response contract is on
+[WhatsApp Apps API (v2)](/jina-connect-unified-cpaas/api/wa-apps/).
+</Aside>
+
+## How this differs from Embedded Signup
+
+Meta **Embedded Signup** is the one-click path: the client authorises Jina
+Connect inside a Meta-hosted dialog and never copies a credential. It requires
+Meta Tech Provider status and App Review, so it is not available to every
+deployment.
+
+The two routes **coexist permanently** — the client-owned route is not interim
+scaffolding to be removed once Embedded Signup is approved. That is why the
+webhook identity layer is BSP-agnostic by construction and why every app gets
+its own `webhook_identifier` whatever its `bsp`.
+
+| | Client-owned Meta app (this page) | Embedded Signup |
+|---|---|---|
+| Who owns the Meta app | the client | the platform |
+| Meta App Review needed | no | yes |
+| Credentials copied by hand | four values | none |
+| App secret held by the platform | yes, the client's | yes, the platform's |
+| Webhook receiver | per-app URL | per-app URL |
+
+## What the client does on their side
+
+The client works in their own Meta App Dashboard and Business Manager. Meta owns
+that UI and renames things in it, so treat the names below as a description of
+*what* is needed rather than a click path.
+
+<Steps>
+
+1. **Have a Meta app with the WhatsApp product added**, and a WABA with at least
+   one registered phone number on it.
+
+2. **Subscribe the WABA to that app.** This is separate from everything else and
+   is the quiet killer: the callback URL and verify token are configured once per
+   app, but each WABA must *additionally* be subscribed to the app or Meta
+   delivers nothing for it — no inbound messages, no delivery or read statuses,
+   no template status updates, no account updates — with no error anywhere to say
+   so. The preflight checks this explicitly.
+
+3. **Collect the four handover values.**
+
+</Steps>
+
+### The four values
+
+| Value | Request field | What it is | Why it is needed |
+|---|---|---|---|
+| WABA ID | `waba_id` | the WhatsApp Business Account id | every Graph read and template call is scoped to it; required for a Meta app |
+| Phone Number ID | `phone_number_id` | the id of the number messages go out from | required for a Meta app; sends have no origin without it |
+| Access token | `bsp_access_token` | a Meta access token with access to that WABA | the credential every outbound Graph call is made with |
+| App secret | `meta_app_secret` | the client's Meta app secret | the key their webhook signatures are verified with |
+
+Both credentials are stored encrypted, are write-only through the API, and are
+never returned or logged.
+
+<Aside type="caution" title="The app secret is unavoidable, not belt-and-braces">
+Meta signs every webhook delivery with `X-Hub-Signature-256`, an **HMAC-SHA256
+over the raw body keyed on the sending app's secret**. HMAC is symmetric: the
+only way to verify a signature is to hold the key that produced it. Meta offers
+no delegated alternative — no public key, no introspection endpoint, nothing
+that lets a receiver check the signature without the secret itself.
+
+So a deployment that does not hold a client's app secret has exactly two
+options for that client's deliveries: accept them unverified, or drop them. The
+fourth handover value is what makes "verified, and verified *as this client*"
+possible at all. It is also why one deployment-wide `META_APP_SECRET` can never
+serve two client-owned apps: a delivery verified against the shared secret is
+authenticated only as "someone holding this deployment's secret", which does not
+separate one client from another.
+</Aside>
+
+## What an operator does
+
+<Steps>
+
+1. **Use a tenant-scoped owner or admin account.** Creating an app, running the
+   preflight and reading the webhook setup all require the **`wa_app.manage`**
+   permission, which by default only **owner** and **admin** hold.
+   `wa_app.view` — which all five default roles hold — is *not* enough for any
+   of the three.
+
+   <Aside type="caution" title="A platform superuser is not a substitute">
+   A Django superuser bypasses the permission check but is still handed the
+   restricted create serializer when they hold no role in the tenant, because the
+   serializer choice reads the caller's `TenantUser` role priority and a
+   superuser with no membership has none. The create then fails on `bsp` with
+   "your role cannot set BSP identifiers". Create the app as an owner or admin
+   **of the tenant**, not as a platform superuser.
+   </Aside>
+
+2. **Create the app**, sending the four values plus the tenant, app name and
+   phone number. `POST /wa/v2/apps/` — see the
+   [request contract](/jina-connect-unified-cpaas/api/wa-apps/#post-wav2apps).
+
+   Send `verify_with_meta: true` to have the preflight run before the row is
+   written: a bad handover then comes back as field errors and no app is created.
+
+3. **Run the preflight** if it was not run inline:
+   `POST /wa/v2/apps/{id}/preflight/`. It changes nothing, reads what is stored,
+   and is re-runnable as often as you like.
+
+4. **Read the webhook setup pair**: `GET /wa/v2/apps/{id}/webhook-setup/`. Hand
+   the client the `callback_url` and `verify_token` to paste into their own Meta
+   app's webhook configuration.
+
+5. **Press Refresh Webhooks for this app** — still manual, see below.
+
+6. **Verify end to end**: have the client send one message to the number, and
+   confirm it arrives.
+
+</Steps>
+
+## What the preflight checks, and what each failure means
+
+The preflight exists because a presence check catches an empty field but not a
+transposed digit, and a typo in `waba_id` produces an app that looks fully
+configured, sends nothing, receives nothing, and is diagnosed days later from
+the wrong end. These identifiers are copied by hand out of someone else's
+Business Manager, so a typo is the expected case.
+
+Four checks run in order: one local precondition, then three questions put to
+Meta. Each failure is reported **on the field to correct**.
+
+| Check | Question | Reported on | What a failure means |
+|---|---|---|---|
+| `credentials` | is there a WABA id and a token to try at all? | `waba_id` or `bsp_access_token` | nothing was supplied; Meta was never contacted |
+| `waba_readable` | can this token read *this* WABA? | `waba_id` | wrong WABA id, or a token without access to it — or Meta answered for a different WABA, which a 200 alone does not rule out |
+| `phone_number_listed` | is `phone_number_id` one of that WABA's numbers? | `phone_number_id` | wrong number id, or a number that belongs to another WABA |
+| `app_subscribed` | is the WABA subscribed to the app? | `meta_app_id` | no app is subscribed, so Meta will deliver nothing — or a *different* app is subscribed than the `meta_app_id` configured |
+
+Two deliberate behaviours worth knowing:
+
+- **A failing preflight never degrades a working app.** It writes nothing and
+  touches no row; the on-demand action is the only write-shaped endpoint here
+  that writes nothing.
+- **The report is scrubbed.** Meta's error text is truncated and the access
+  token is replaced with `[redacted]` before it reaches a response body or a log
+  line.
+- **`token_source` tells you whose token was checked.** An app with no token of
+  its own still works today through the deployment-wide `META_PERM_TOKEN`
+  fallback, and the report says `app`, `deployment` or `none` rather than
+  letting a check of the platform's credential pass for a check of the client's.
+
+## Handing over the callback URL and verify token
+
+`GET /wa/v2/apps/{id}/webhook-setup/` returns the pair the client configures:
+
+```json
+{
+  "wa_app": "42",
+  "bsp": "META",
+  "callback_url": "https://connect.example.com/wa/v2/webhooks/meta/whk_0123456789abcdefghijklmnopqrstuv/",
+  "identifier_hint": "whk_01234567…",
+  "verify_token": "synthetic-verify-token",
+  "verify_token_scope": "deployment",
+  "verify_token_configured": true
+}
+```
+
+<Aside type="danger" title="The callback URL is a credential">
+The URL carries the app's opaque `webhook_identifier`, and whoever holds it can
+address this app's receiver. Treat the whole response as a setup credential:
+send it over the same channel you would send a token, never paste it into a
+ticket, and show only `identifier_hint` in lists and logs. That is why the
+endpoint is gated on `wa_app.manage` and not on `wa_app.view`.
+</Aside>
+
+The identity lives in the **URL** rather than the body on purpose. Choosing which
+secret verifies a delivery means knowing which app sent it, and the only
+identifiers that say so live inside a body that cannot be trusted until the
+signature over it has been checked. The per-app path breaks that circle: the
+path names the app, the app names the secret, the body is parsed last — in one
+indexed query whose cost does not move as the deployment goes from one app to a
+hundred.
+
+The legacy unsuffixed receiver (`/wa/v2/webhooks/meta/`) still exists and still
+works, because it is registered in live dashboards. It authenticates against the
+deployment-wide secret, so it can only ever serve one client's app and **must
+not be handed to a second**.
+
+### `verify_token_scope` is part of the contract — read it, do not assume it
+
+The response reports the **scope** of the token it returns, not just the token.
+
+<Aside type="caution" title="Both values are real — read the field">
+Per-app verify tokens have landed, and the same field now answers for two
+configurations with no other change to the response — which is exactly why it
+exists. `"app"` means this app has its own token and the handshake on its per-app
+URL checks that alone; `"deployment"` means its column is blank, so the handshake
+falls back to the shared `META_WEBHOOK_VERIFY_TOKEN`, which is also what the
+legacy unsuffixed path always reports. Any client must branch on
+`verify_token_scope` rather than hard-coding a value, and must not assume the
+token it received is shared with, or distinct from, any other app's.
+</Aside>
+
+One consequence worth passing on to a client who onboarded earlier: if they
+pasted the **deployment-wide** token beside their per-app URL, they must re-copy
+the token from this screen the next time their BSP re-verifies that URL.
+Deliveries in flight are unaffected, because the handshake happens at
+registration.
+
+`verify_token_configured` is the honest answer to "is there a token to paste at
+all". When a deployment has set no verify token, the handshake accepts whatever
+token Meta sends, and this field is `false` — do not paste an empty value and
+assume it was checked.
+
+## What is still manual today
+
+**Webhook subscription is not automatic for Meta apps.** The signal that fires
+when an app is created queues auto-registration **only when `bsp == GUPSHUP`**.
+A newly created Meta app therefore has no subscription until someone asks for
+one, which in practice means an operator pressing **Refresh Webhooks** —
+`POST /wa/v2/subscriptions/refresh/` with `{"wa_app": "<id>"}`, also gated on
+`wa_app.manage` — **once per app**.
+
+For a Meta app that call does the thing Meta actually requires: it subscribes
+the WABA to the app (`POST /{waba_id}/subscribed_apps`) and then re-reads the
+subscription to confirm it, rather than trusting the write. The callback URL and
+verify token remain app-level configuration in the client's own App Dashboard;
+there is no API for those.
+
+Automatic registration for Meta apps is tracked and in flight. Until it lands,
+"create the app" and "the app receives anything" are two separate operator
+actions, and skipping the second produces a deployment that looks healthy and
+receives nothing.
+
+<Aside type="caution" title="Refresh registers the legacy URL, not the per-app URL">
+`POST /wa/v2/subscriptions/refresh/` records the **legacy** deployment-wide
+callback URL on the subscription row when no `webhook_url` is passed, while
+`webhook-setup` hands out the **per-app** URL. The two disagree about which URL
+is authoritative, and reconciling them is tracked separately. Until it is: the
+URL the client pastes into their dashboard is the one from `webhook-setup`, and
+the subscription row's `webhook_url` is not evidence of what the client
+configured.
+</Aside>
+
+## Rotating a credential
+
+Send the new value in a `PATCH /wa/v2/apps/{id}/`. There is no dedicated rotate
+endpoint, and there does not need to be: the same write-only fields accept the
+replacement, the app keeps its id, and its templates, messages and conversations
+survive — which deleting and recreating the app would not. Add
+`verify_with_meta: true` to the same request to check the new credential as it
+is stored.
+
+An omitted field leaves the stored value unchanged. An **empty string is
+rejected** rather than interpreted: a blank field is far more often a form that
+submitted nothing than a deliberate "forget the key that verifies my webhooks".
+
+## When something does not arrive
+
+1. **Run the preflight first.** It distinguishes "one wrong id" from "nothing
+   about this app works", and reports the passing checks alongside the failing
+   ones.
+2. **Check the WABA is subscribed** — the `app_subscribed` check, and the
+   Refresh Webhooks press above.
+3. **Check the client pasted the per-app URL**, not the legacy one, and not
+   another app's.
+4. **A rotated app secret goes silently quiet.** Meta must be answered `200`
+   whatever happens — a non-200 throttles delivery to the whole deployment — so
+   deliveries whose signature no longer verifies keep arriving, keep failing and
+   keep being answered "fine". The only trace is a per-app, per-reason rejection
+   counter (`invalid_signature` versus `app_secret_not_configured`) kept in the
+   cache for a week of daily buckets. If a client went quiet after a change on
+   their side, suspect the secret before suspecting Meta.

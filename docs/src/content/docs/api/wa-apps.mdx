@@ -1,0 +1,420 @@
+---
+title: WhatsApp Apps API (v2)
+description: Create a client-owned Meta app, preflight its credentials, and read its webhook setup pair — field by field.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+The contract for the three endpoints a client-owned Meta app onboarding screen
+drives. Everything below was read out of the merged source —
+`wa/serializers/wa_app.py`, `wa/viewsets/wa_app.py`,
+`wa/services/meta_preflight.py`, `wa/services/webhook_identity.py` and the
+permission map in `tenants/permissions.py`. For the operator-facing flow around
+these calls, see
+[Client-Owned Meta App](/jina-connect-unified-cpaas/channels/whatsapp-client-owned-app/).
+
+<Aside type="tip" title="Pin the contract, do not agree it">
+A previous client-side build of this flow was written against a *stated* shape
+and four things differed when the backend merged — a renamed field, a field that
+did not exist, an endpoint that did not exist, and a permission gate one level
+too loose. Three of the four other fields matched by luck, which is what hid the
+rest. `wa/tests/test_app_onboarding_contract.py` asserts this page against the
+live serializers and viewset, so treat that file, not this prose, as the
+authority if the two ever disagree.
+</Aside>
+
+## Endpoints and permissions
+
+The permission is read from `WAAppViewSet.required_permissions`, not inferred
+from the action name.
+
+| Method | Path | Action | Permission required |
+|---|---|---|---|
+| `POST` | `/wa/v2/apps/` | `create` | **`wa_app.manage`** |
+| `POST` | `/wa/v2/apps/{id}/preflight/` | `preflight` | **`wa_app.manage`** |
+| `GET` | `/wa/v2/apps/{id}/webhook-setup/` | `webhook_setup` | **`wa_app.manage`** |
+| `GET` | `/wa/v2/apps/` · `/wa/v2/apps/{id}/` | `list` · `retrieve` | `wa_app.view` |
+| `PATCH` | `/wa/v2/apps/{id}/` | `partial_update` | `wa_app.manage` |
+| `DELETE` | `/wa/v2/apps/{id}/` | `destroy` | `wa_app.delete` |
+
+All three onboarding endpoints require `wa_app.manage`. Under the default roles:
+
+| Role | Priority | `wa_app.view` | `wa_app.manage` | `wa_app.delete` |
+|---|---|---|---|---|
+| owner | 100 | yes | **yes** | yes |
+| admin | 80 | yes | **yes** | no |
+| manager | 60 | yes | no | no |
+| agent | 40 | yes | no | no |
+| viewer | 20 | yes | no | no |
+
+<Aside type="danger" title="Do not gate a client on `wa_app.view`">
+`wa_app.view` is granted to **all five** default roles; `wa_app.manage` to owner
+and admin only. A control gated on `view` is shown to manager, agent and viewer,
+who are then refused with a bare `403` on click. Gate on `wa_app.manage`.
+</Aside>
+
+Authentication is a bearer token as elsewhere in the API. An impersonated
+("view as organisation") session is read-only: the two `POST`s — create and
+preflight — are refused in one with a read-only message, while `webhook-setup`
+is a `GET` and is **not** refused, so a support session can read an app's setup
+credential. Onboarding cannot be completed from an impersonated session.
+
+## The role branch decides what a caller may send
+
+`WAAppViewSet.get_serializer_class` applies a **privilege branch first** and
+chooses the create variant inside it:
+
+| Caller's role priority | Create serializer | May send BSP identifiers and credentials |
+|---|---|---|
+| ≥ 80 (owner, admin) | `WAAppCreateSerializer` | yes |
+| &lt; 80 | `WAAppSafeCreateSerializer` | **no** |
+
+`WAAppSafeCreateSerializer` has the same field surface as the safe read
+serializer, to the letter — it adds a rule, not a field. It carries no
+`waba_id`, `phone_number_id`, `app_id`, `meta_app_id`, `bsp_access_token` or
+`meta_app_secret`, so a caller below priority 80 **cannot create a Meta app at
+all**: a Meta app requires the identifiers, the role cannot send them, and the
+error arrives on `bsp`:
+
+```json
+{
+  "bsp": [
+    "A META app needs a WABA ID and a Phone Number ID, and your role cannot set BSP identifiers. Ask an owner or admin to create this app, or choose a different BSP."
+  ]
+}
+```
+
+Two consequences for a form:
+
+1. **Do not render the identifier or credential fields for a caller below
+   priority 80.** A form that shows fields the role cannot submit is the same
+   class of bug as gating on the wrong permission.
+2. Under the default roles this branch is never reached, because only owner (100)
+   and admin (80) hold `wa_app.manage` and both clear the threshold. It applies
+   to a **custom role** granted `wa_app.manage` below priority 80 — and to a
+   **platform superuser with no membership in the tenant**, whose
+   `TenantUser` lookup returns nothing, so the branch treats them as
+   unprivileged and the create fails on `bsp` even though the permission check
+   passed. Onboard as an owner or admin of the tenant.
+
+The same branch governs reads: below priority 80, `waba_id`, `phone_number_id`,
+`app_id` and `meta_app_id` are absent from list and retrieve responses entirely.
+
+## `POST /wa/v2/apps/`
+
+### Request fields
+
+For a caller at priority ≥ 80. Required-ness is the serializer's, as built.
+
+| Field | Type | Required | Write-only | Notes |
+|---|---|---|---|---|
+| `tenant` | integer (pk) | **yes** | no | the tenant the app belongs to; taken from the body, so send the tenant you intend |
+| `app_name` | string | **yes** | no | free text |
+| `phone_number` | string | **yes** | no | maps to `wa_number`; validated as E.164 — `^\+\d{10,15}$` after spaces and dashes are stripped |
+| `app_id` | string | **yes** | no | the **Gupshup** app id. Still required for a Meta app — see the trap below |
+| `bsp` | enum | **yes** | no | `META`, `GUPSHUP`, `TWILIO`, `MESSAGEBIRD`. Required on the privileged create serializer only |
+| `waba_id` | string | yes *for Meta* | no | enforced when the effective BSP is `META` |
+| `phone_number_id` | string | yes *for Meta* | no | enforced when the effective BSP is `META` |
+| `meta_app_id` | string | no | no | the Meta App ID; also used by the Resumable Upload API. Falls back to `app_id` when unset |
+| `bsp_access_token` | string | no | **yes** | the client's Meta access token. Encrypted at rest, never returned |
+| `meta_app_secret` | string | no | **yes** | the client's Meta app secret. Encrypted at rest, never returned. Empty string rejected |
+| `bsp_partner_app_token` | string | no | **yes** | Gupshup partner app token |
+| `bsp_credentials` | object | no | **yes** | non-secret BSP configuration. Legacy intake for `access_token`, which the model moves into its encrypted column on save |
+| `verify_with_meta` | boolean | no | **yes** | default `false`. Run the preflight before saving; failures come back as field errors |
+| `description` | string | no | no | |
+| `is_active` | boolean | no | no | defaults true |
+| `daily_limit` | integer | no | no | defaults 1000 |
+| `tier` | string | no | no | |
+
+Read-only in every response: `id`, `bsp_display`, `is_verified`,
+`messages_sent_today`, `created_at`, `updated_at`.
+
+<Aside type="caution" title="Traps worth knowing before you build the form">
+- **`app_id` is required even for a Meta app.** It is documented as the Gupshup
+  app id and carries no Meta meaning, but the model field is non-blank so the
+  serializer requires it. Omitting it is a `400` on `app_id` — a field name that
+  says nothing about Meta. The Meta App ID is `meta_app_id`, a different field.
+- **Any key containing `app_secret` inside `bsp_credentials` is rejected**, with
+  an error naming `bsp_credentials`. That column is plaintext; the Meta app
+  secret goes in the write-only `meta_app_secret` field, which is encrypted.
+- **`bsp` defaults to `META`** on the model, so an omitted `bsp` on a serializer
+  that does not require it still produces a Meta app — and is validated as one.
+</Aside>
+
+### Example
+
+```bash
+curl -X POST https://connect.example.com/wa/v2/apps/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant": 1,
+    "app_name": "Example Co — Support",
+    "phone_number": "+10000000000",
+    "app_id": "1234567890",
+    "bsp": "META",
+    "waba_id": "1234567890",
+    "phone_number_id": "9876543210",
+    "meta_app_id": "1122334455",
+    "bsp_access_token": "EAAG-synthetic-access-token",
+    "meta_app_secret": "synthetic-app-secret",
+    "verify_with_meta": true
+  }'
+```
+
+<Aside type="note" title="Every value in this page is synthetic">
+The ids, tokens and secrets here are obvious placeholders. Nothing on this page
+is a live credential.
+</Aside>
+
+### `201` response
+
+The full serializer's read surface. **No credential field appears** —
+`meta_app_secret`, `bsp_access_token`, `bsp_partner_app_token` and
+`bsp_credentials` are write-only and absent from the body, as is
+`verify_with_meta`.
+
+```json
+{
+  "id": 42,
+  "tenant": 1,
+  "app_name": "Example Co — Support",
+  "description": null,
+  "phone_number": "+10000000000",
+  "waba_id": "1234567890",
+  "phone_number_id": "9876543210",
+  "bsp": "META",
+  "bsp_display": "Meta",
+  "app_id": "1234567890",
+  "meta_app_id": "1122334455",
+  "is_active": true,
+  "is_verified": false,
+  "daily_limit": 1000,
+  "messages_sent_today": 0,
+  "tier": null,
+  "created_at": "12 Sep 2026, 18:55",
+  "updated_at": "12 Sep 2026, 18:55"
+}
+```
+
+### Errors
+
+Standard DRF shapes — no envelope, no custom exception handler.
+
+**`400`** — a dict keyed on the field, values are lists of strings:
+
+```json
+{
+  "waba_id": ["WABA ID is required for META BSP"],
+  "phone_number": ["Phone number must be in E.164 format (e.g., +919876543210)"]
+}
+```
+
+With `verify_with_meta: true`, a failed preflight is raised the same way — one
+entry per failing check, keyed on the field that check reports on, and **no row
+is created**:
+
+```json
+{
+  "waba_id": [
+    "META refused to return WhatsApp Business Account 1234567890 for this access token. Check the WABA ID for a typo and that the token has access to it. META said: …"
+  ]
+}
+```
+
+**`401`** — not authenticated. **`403`** — authenticated but the role lacks
+`wa_app.manage`; a single `detail` string:
+
+```json
+{ "detail": "Permission denied: your role 'Manager' does not have 'wa_app.manage' permission." }
+```
+
+## `POST /wa/v2/apps/{id}/preflight/`
+
+No request body. Reads the app's **stored** credentials, changes nothing, and is
+re-runnable. `PATCH` a new credential first if you want to check a replacement.
+
+### `200` — every check passed
+
+```json
+{
+  "ok": true,
+  "token_source": "app",
+  "checks": [
+    { "check": "credentials", "passed": true, "field": "waba_id", "detail": "Checking WABA 1234567890 with the app access token." },
+    { "check": "waba_readable", "passed": true, "field": "waba_id", "detail": "The access token can read WhatsApp Business Account 1234567890." },
+    { "check": "phone_number_listed", "passed": true, "field": "phone_number_id", "detail": "Phone number 9876543210 is on WABA 1234567890." },
+    { "check": "app_subscribed", "passed": true, "field": "meta_app_id", "detail": "WABA 1234567890 is subscribed to app 1122334455." }
+  ],
+  "observations": {
+    "waba_name": "A Business Account",
+    "waba_phone_number_count": 1,
+    "subscribed_app_ids": ["1122334455"]
+  }
+}
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `ok` | boolean | true only when every check in `checks` passed |
+| `token_source` | `"app"` · `"deployment"` · `"none"` | whose access token was used — the app's own, or the deployment-wide `META_PERM_TOKEN` fallback |
+| `checks[].check` | string | `credentials`, `waba_readable`, `phone_number_listed`, `app_subscribed` |
+| `checks[].passed` | boolean | |
+| `checks[].field` | string | the **request field** this check reports on |
+| `checks[].detail` | string | human-readable, safe to show; Meta's text is truncated to 300 characters and the token replaced with `[redacted]` |
+| `observations` | object | what Meta reported in passing. Keys are present only when Meta supplied them: `waba_name`, `account_review_status`, `waba_phone_number_count`, `subscribed_app_ids` |
+
+`checks` is ordered, and it is **truncated on an early failure**: a missing
+credential returns one entry, and an unreadable WABA returns two — the remaining
+calls would only restate the same failure against the same node. So do not index
+into `checks` by position; match on `check`.
+
+### `400` — at least one check failed
+
+Field errors **merged with** the full report under a `preflight` key. The field
+errors are what a form pins to its inputs; the report is how an operator tells
+"one wrong id" from "nothing about this app works", because it still carries the
+checks that passed.
+
+```json
+{
+  "phone_number_id": [
+    "Phone Number ID 9876543210 is not one of the 2 number(s) META lists on WABA 1234567890. Check it for a typo, and that it belongs to this WABA rather than another one."
+  ],
+  "preflight": {
+    "ok": false,
+    "token_source": "app",
+    "checks": [
+      { "check": "credentials", "passed": true, "field": "waba_id", "detail": "…" },
+      { "check": "waba_readable", "passed": true, "field": "waba_id", "detail": "…" },
+      { "check": "phone_number_listed", "passed": false, "field": "phone_number_id", "detail": "…" },
+      { "check": "app_subscribed", "passed": true, "field": "meta_app_id", "detail": "…" }
+    ],
+    "observations": { "waba_phone_number_count": 2, "subscribed_app_ids": ["1122334455"] }
+  }
+}
+```
+
+Several checks can report on one field, so each field's value is a **list**.
+A field key is present only when a check reporting on it failed.
+
+### What each failure means
+
+| `check` | Reported on | Failure means |
+|---|---|---|
+| `credentials` | `waba_id`, or `bsp_access_token` when the WABA id is present | no WABA id and/or no token; Meta was never called |
+| `waba_readable` | `waba_id` | Meta refused the WABA for this token, or answered for a *different* WABA id than the one asked for |
+| `phone_number_listed` | `phone_number_id` | the id is not among the numbers Meta lists on that WABA, the id is unset, or the numbers could not be listed. The other numbers on the WABA are never echoed — on a shared WABA they are someone else's |
+| `app_subscribed` | `meta_app_id` | no app is subscribed to the WABA (Meta will deliver nothing), a different app is subscribed than the configured `meta_app_id`, or the subscribed apps could not be read |
+
+`app_subscribed` **passes with a caveat** when `meta_app_id` is unset and Meta
+reports at least one subscribed app: the detail names the app ids Meta returned —
+which is the value to paste into `meta_app_id` — and says that *which* app is
+ours was not verified. A form should surface that detail even on a pass.
+
+### Other responses
+
+**`400`** for a non-Meta app, on `bsp` — the checks are Graph-shaped and the
+endpoint declines rather than claiming to have verified a Gupshup app:
+
+```json
+{ "bsp": "Preflight checks META credentials; this app's BSP is GUPSHUP." }
+```
+
+**`403`** without `wa_app.manage`. **`404`** for an app outside the caller's
+tenant scope. **`405`** for a `GET`.
+
+<Aside type="note" title="The preflight never returns a 500">
+`WAAPI.make_request` raises a bare `Exception` for every non-2xx, so a wrong id,
+an expired token and a Graph outage all arrive the same way. Each is caught and
+turned into a failed check naming the field to look at. A transport failure is
+therefore indistinguishable from bad credentials except by the `detail` text —
+read it rather than treating `ok: false` as proof the handover was wrong.
+</Aside>
+
+## `GET /wa/v2/apps/{id}/webhook-setup/`
+
+### `200`
+
+```json
+{
+  "wa_app": "42",
+  "bsp": "META",
+  "callback_url": "https://connect.example.com/wa/v2/webhooks/meta/whk_0123456789abcdefghijklmnopqrstuv/",
+  "identifier_hint": "whk_01234567…",
+  "verify_token": "synthetic-verify-token",
+  "verify_token_scope": "deployment",
+  "verify_token_configured": true
+}
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `wa_app` | string | the app's primary key, **as a string** |
+| `bsp` | string | the resolved BSP — a blank `bsp` column resolves to `META` |
+| `callback_url` | string | the absolute per-app receiver URL the client registers. Ends in the app's opaque `webhook_identifier` (`whk_` + 32 URL-safe characters) |
+| `identifier_hint` | string | the first 12 characters of the identifier plus `…`. The only form of it that may be logged or shown in a list |
+| `verify_token` | string | the token the client pastes beside the URL. `""` when the deployment configured none |
+| `verify_token_scope` | `"deployment"` · `"app"` | **whose** token that is. Read this; do not assume it |
+| `verify_token_configured` | boolean | whether there is a token at all |
+
+The base of `callback_url` is `DEFAULT_WEBHOOK_BASE_URL` when set, and the
+requesting host only as a fallback — a deployment's statement of its own public
+address is more trustworthy than a client-supplied `Host` header behind a proxy.
+
+<Aside type="danger" title="Treat the whole response as a credential">
+Whoever holds `callback_url` can POST at this app's receiver. Never log it,
+never show it in a list, never put it in a ticket — show `identifier_hint`
+instead. This is why the endpoint requires `wa_app.manage` rather than
+`wa_app.view`.
+</Aside>
+
+### `verify_token_scope` is the contract; its value is not
+
+Per-app verify tokens have landed, so **both values are now real** and which one
+you get depends on the app:
+
+- `"app"` — the app has its own `webhook_verify_token`, and the handshake on its
+  per-app URL checks that and only that. Every app created from now on is here.
+- `"deployment"` — the app's column is blank (configured before per-app tokens
+  existed), so the handshake falls back to `META_WEBHOOK_VERIFY_TOKEN`. The
+  legacy unsuffixed path always reports this, because it can only ever check the
+  shared setting.
+
+Branch on the field. A client that hard-codes either value, or that assumes the
+token it received is shared across apps, is wrong for half the estate.
+
+When `verify_token_configured` is `false` the handshake accepts whatever token
+Meta sends, because there is nothing to compare against. Surface that rather
+than presenting an empty token as configured.
+
+### Other responses
+
+**`403`** without `wa_app.manage`. **`404`** for an app outside the caller's
+tenant scope.
+
+A `POST` to this path returns **`403`, not `405`**: DRF resolves permissions
+before the handler, the action is unmapped for `POST`, and an unmapped write is
+refused by policy. Do not report that as "you are not allowed" — it is a
+wrong-verb bug in the caller.
+
+## Rotating a credential
+
+`PATCH /wa/v2/apps/{id}/` with the new value; `wa_app.manage`. There is no
+rotate endpoint and none is needed — the same write-only fields accept a
+replacement, the row keeps its id and its children, and `verify_with_meta: true`
+on the same request checks the new credential as it is stored. An omitted field
+leaves the stored value unchanged; an empty string is **rejected**, not treated
+as "forget this secret".
+
+## What this page does not determine from source
+
+- **Whether a screen for this flow exists in `jina-connect-web`.** That
+  repository is not readable from here; nothing on this page asserts anything
+  about it.
+- **Meta's own dashboard navigation.** Where the client finds their app secret or
+  subscribes a WABA is Meta's UI, not this codebase, and is not pinned here.
+- **Whether a deployment has `DEFAULT_WEBHOOK_BASE_URL`, `META_PERM_TOKEN`,
+  `META_APP_SECRET` or `META_WEBHOOK_VERIFY_TOKEN` set.** Each changes what
+  these endpoints report (`token_source`, `verify_token_configured`, the base of
+  `callback_url`) and is deployment configuration, not contract.
