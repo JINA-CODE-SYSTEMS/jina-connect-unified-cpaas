@@ -29,9 +29,10 @@ subscribed to the app — and turns each failure into a field error rather than 
 
 Out of scope here, on purpose:
 
-* per-app signature verification is #306's second half. ``wa/views.py`` still
-  reads one deployment-wide ``settings.META_APP_SECRET`` and is untouched; this
-  ticket supplies the column it will read.
+* per-app signature verification is #306's second half, and lives in
+  ``wa/tests/test_per_app_signature_verification.py``. This file covers only
+  getting the secret *in* and keeping it there safely; nothing here asserts what
+  the webhook receiver does with it.
 * per-app ``hub.verify_token`` checking is #307.
 
 HOW TO RUN:

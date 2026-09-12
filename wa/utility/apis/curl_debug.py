@@ -17,8 +17,8 @@ Two rules, both enforced here rather than at each call site:
   three mask before they return.
 * **Mask by the *name* of the thing, not by a list of known credentials.** A
   header called ``Authorization`` is a credential whatever the provider calls its
-  token, and #311 has just added ``meta_app_secret`` which will travel the same
-  route once #306 reads it. :func:`is_credential_name` decides, so a credential
+  token, and ``meta_app_secret`` (#311, read by the webhook receiver since #306)
+  travels the same route. :func:`is_credential_name` decides, so a credential
   added later is masked without anyone remembering to come back here.
 
 What survives masking is the part that makes the diagnostic worth keeping: the

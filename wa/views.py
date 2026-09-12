@@ -13,10 +13,12 @@ Gupshup, META, etc.  They:
 
 Security:
     - Gupshup endpoint: unauthenticated (HMAC not yet supported by GS).
-    - META endpoint: validates ``X-Hub-Signature-256`` (HMAC-SHA256 with
-      ``META_APP_SECRET``) and ``hub.verify_token`` during verification.
-      An unverifiable POST is dropped, not accepted: there is no fail-open
-      path when no secret is configured (#306).
+    - META endpoint: validates ``X-Hub-Signature-256`` (HMAC-SHA256 keyed on
+      the sending app's own ``TenantWAApp.meta_app_secret`` where it has one,
+      and on the deployment-wide ``META_APP_SECRET`` otherwise) and
+      ``hub.verify_token`` during verification. An unverifiable POST is
+      dropped, not accepted: there is no fail-open path when no secret is
+      available (#306).
     - Rate-limiting should be handled at the reverse-proxy / WAF layer.
 
 URL layout (registered in ``wa/urls.py``):
@@ -37,7 +39,8 @@ parsed and a per-app secret can be selected (#310). See
 The two shapes are both permanent, and they differ in one important way:
 
 * **The suffixed path identifies one app.** Each client registers their own
-  URL, and a delivery to it is attributed from the URL, not from the body.
+  URL, a delivery to it is attributed from the URL rather than from the body,
+  and it is authenticated against *that app's* own Meta app secret (#306).
 * **The unsuffixed path is single-app.** It authenticates against the
   deployment-wide ``META_APP_SECRET`` / verify token, so it cannot tell two
   clients' apps apart and must not be shared between clients. It behaves
@@ -269,20 +272,52 @@ def _resolve_webhook_app(bsp: str, webhook_identifier: str):
 
 # Reason codes for a rejected META delivery.  META is always answered with
 # 200 (a non-200 throttles delivery), so the ``reason`` in the body and the
-# log line are the only places a rejection is ever visible — keep the three
+# log line are the only places a rejection is ever visible — keep the four
 # failure modes distinguishable rather than collapsing them into one string.
 SIG_OK = ""
+#: No secret anywhere and no app to have one: the legacy unsuffixed receiver on
+#: a deployment with ``META_APP_SECRET`` unset. A configuration fault of the
+#: deployment.
 SIG_UNVERIFIABLE = "missing_app_secret"
+#: A per-app URL resolved a real app, but neither that app's own
+#: ``meta_app_secret`` nor the deployment-wide setting is available. Its own
+#: code because its own fix: this one names a client whose onboarding is
+#: incomplete, and the operator can go and ask *them* for the secret. Collapsed
+#: into ``missing_app_secret`` it would read as "the deployment is
+#: misconfigured" and send whoever is paged to the wrong place.
+SIG_APP_SECRET_MISSING = "app_secret_not_configured"
 SIG_BAD_HEADER = "malformed_signature_header"
 SIG_MISMATCH = "invalid_signature"
 
 
-def _verify_meta_signature(request) -> str:
+def _verify_meta_signature(request, wa_app=None) -> tuple[str, str]:
     """
     Validate the ``X-Hub-Signature-256`` header against the request body.
 
-    Returns ``SIG_OK`` (the empty string) when the signature is valid,
-    otherwise the reason code naming *why* the delivery was rejected.
+    Returns ``(reason, secret_scope)``.  *reason* is ``SIG_OK`` (the empty
+    string) when the signature is valid, otherwise the code naming *why* the
+    delivery was rejected.  *secret_scope* is one of
+    ``webhook_identity.SECRET_SCOPE_*`` and says which secret this request was
+    actually checked against, so the caller can log it: a verified delivery
+    means nothing without naming the key that verified it.
+
+    **Per-app selection (#306's second half).** *wa_app* is the app the URL
+    named, resolved before a byte of the body was read (#310).  Its own
+    ``meta_app_secret`` (#311) keys the HMAC when it has one, which is what
+    makes N client-owned apps with N different secrets verifiable at once —
+    ``X-Hub-Signature-256`` is a symmetric HMAC keyed on the *sending* app's
+    secret, and one deployment-wide value could only ever match one client's.
+    A body signed by app A and delivered to app B's URL therefore fails as
+    ``SIG_MISMATCH``, which is the whole point.
+
+    An app with no secret of its own falls back to the deployment-wide setting
+    rather than being refused outright: that is the pre-#311 configuration every
+    existing install is in, and an upgrade must not stop verifying their
+    traffic. ``SIG_APP_SECRET_MISSING`` is for when that fallback is empty too.
+
+    *wa_app* is ``None`` on the legacy unsuffixed receiver, which has no
+    identity at this point in the request and so has only the shared secret.
+    That path is byte-for-byte what it was.
 
     There is deliberately **no fail-open path**.  An absent secret used to
     return ``True``, which left this public, unauthenticated endpoint with no
@@ -294,45 +329,46 @@ def _verify_meta_signature(request) -> str:
     replaying captured payloads locally.  It refuses to engage unless
     ``DEBUG`` is also true, so setting it on a production deployment cannot
     silently disable verification.
-
-    One deployment-wide secret cannot serve several client-owned META apps.
-    #310 removed the reason it had to: on a per-app URL the path names the
-    sending app, so ``MetaWebhookView.post`` knows the app before it reads a
-    byte of the body and can hand the right secret down here. It does not yet,
-    deliberately — the per-app app-secret column is #311 and the verification
-    that reads it is #306's second half. Until those land, both the legacy and
-    the per-app path verify against ``settings.META_APP_SECRET``, which is a
-    correct single-app deployment and an honest unverifiable one otherwise.
     """
-    app_secret = getattr(django_settings, "META_APP_SECRET", "")
+    from wa.services import webhook_identity
+
+    app_secret, secret_scope = webhook_identity.select_app_secret(wa_app)
+
     if not app_secret:
+        # Which of the two no-secret faults this is depends on whether an app
+        # was identified at all — see the reason codes above for why they are
+        # not one code.
+        reason = SIG_APP_SECRET_MISSING if wa_app is not None else SIG_UNVERIFIABLE
         allow_unsigned = bool(getattr(django_settings, "META_WEBHOOK_ALLOW_UNSIGNED", False))
         if allow_unsigned and not django_settings.DEBUG:
             logger.error(
                 "META webhook: META_WEBHOOK_ALLOW_UNSIGNED is set but DEBUG is False -- "
-                "refusing to bypass X-Hub-Signature-256 verification (reason=%s)",
-                SIG_UNVERIFIABLE,
+                "refusing to bypass X-Hub-Signature-256 verification (reason=%s, app=%s)",
+                reason,
+                getattr(wa_app, "pk", None),
             )
         elif allow_unsigned:
             logger.warning(
                 "META webhook: X-Hub-Signature-256 verification bypassed by "
                 "META_WEBHOOK_ALLOW_UNSIGNED -- development builds only"
             )
-            return SIG_OK
+            return SIG_OK, secret_scope
         else:
             logger.error(
-                "META webhook: no app secret configured -- rejecting unverifiable delivery (reason=%s)",
-                SIG_UNVERIFIABLE,
+                "META webhook: no app secret available -- rejecting unverifiable delivery (reason=%s, app=%s)",
+                reason,
+                getattr(wa_app, "pk", None),
             )
-        return SIG_UNVERIFIABLE
+        return reason, secret_scope
 
     signature_header = request.META.get("HTTP_X_HUB_SIGNATURE_256", "")
     if not signature_header.startswith("sha256="):
         logger.warning(
-            "META webhook: missing or malformed X-Hub-Signature-256 header (reason=%s)",
+            "META webhook: missing or malformed X-Hub-Signature-256 header (reason=%s, app=%s)",
             SIG_BAD_HEADER,
+            getattr(wa_app, "pk", None),
         )
-        return SIG_BAD_HEADER
+        return SIG_BAD_HEADER, secret_scope
 
     expected_sig = signature_header[7:]  # strip "sha256=" prefix
     computed_sig = hmac.new(
@@ -342,10 +378,20 @@ def _verify_meta_signature(request) -> str:
     ).hexdigest()
 
     if not hmac.compare_digest(computed_sig, expected_sig):
-        logger.warning("META webhook: X-Hub-Signature-256 mismatch (reason=%s)", SIG_MISMATCH)
-        return SIG_MISMATCH
+        # ``secret_scope`` is the diagnosis, not decoration. "Mismatch against
+        # the app's own secret" is a rotated client secret; "mismatch against
+        # the deployment secret" on a per-app URL is an onboarded client whose
+        # secret was never stored, signing with a key this deployment has never
+        # seen. Same rejection, different phone call.
+        logger.warning(
+            "META webhook: X-Hub-Signature-256 mismatch (reason=%s, app=%s, secret_scope=%s)",
+            SIG_MISMATCH,
+            getattr(wa_app, "pk", None),
+            secret_scope,
+        )
+        return SIG_MISMATCH, secret_scope
 
-    return SIG_OK
+    return SIG_OK, secret_scope
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -537,7 +583,8 @@ class MetaWebhookView(View):
     Served at two paths (#310):
 
     * ``/wa/v2/webhooks/meta/<webhook_identifier>/`` — one client's app. The
-      path names the app, so it is known before the body is parsed.
+      path names the app, so it is known before the body is parsed, which is
+      what lets the HMAC be keyed on that app's own secret (#306).
     * ``/wa/v2/webhooks/meta/`` — the legacy, single-app path. Unchanged: it
       routes from the body and verifies against the deployment-wide secret,
       because it is the URL already registered in live App Dashboards.
@@ -620,11 +667,13 @@ class MetaWebhookView(View):
         """
         from tenants.models import BSPChoices
         from wa.models import WAApp, WAWebhookEvent
+        from wa.services import webhook_identity
 
         # --- identify the app from the URL, if this is a per-app URL -------
-        # First, because this is the step the rest of #305 is waiting on: with
-        # the app known here, the secret used one line below becomes selectable
-        # per app. An unknown identifier is answered 200 with nothing written.
+        # First, because the secret used one line below is selected from it: the
+        # app has to be known before the HMAC can be keyed, and the only
+        # identifiers inside the body are worthless until that HMAC checks out
+        # (#310). An unknown identifier is answered 200 with nothing written.
         url_app = None
         if webhook_identifier is not None:
             url_app, identity_reason = _resolve_webhook_app(BSPChoices.META, webhook_identifier)
@@ -632,21 +681,27 @@ class MetaWebhookView(View):
                 return JsonResponse({"status": "ignored", "reason": identity_reason}, status=200)
 
         # --- verify signature ---------------------------------------------
-        # An unverifiable delivery is dropped, never ingested (#306).  The 200
-        # is deliberate and must stay: META throttles delivery on non-200
-        # responses, so the distinct ``reason`` carries what the status code
-        # cannot.
+        # Keyed on ``url_app``'s own ``meta_app_secret`` when it has one, and on
+        # the deployment-wide secret otherwise (#306's second half, over #311's
+        # column). ``secret_scope`` records which of the two actually ran, and
+        # travels into every log line below — an ingested event whose log does
+        # not say what verified it is the state the original fail-open hid in.
         #
-        # SEAM (#306 second half, #311): when ``url_app`` is set, that app's own
-        # secret is the one that should key this HMAC. The column to read it
-        # from is #311 (one more ``EncryptedTextField``, per #289's pattern) and
-        # passing it in is #306's second half. Neither is half-done here: today
-        # both paths verify against the deployment-wide ``META_APP_SECRET``,
-        # which is correct for a single-app deployment and honestly
-        # unverifiable for any other — the same behaviour as before #310.
-        signature_reason = _verify_meta_signature(request)
+        # An unverifiable delivery is dropped, never ingested. The 200 is
+        # deliberate and must stay: META throttles delivery to the whole
+        # deployment on non-200 responses, so one client's rotated secret would
+        # slow every other client's events down. That is exactly why the
+        # rejection is *counted* — with no status code to notice, the counter and
+        # the reason code are the only trace a client has gone quiet.
+        signature_reason, secret_scope = _verify_meta_signature(request, wa_app=url_app)
         if signature_reason:
-            logger.warning("META webhook: dropping unverified delivery (reason=%s)", signature_reason)
+            webhook_identity.record_signature_rejection(BSPChoices.META, signature_reason, wa_app=url_app)
+            logger.warning(
+                "META webhook: dropping unverified delivery (reason=%s, app=%s, secret_scope=%s)",
+                signature_reason,
+                getattr(url_app, "pk", None),
+                secret_scope,
+            )
             return JsonResponse({"status": "ignored", "reason": signature_reason}, status=200)
 
         # --- parse body ---------------------------------------------------
@@ -691,12 +746,17 @@ class MetaWebhookView(View):
                     url_app.phone_number_id,
                 )
 
+            # ``secret_scope`` is on the accepted line too, not only the
+            # rejected one: "app" says this client's own secret verified their
+            # own delivery, "deployment" says they are still on the shared
+            # secret and are not yet separable from any other client on it.
             logger.info(
-                "META webhook ingested via per-app URL: event=%s app=%s hint=%s pk=%s",
+                "META webhook ingested via per-app URL: event=%s app=%s hint=%s pk=%s secret_scope=%s",
                 event_type,
                 url_app.pk,
                 _mask_webhook_identifier(webhook_identifier),
                 webhook_event.pk,
+                secret_scope,
             )
             return JsonResponse(
                 {
@@ -814,12 +874,13 @@ class MetaWebhookView(View):
         )
 
         logger.info(
-            "META webhook ingested: event=%s waba=%s phone=%s app=%s pk=%s",
+            "META webhook ingested: event=%s waba=%s phone=%s app=%s pk=%s secret_scope=%s",
             event_type,
             waba_id,
             phone_number_id,
             wa_app.pk,
             webhook_event.pk,
+            secret_scope,
         )
 
         return JsonResponse(

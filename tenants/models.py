@@ -322,12 +322,16 @@ class TenantWAApp(BaseTenantModelForFilterUser):
     # other. The ``meta_`` prefix draws the same line ``meta_app_id`` already
     # draws against ``app_id``.
     #
-    # SEAM for #306 (per-app signature verification): this column is the value
-    # ``wa.views._verify_meta_signature`` will key on once the per-app receiver
-    # has resolved an app from its ``webhook_identifier`` (#310). That function
-    # still reads one deployment-wide ``settings.META_APP_SECRET`` and is
-    # untouched here — providing the column is this ticket, reading it is #306.
-    # Nothing in the codebase reads this field yet, by design.
+    # Read by ``wa.services.webhook_identity.select_app_secret``, which
+    # ``wa.views._verify_meta_signature`` keys its HMAC on once the per-app
+    # receiver has resolved an app from its ``webhook_identifier`` (#310, #306).
+    # An app that leaves this blank is verified against the deployment-wide
+    # ``settings.META_APP_SECRET`` instead — the pre-#311 configuration every
+    # existing install is in, kept working on purpose.
+    #
+    # Never log this value and never return it through the API. The field is
+    # write-only in the serializer, ``wa.utility.apis.curl_debug`` masks it by
+    # name, and the verification path logs only the *scope* it was read from.
     meta_app_secret = EncryptedTextField(
         blank=True,
         default="",
