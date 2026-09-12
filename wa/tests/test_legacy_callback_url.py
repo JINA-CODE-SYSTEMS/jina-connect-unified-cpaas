@@ -1,4 +1,4 @@
-"""The URL a subscription refresh registers, pinned per BSP.
+"""The legacy deployment-wide callback URL, pinned per BSP.
 
 Three places built this string from their own copy of a two-entry dict —
 ``wa.admin``, ``tenants.admin`` and the v2 subscription viewset — and all three
@@ -19,13 +19,16 @@ the change is that two of the three answers must not move and the third must.
 before it; the META and Gupshup cases are here so that a regression in the
 shared helper cannot hide behind the case it fixed.
 
-Deliberately *not* asserted here: that these callers switch to the per-app URL
-(#310's ``callback_url``). The legacy path authenticates against one
-deployment-wide secret and so can only ever serve a single app, but it is what
-live deployments have already registered, and moving them is #307's call.
+Those callers have since moved to the per-app URL (#334,
+``webhook_identity.registration_callback_url``), which
+``test_registered_callback_url.py`` pins. This file stays as the check on the
+half that must *not* move: the legacy path is still composed in one place, still
+resolves through ``resolve_bsp``, and is still served — it is the URL live
+deployments already registered, and that is exactly what made moving
+registration safe.
 
 HOW TO RUN:
-    DB_NAME=jc332 python -m pytest wa/tests/test_legacy_callback_url.py -v
+    DB_NAME=jc307 python -m pytest wa/tests/test_legacy_callback_url.py -v
 """
 
 from __future__ import annotations
@@ -173,6 +176,12 @@ def test_no_caller_still_hardcodes_the_receiver_paths():
 #
 # So this drives the real admin action and asserts the ``webhook_url`` that ends
 # up on the row, which is the string that actually gets registered with a BSP.
+#
+# What that string is changed with #334: the action now registers the app's own
+# per-app URL, the same one the client is told to paste, instead of the legacy
+# shared path. The per-app URL is still BSP-specific, so this keeps doing the job
+# it was written for — a blank column must resolve to META's receiver and not
+# Gupshup's — on the URL the caller actually registers today.
 
 
 class _FakeResult:
@@ -201,15 +210,17 @@ class _FakeAdapter:
 @pytest.mark.django_db()
 @override_settings(DEFAULT_WEBHOOK_BASE_URL=BASE)
 @pytest.mark.parametrize(
-    ("bsp", "expected"),
-    [("META", META_URL), ("GUPSHUP", GUPSHUP_URL), ("", META_URL)],
+    ("bsp", "receiver"),
+    [("META", "meta"), ("GUPSHUP", "gupshup"), ("", "meta")],
     ids=["meta", "gupshup", "blank-is-meta"],
 )
-def test_the_admin_refresh_registers_the_right_url(bsp, expected, monkeypatch, rf):
+def test_the_admin_refresh_registers_the_right_url(bsp, receiver, monkeypatch, rf):
     """The URL stored on the subscription the admin action creates.
 
-    ``""`` is the case that changes: before this, a blank column stored the
-    Gupshup receiver on a row the rest of the system treats as META.
+    ``""`` is the case this was written for: a blank column is META everywhere
+    else, so it must not be handed Gupshup's receiver. Since #334 the action
+    registers the *per-app* path, which is BSP-specific in the same way, so the
+    blank case is still the one that would regress.
     """
     from django.contrib.admin.sites import AdminSite
     from django.contrib.messages.storage.fallback import FallbackStorage
@@ -229,4 +240,4 @@ def test_the_admin_refresh_registers_the_right_url(bsp, expected, monkeypatch, r
     WASubscriptionAdmin(WASubscription, AdminSite())._do_refresh_for_apps(request, [app.pk])
 
     sub = WASubscription.objects.get(wa_app=app)
-    assert sub.webhook_url == expected
+    assert sub.webhook_url == f"{BASE}/wa/v2/webhooks/{receiver}/{app.webhook_identifier}/"

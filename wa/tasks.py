@@ -3595,13 +3595,14 @@ def auto_register_gupshup_webhook(self, wa_app_pk: int):
     if wa_app.bsp != BSPChoices.GUPSHUP:
         return {"status": "skipped", "reason": "not_gupshup"}
 
-    # Build the absolute webhook URL from settings. The path comes from the
-    # receiver registry rather than a literal — this function has already
-    # returned unless the app is on Gupshup, so the answer is not in doubt, but
-    # a hardcoded path here is one more place to edit when a receiver moves.
+    # The app's own per-app callback URL, composed in one place (#310/#334) —
+    # the same string the webhook-setup endpoint hands a client, so an
+    # auto-registered app and a client-configured one point at the same path.
+    # ``base`` is read separately only for the reachability warning below;
+    # the helper resolves it the same way, preferring the deployment's own
+    # statement of where it lives over a request's ``Host`` header.
     base = getattr(django_settings, "DEFAULT_WEBHOOK_BASE_URL", "").rstrip("/")
-    webhook_path = webhook_identity.legacy_callback_path(BSPChoices.GUPSHUP)
-    webhook_url = f"{base}{webhook_path}"
+    webhook_url = webhook_identity.registration_callback_url(wa_app)
 
     if not base or base.startswith("http://localhost"):
         logger.warning(
