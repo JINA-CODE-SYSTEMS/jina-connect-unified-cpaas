@@ -186,6 +186,14 @@ def sync_template_with_bsp_task(self, template_id: int, wa_id: int):
     This is called after creating a template via META Direct API.
     The BSP needs to sync their database with META's template database.
 
+    Its only dispatcher is ``MetaTemplateService._sync_with_bsp``, which #337
+    established is never reached — and which swallows the dispatch in a
+    ``try/except`` that logs, so this task failing was invisible from there. It
+    would have failed: the write below named ``bsp_id``, which is not a field on
+    ``WATemplate`` (the column is ``bsp_template_id``), and ``QuerySet.update()``
+    raises ``FieldError`` for an unknown name. Same defect class as the four in
+    #337, one step further down the same call chain.
+
     Args:
         template_id: WATemplate primary key
         wa_app_id: TenantWAApp primary key
@@ -207,8 +215,9 @@ def sync_template_with_bsp_task(self, template_id: int, wa_id: int):
         bsp_id = sync_service.sync_and_get_bsp_id(template.element_name)
 
         if bsp_id:
-            # Use update() to avoid triggering save() validation
-            WATemplate.objects.filter(pk=template.pk).update(bsp_id=bsp_id)
+            # Use update() to avoid triggering save() validation.
+            # ``bsp_template_id`` is the column; ``bsp_id`` was a FieldError (#337).
+            WATemplate.objects.filter(pk=template.pk).update(bsp_template_id=bsp_id)
             logger.info(f"Template '{template.element_name}' synced with BSP, bsp_id: {bsp_id}")
             return {"status": "success", "bsp_id": bsp_id, "template_name": template.element_name}
         else:
@@ -277,7 +286,28 @@ def trigger_waapi_subscription(pk: str):
 def submit_template_to_gupshup(self, template_id: int):
     """
     Celery task to submit a pending template to Gupshup API for approval.
-    This task is triggered when a template status becomes PENDING.
+
+    Nothing dispatches this task, and nothing has since the repository was
+    opened (#337). Its only in-repo reference is the ``submit_template_to_meta``
+    alias below, which has no reference of its own; ``wa.signals`` used to be
+    the trigger the first line of this docstring described and is now
+    deliberately passive, because template submission moved to the synchronous
+    adapter call in ``WATemplateV2ViewSet.create``. It is registered with
+    Celery, so it remains callable by name — hence kept rather than deleted —
+    but it is not on any request, cron or beat path.
+
+    It also could not have run if it had been dispatched. All three branches
+    below wrote ``template.submission_debug_info``, which is not a field on
+    ``WATemplate`` or its base and appears in no migration, so every
+    ``save(update_fields=[..., "submission_debug_info"])`` raised ``ValueError``
+    — and in the success branch an ``AttributeError`` landed one line earlier
+    still, from assigning the read-only ``template_id`` property. In the
+    ``except`` clause at the bottom the failure was silent on top of that: the
+    save sits inside ``try: ... except Exception: pass``, so the real error
+    never reached ``error_message`` and the row never reached ``FAILED``.
+
+    Those writes and the debug blob that fed them are gone. Do not reintroduce
+    ``submission_debug_info`` without adding the field and a migration.
 
     Returns:
         dict: Result containing status, template_id, curl_command for debugging
@@ -321,25 +351,21 @@ def submit_template_to_gupshup(self, template_id: int):
         result["curl_command"] = curl_command
         result["response"] = response
 
-        # Build debug info string
-        import json
-
-        debug_info = "=== TEMPLATE SUBMISSION DEBUG INFO ===\n"
-        debug_info += f"Submitted at: {timezone.now().isoformat()}\n"
-        debug_info += f"Template Data:\n{json.dumps(template_data, indent=2)}\n\n"
-        debug_info += f"{curl_command}\n\n"
-        debug_info += f"Response:\n{json.dumps(response, indent=2)}\n"
-
         # Process the response
         if response.get("status") == "success":
             result["status"] = "success"
             # Template submitted successfully
             submitted_template_id = response.get("template", {}).get("id")
             if submitted_template_id:
-                template.template_id = submitted_template_id
-                template.submission_debug_info = debug_info
+                # ``template_id`` is a read-only property
+                # (``bsp_template_id or meta_template_id``), so assigning it
+                # raised AttributeError and naming it in ``update_fields``
+                # raised ValueError. This is the BSP's id, which is what
+                # ``bsp_template_id`` holds and what ``template_id`` then
+                # returns (#337).
+                template.bsp_template_id = submitted_template_id
                 # Status might remain PENDING until Gupshup approves it
-                template.save(update_fields=["template_id", "submission_debug_info"])
+                template.save(update_fields=["bsp_template_id"])
                 logger.debug(
                     "Template %s submitted successfully with ID: %s", template.element_name, submitted_template_id
                 )
@@ -355,8 +381,7 @@ def submit_template_to_gupshup(self, template_id: int):
             # template.status = StatusChoices.REJECTED
             # template.save(update_fields=['status'])
             template.error_message = error_message
-            template.submission_debug_info = debug_info
-            template.save(update_fields=["error_message", "submission_debug_info"])
+            template.save(update_fields=["error_message"])
             logger.debug("Updated template %s with error message.", template.element_name)
 
             # You could also send a notification to admins about the failure
@@ -374,8 +399,7 @@ def submit_template_to_gupshup(self, template_id: int):
         try:
             # Try to save error info to template
             template.error_message = str(e)
-            template.submission_debug_info = f"=== ERROR DEBUG INFO ===\nError: {str(e)}\n\nCurl Command:\n{result.get('curl_command', 'Not captured')}"
-            template.save(update_fields=["error_message", "submission_debug_info"])
+            template.save(update_fields=["error_message"])
             template.status = StatusChoices.FAILED
             template.save(update_fields=["status"])
             logger.debug("Updated template %s with error message.", template.element_name)

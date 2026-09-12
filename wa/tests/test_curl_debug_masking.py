@@ -3,9 +3,14 @@
 Every BSP client reconstructs its outbound request as a pasteable ``curl``
 command. The reconstruction emitted the ``Authorization`` header verbatim and was
 written with ``print``, so each Graph call published a live per-tenant access
-token — and ``last_curl_command`` is read by ``wa.tasks`` and
-``meta_template_service``, which copy it into a task result and a template debug
-blob. So this was not only a log leak.
+token — and ``last_curl_command`` is read back by ``wa.tasks``, which returns it
+in a task result a caller may store. So this was not only a log leak.
+
+(#336 also named a template debug blob in ``meta_template_service`` as a
+persisted copy. #337 established that neither that blob nor the three in
+``wa.tasks`` could ever execute — they wrote a ``submission_debug_info``
+attribute that was not a model field — and deleted them, so the blobs are gone
+and masking at the build site is what covers what is left.)
 
 These tests assert the *consequence* rather than that a masking helper was
 called: one request per client against a mocked transport, then the synthetic
@@ -443,9 +448,10 @@ def test_the_hand_rolled_reconstructions_mask_too(exercise, capsys, logs):
 
 
 def test_what_a_caller_would_persist_carries_no_credential(capsys, logs):
-    """``wa.tasks`` copies ``last_curl_command`` into a task result and a debug
-    blob, and ``meta_template_service`` does the same for the Meta path. Masking
-    at the build site is what closes those without either of them knowing."""
+    """``wa.tasks`` copies ``last_curl_command`` into a task result a caller may
+    store. Masking at the build site is what closes that without the caller
+    knowing — which is also why deleting the debug blobs in #337 did not weaken
+    this: the blob was one consumer of the string, not the leak itself."""
     client = _meta_client()
 
     with patch("requests.post", return_value=_Response()):
