@@ -1339,6 +1339,20 @@ class WASubscription(BaseModel):
 
     # BSP tracking
     bsp_subscription_id = models.CharField(max_length=255, blank=True, null=True)
+    # Still read by nothing, and deliberately so after #307 considered it.
+    #
+    # The handshake's token lives on the app instead, as
+    # ``TenantWAApp.webhook_verify_token``, for three reasons any one of which
+    # rules this column out: rows here are deleted and recreated wholesale by
+    # every webhook refresh, so the token would be destroyed by a maintenance
+    # click while the client's dashboard kept the old value; ``wa_app`` is a
+    # plain FK with no uniqueness, so "which row's token does the receiver
+    # check" has no single answer; and a bring-your-own-app client completes the
+    # handshake from their own dashboard before any subscription row exists.
+    #
+    # Left in place because it is part of the v2 subscription API's request
+    # shape (write-only there) and removing a column nothing reads is not worth
+    # a migration on its own.
     verify_token = models.CharField(max_length=255, blank=True, null=True)
 
     # Error tracking
