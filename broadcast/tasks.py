@@ -38,11 +38,20 @@ def compute_charge_breakdown_task(
 
     cache_key = f"charge_breakdown:{self.request.id}"
 
+    # The owning tenant travels with the payload so the poller can prove the
+    # caller is entitled to read it. The key is a UUID4 and so unique, but
+    # uniqueness is not authorisation: the poll endpoint has no other way to
+    # tell whose breakdown it just fetched, and task ids are handed to clients
+    # (#320). Stays None if the app cannot be resolved — an unknown app has no
+    # owner to report a failure to, so that failure is deliberately unreadable.
+    tenant_id = None
+
     try:
         from broadcast.services.charge_breakdown import ChargeBreakdownService
         from tenants.models import TenantWAApp
 
         wa_app = TenantWAApp.objects.select_related("tenant").get(id=wa_app_id)
+        tenant_id = wa_app.tenant_id
         svc = ChargeBreakdownService(wa_app=wa_app)
 
         result = svc.compute(
@@ -53,7 +62,7 @@ def compute_charge_breakdown_task(
 
         cache.set(
             cache_key,
-            json.dumps({"status": "completed", "result": result}),
+            json.dumps({"status": "completed", "tenant_id": tenant_id, "result": result}),
             timeout=CHARGE_BREAKDOWN_CACHE_TTL,
         )
         return result
@@ -65,7 +74,7 @@ def compute_charge_breakdown_task(
 
             _cache.set(
                 cache_key,
-                json.dumps({"status": "failed", "error": str(exc)}),
+                json.dumps({"status": "failed", "tenant_id": tenant_id, "error": str(exc)}),
                 timeout=CHARGE_BREAKDOWN_CACHE_TTL,
             )
         except Exception:
