@@ -1103,8 +1103,22 @@ class WAMessage(BaseTenantModelForFilterUser):
     """
     Canonical WhatsApp Message.
 
-    Represents both inbound and outbound messages in a unified format.
-    Frontend uses this for conversation view.
+    **Outbound only, in practice (#294).** The schema models both directions,
+    but every creation site is a send — ``chat_flow.services.graph_executor``,
+    ``mcp_server.tools.messaging``, ``wa.services.order_service`` and
+    ``WAMessageCreateSerializer``. Inbound is never written here:
+    ``wa.tasks._ingest_inbound_message`` records it as a
+    ``team_inbox.Messages`` row, which is where inbound history lives.
+
+    So do not read this table for inbound analytics — a filter on
+    ``direction=INBOUND`` returns nothing on every deployment at any volume,
+    which is how the contact engagement and funnel figures came to be
+    structurally zero. Query ``team_inbox.Messages`` on
+    ``direction=INCOMING`` instead.
+
+    Writing inbound rows here would be a semantic change to a shared model
+    (and would give ``conversation`` below something to attach to); it needs
+    its own ticket, not an incidental commit.
     """
 
     filter_by_user_tenant_fk = "wa_app__tenant__tenant_users__user"
@@ -1136,6 +1150,9 @@ class WAMessage(BaseTenantModelForFilterUser):
         help_text="Secondary message ID — stores the Gupshup UUID (messageId) "
         "when wa_message_id holds the Cloud API wamid, or vice-versa.",
     )
+    # Always OUTBOUND on a row that exists — see the class docstring (#294).
+    # INBOUND is a valid choice that nothing writes; team_inbox.Messages holds
+    # inbound. No help_text here on purpose: it would generate a migration.
     direction = models.CharField(max_length=10, choices=MessageDirection.choices)
     message_type = models.CharField(max_length=20, choices=MessageType.choices, default=MessageType.TEXT)
     status = models.CharField(max_length=20, choices=MessageStatus.choices, default=MessageStatus.PENDING)
