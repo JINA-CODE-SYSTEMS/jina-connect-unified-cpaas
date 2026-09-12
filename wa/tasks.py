@@ -1341,6 +1341,7 @@ def _process_meta_template_webhook(instance, payload: dict):
         }
     """
     from tenants.models import BSPChoices, TenantWAApp
+    from wa.adapters.meta_direct import MetaDirectAdapter
     from wa.models import TemplateCategory, TemplateStatus, WATemplate
     from wa.services.template_notifications import TemplateNotificationService
 
@@ -1395,13 +1396,12 @@ def _process_meta_template_webhook(instance, payload: dict):
             ).first()
         return None
 
+    # One vocabulary for META's lifecycle, kept with the adapter that also
+    # polls it. FAILED is not one of META's own states — it is what the
+    # Gupshup-shaped payloads say — so it is added here rather than there.
     status_map = {
-        "APPROVED": TemplateStatus.APPROVED,
-        "REJECTED": TemplateStatus.REJECTED,
+        **MetaDirectAdapter.LIFECYCLE_STATUS_MAP,
         "FAILED": TemplateStatus.REJECTED,
-        "PENDING": TemplateStatus.PENDING,
-        "DISABLED": TemplateStatus.DISABLED,
-        "PAUSED": TemplateStatus.PAUSED,
     }
     category_map = {
         "MARKETING": TemplateCategory.MARKETING,
@@ -1437,19 +1437,23 @@ def _process_meta_template_webhook(instance, payload: dict):
 
         elif field == "template_category_update":
             # ── Category change ───────────────────────────────────────
+            # META re-categorises an approved template without re-opening
+            # review, so the status must not move. Knocking it back to
+            # PENDING is Gupshup's semantics, and it took the template out of
+            # every chat flow — they gate on APPROVED — until the two-minute
+            # cron polled it back (#272).
             new_category_str = (value.get("new_category") or "").upper()
             template = _find_template()
             if template and new_category_str:
                 old_category = template.category
-                old_status = template.status
                 template.category = category_map.get(new_category_str, template.category)
-                template.status = TemplateStatus.PENDING
-                template.save(update_fields=["category", "status"])
+                template.save(update_fields=["category"])
                 logger.info(
-                    "META template %s category: %s→%s, status→PENDING",
+                    "META template %s category: %s→%s (status %s unchanged)",
                     template.element_name,
                     old_category,
                     new_category_str,
+                    template.status,
                 )
                 TemplateNotificationService.send_category_change_notification(
                     template=template,
@@ -1475,6 +1479,19 @@ def _process_meta_template_webhook(instance, payload: dict):
                 if reason:
                     template.error_message = reason
                     update_fields.append("error_message")
+                    if event in ("REJECTED", "FAILED"):
+                        # The review verdict belongs in rejection_reason —
+                        # the field the UI shows next to a REJECTED template
+                        # and the one the poller writes. Writing only
+                        # error_message left it null for ever, because the
+                        # cron polls PENDING rows and this one is now
+                        # REJECTED (#272).
+                        template.rejection_reason = reason
+                        update_fields.append("rejection_reason")
+                if event == "APPROVED" and template.rejection_reason:
+                    # An earlier verdict, now overtaken by this one.
+                    template.rejection_reason = None
+                    update_fields.append("rejection_reason")
                 template.save(update_fields=update_fields)
                 logger.info(
                     "META template %s status: %s→%s",
@@ -1511,6 +1528,7 @@ def _process_meta_template_webhook(instance, payload: dict):
                     status=new_status,
                     category=category,
                     error_message=reason,
+                    rejection_reason=reason if event in ("REJECTED", "FAILED") else None,
                     needs_sync=True,
                 )
                 logger.info(

@@ -27,6 +27,7 @@ from django.utils import timezone
 
 from tenants.models import TenantMedia
 from wa.adapters import get_bsp_adapter
+from wa.adapters.meta_direct import MetaDirectAdapter
 from wa.models import TemplateCategory, TemplateStatus, TemplateType, WATemplate
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,16 @@ _STATUS_MAP = {
     "PAUSED": TemplateStatus.PAUSED,
     "DISABLED": TemplateStatus.DISABLED,
     "DELETED": TemplateStatus.DISABLED,
+}
+
+# META's list endpoint reports states this map never had — IN_APPEAL,
+# PENDING_DELETION, ARCHIVED, LIMIT_EXCEEDED — and the fallback turned every
+# one of them into PENDING, so a template META had deleted came back as "under
+# review" and was then polled every two minutes for ever (#272). The adapter
+# owns META's vocabulary; FAILED stays local because only Gupshup says it.
+_META_STATUS_MAP = {
+    **MetaDirectAdapter.LIFECYCLE_STATUS_MAP,
+    "FAILED": TemplateStatus.REJECTED,
 }
 
 _CATEGORY_MAP = {
@@ -257,6 +268,15 @@ def _map_gupshup_template(gs_tpl: Dict[str, Any]) -> Dict[str, Any]:
 # Mapper: single META Graph API template dict → WATemplate field dict
 # ═════════════════════════════════════════════════════════════════════════════
 
+# Same pattern ``WATemplate.to_meta_payload()`` uses to find named
+# placeholders, so a template survives the round trip out and back.
+_NAMED_PLACEHOLDER_RE = re.compile(r"\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}")
+
+
+def _named_placeholders(body_text: str) -> List[str]:
+    """Named placeholders in *body_text*, in the order they appear."""
+    return _NAMED_PLACEHOLDER_RE.findall(body_text or "")
+
 
 def _map_meta_template(meta_tpl: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -296,9 +316,22 @@ def _map_meta_template(meta_tpl: Dict[str, Any]) -> Dict[str, Any]:
         if comp_type == "BODY":
             body_text = comp.get("text", "")
             # Extract example body values
-            example = comp.get("example", {})
+            example = comp.get("example", {}) or {}
+            named_params = example.get("body_text_named_params")
             body_params = example.get("body_text", [])
-            if body_params and isinstance(body_params[0], list):
+            if named_params:
+                # NAMED templates — the shape ``to_meta_payload()`` itself
+                # sends. Reading only ``body_text`` left example_body null on
+                # every template we submitted, and the next submit failed
+                # validation with "Example is required when body text
+                # contains parameters" (#272).
+                #
+                # example_body is positional, so order by where each name
+                # appears in the body rather than trusting META's ordering.
+                by_name = {p.get("param_name"): p.get("example", "") for p in named_params if isinstance(p, dict)}
+                ordered = [by_name.pop(n) for n in dict.fromkeys(_named_placeholders(body_text)) if n in by_name]
+                example_body = ordered + list(by_name.values())
+            elif body_params and isinstance(body_params[0], list):
                 example_body = body_params[0]
             elif body_params:
                 example_body = body_params
@@ -368,7 +401,7 @@ def _map_meta_template(meta_tpl: Dict[str, Any]) -> Dict[str, Any]:
         "element_name": meta_tpl.get("name", ""),
         "language_code": meta_tpl.get("language", "en"),
         "name": meta_tpl.get("name", ""),
-        "status": _STATUS_MAP.get(meta_status, TemplateStatus.PENDING),
+        "status": _META_STATUS_MAP.get(meta_status, TemplateStatus.PENDING),
         "category": _CATEGORY_MAP.get(category_raw, TemplateCategory.MARKETING),
         "template_type": _TYPE_MAP.get(tpl_type, TemplateType.TEXT),
         "bsp_template_id": None,
@@ -379,7 +412,11 @@ def _map_meta_template(meta_tpl: Dict[str, Any]) -> Dict[str, Any]:
         "buttons": buttons,
         "cards": cards,
         "example_body": example_body,
-        "media_handle": None,
+        # No media_handle key on purpose. META answers a read with the CDN
+        # URL of the example media, never the upload handle that created it,
+        # so there is nothing here to write — and writing None would throw
+        # away the handle phase 3 just obtained, leaving the template
+        # un-resubmittable (#272). Absent means "the mapper has no opinion".
         "vertical": "OTHER",
         "error_message": None,
         "rejection_reason": meta_tpl.get("rejected_reason") if meta_status in ("REJECTED", "FAILED") else None,
@@ -550,13 +587,47 @@ def _upload_media_to_gupshup(wa_app, tenant_media, content_type: str):
         tenant_media.media.close()
 
 
+def _upload_media_to_meta(wa_app, tenant_media, content_type: str) -> Optional[str]:
+    """
+    Upload a TenantMedia file to META's Resumable Upload API and return the
+    file handle string, or ``None`` on failure.
+
+    This is the other half of the Gupshup path above. META hands back a CDN
+    URL when you read a template, never the handle that created it, so a
+    synced media template has no handle to re-submit with until we make a
+    fresh one (#272).
+    """
+    adapter = get_bsp_adapter(wa_app)
+    if not adapter.supports("media_upload"):
+        logger.info("[TemplateSync] %s cannot upload media, skipping", adapter.PROVIDER_NAME)
+        return None
+
+    tenant_media.media.open("rb")
+    try:
+        result = adapter.upload_media(
+            file_obj=tenant_media.media,
+            filename=os.path.basename(tenant_media.media.name),
+            file_type=content_type,
+        )
+    except Exception as exc:
+        logger.warning(f"[TemplateSync] META upload error: {exc}")
+        return None
+    finally:
+        tenant_media.media.close()
+
+    if not result.success:
+        logger.warning(f"[TemplateSync] META upload failed: {result.error_message}")
+        return None
+    return result.data.get("handle_id")
+
+
 def _patch_template_media(template: WATemplate):
     """
     For a single WATemplate with ``example_media_url`` but no ``tenant_media``:
 
     1. Download media from ``example_media_url``
     2. Create a ``TenantMedia`` record and save the file locally
-    3. Upload the file to Gupshup to get ``wa_handle_id``
+    3. Upload the file to the BSP to get a re-usable header handle
     4. Link the ``TenantMedia`` back to the template
     """
     wa_app = template.wa_app
@@ -585,15 +656,31 @@ def _patch_template_media(template: WATemplate):
         )
         tm.media.save(filename, ContentFile(resp.content), save=True)
 
-    # 3. Upload to Gupshup
-    handle_id = _upload_media_to_gupshup(wa_app, tm, content_type)
-    if handle_id:
-        tm.wa_handle_id = handle_id
-        tm.save(update_fields=["wa_handle_id"])
+    # 3. Upload to the BSP for a header handle we can submit with. Until
+    #    #272 this branch was Gupshup-only and returned None for every META
+    #    app, so a synced media template kept its CDN URL and no handle —
+    #    and every re-submit failed.
+    from tenants.models import BSPChoices
+
+    template_fields = ["tenant_media"]
+    if getattr(wa_app, "bsp", None) == BSPChoices.GUPSHUP:
+        handle_id = _upload_media_to_gupshup(wa_app, tm, content_type)
+        if handle_id:
+            tm.wa_handle_id = handle_id
+            tm.save(update_fields=["wa_handle_id"])
+    else:
+        handle_id = _upload_media_to_meta(wa_app, tm, content_type)
+        if handle_id:
+            tm.wa_handle_id = handle_id
+            tm.save(update_fields=["wa_handle_id"])
+            # to_meta_payload() reads media_handle for the header example,
+            # so this is the field that decides whether a re-submit works.
+            template.media_handle = handle_id
+            template_fields.append("media_handle")
 
     # 4. Link to template
     template.tenant_media = tm
-    template.save(update_fields=["tenant_media"])
+    template.save(update_fields=template_fields)
 
     logger.info(f"[TemplateSync] Patched media for '{template.element_name}' → TenantMedia id={tm.id}")
 
@@ -695,6 +782,11 @@ def sync_templates_from_bsp(wa_app, dry_run: bool = False) -> Dict[str, Any]:
                     "error_message",
                     "rejection_reason",
                 ):
+                    if field_name not in mapped:
+                        # A field the mapper has no opinion on keeps whatever
+                        # we already hold — the BSP not mentioning something
+                        # is not the BSP saying it is empty.
+                        continue
                     new_val = mapped.get(field_name)
                     old_val = getattr(existing, field_name, None)
                     if new_val != old_val:
