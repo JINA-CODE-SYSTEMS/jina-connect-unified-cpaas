@@ -15,6 +15,8 @@ Security:
     - Gupshup endpoint: unauthenticated (HMAC not yet supported by GS).
     - META endpoint: validates ``X-Hub-Signature-256`` (HMAC-SHA256 with
       ``META_APP_SECRET``) and ``hub.verify_token`` during verification.
+      An unverifiable POST is dropped, not accepted: there is no fail-open
+      path when no secret is configured (#306).
     - Rate-limiting should be handled at the reverse-proxy / WAF layer.
 
 URL layout (registered in ``wa/urls.py``):
@@ -172,22 +174,68 @@ def _extract_meta_phone_number_id(payload: Dict[str, Any]) -> Optional[str]:
         return None
 
 
-def _verify_meta_signature(request) -> bool:
+# Reason codes for a rejected META delivery.  META is always answered with
+# 200 (a non-200 throttles delivery), so the ``reason`` in the body and the
+# log line are the only places a rejection is ever visible — keep the three
+# failure modes distinguishable rather than collapsing them into one string.
+SIG_OK = ""
+SIG_UNVERIFIABLE = "missing_app_secret"
+SIG_BAD_HEADER = "malformed_signature_header"
+SIG_MISMATCH = "invalid_signature"
+
+
+def _verify_meta_signature(request) -> str:
     """
     Validate the ``X-Hub-Signature-256`` header against the request body.
 
-    Returns ``True`` if the signature is valid **or** if ``META_APP_SECRET``
-    is not configured (graceful degradation in dev).
+    Returns ``SIG_OK`` (the empty string) when the signature is valid,
+    otherwise the reason code naming *why* the delivery was rejected.
+
+    There is deliberately **no fail-open path**.  An absent secret used to
+    return ``True``, which left this public, unauthenticated endpoint with no
+    authentication at all: any well-formed body was accepted, so anyone who
+    learned or guessed a ``waba_id`` could inject inbound messages, delivery
+    statuses and template decisions into any tenant (#306).
+
+    ``META_WEBHOOK_ALLOW_UNSIGNED`` is a development-only escape hatch for
+    replaying captured payloads locally.  It refuses to engage unless
+    ``DEBUG`` is also true, so setting it on a production deployment cannot
+    silently disable verification.
+
+    One deployment-wide secret cannot serve several client-owned META apps,
+    but selecting a per-app secret needs the per-app webhook URL identity from
+    #310: until the URL itself names the sender, the only identifier available
+    here lives in the body, which cannot be trusted before it is verified.
     """
     app_secret = getattr(django_settings, "META_APP_SECRET", "")
     if not app_secret:
-        logger.warning("META_APP_SECRET not set -- skipping X-Hub-Signature-256 verification")
-        return True
+        allow_unsigned = bool(getattr(django_settings, "META_WEBHOOK_ALLOW_UNSIGNED", False))
+        if allow_unsigned and not django_settings.DEBUG:
+            logger.error(
+                "META webhook: META_WEBHOOK_ALLOW_UNSIGNED is set but DEBUG is False -- "
+                "refusing to bypass X-Hub-Signature-256 verification (reason=%s)",
+                SIG_UNVERIFIABLE,
+            )
+        elif allow_unsigned:
+            logger.warning(
+                "META webhook: X-Hub-Signature-256 verification bypassed by "
+                "META_WEBHOOK_ALLOW_UNSIGNED -- development builds only"
+            )
+            return SIG_OK
+        else:
+            logger.error(
+                "META webhook: no app secret configured -- rejecting unverifiable delivery (reason=%s)",
+                SIG_UNVERIFIABLE,
+            )
+        return SIG_UNVERIFIABLE
 
     signature_header = request.META.get("HTTP_X_HUB_SIGNATURE_256", "")
     if not signature_header.startswith("sha256="):
-        logger.warning("META webhook: missing or malformed X-Hub-Signature-256 header")
-        return False
+        logger.warning(
+            "META webhook: missing or malformed X-Hub-Signature-256 header (reason=%s)",
+            SIG_BAD_HEADER,
+        )
+        return SIG_BAD_HEADER
 
     expected_sig = signature_header[7:]  # strip "sha256=" prefix
     computed_sig = hmac.new(
@@ -196,7 +244,11 @@ def _verify_meta_signature(request) -> bool:
         hashlib.sha256,
     ).hexdigest()
 
-    return hmac.compare_digest(computed_sig, expected_sig)
+    if not hmac.compare_digest(computed_sig, expected_sig):
+        logger.warning("META webhook: X-Hub-Signature-256 mismatch (reason=%s)", SIG_MISMATCH)
+        return SIG_MISMATCH
+
+    return SIG_OK
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -217,17 +269,35 @@ class GupshupWebhookView(View):
 
     def get(self, request, *args, **kwargs):
         """
-        Gupshup (and META) webhook verification.
+        Gupshup webhook verification.
 
-        Gupshup sends a GET with ``hub.mode``, ``hub.verify_token``, and
-        ``hub.challenge``.  We echo back the challenge to prove ownership.
+        Gupshup sends a GET with ``hub.mode=subscribe``,
+        ``hub.verify_token=<your_token>``, and ``hub.challenge=<int>``.
+
+        We verify the presented token against ``GUPSHUP_WEBHOOK_VERIFY_TOKEN``
+        and only then echo back the challenge, so that reaching the endpoint is
+        not by itself enough to claim ownership of it.
+
+        Unset-secret behaviour: when ``GUPSHUP_WEBHOOK_VERIFY_TOKEN`` is empty
+        the token check is skipped and the challenge is echoed — the same
+        "configure the secret to enable the check" rule ``MetaWebhookView.get``
+        applies to ``META_WEBHOOK_VERIFY_TOKEN``, kept identical on purpose so
+        the two handshakes cannot drift apart.
+
+        The presented token is never logged: it is an attacker-supplied guess
+        at a shared secret, and log sinks are a wider audience than the secret.
         """
         mode = request.GET.get("hub.mode")
-        request.GET.get("hub.verify_token")
+        token = request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
 
+        expected_token = getattr(django_settings, "GUPSHUP_WEBHOOK_VERIFY_TOKEN", "")
+
         if mode == "subscribe" and challenge:
-            # Optional: verify token against WASubscription.verify_token
+            if expected_token and token != expected_token:
+                logger.warning("Gupshup webhook verification FAILED — hub.verify_token mismatch")
+                return JsonResponse({"error": "Verify token mismatch"}, status=403)
+
             logger.info("Gupshup webhook verification — echoing challenge")
             return HttpResponse(challenge, content_type="text/plain", status=200)
 
@@ -355,7 +425,8 @@ class MetaWebhookView(View):
         Flow:
         1. Verify ``X-Hub-Signature-256``.
         2. Parse JSON body.
-        3. Look up ``WAApp`` via ``waba_id`` (and optionally ``phone_number_id``).
+        3. Look up ``WAApp`` via ``phone_number_id``, falling back to
+           ``waba_id`` for events that carry no number.
         4. Classify event type.
         5. Create ``WAWebhookEvent`` -> triggers signal -> Celery pipeline.
         6. Return 200 immediately.
@@ -364,9 +435,14 @@ class MetaWebhookView(View):
         from wa.models import WAApp, WAWebhookEvent
 
         # --- verify signature ---------------------------------------------
-        if not _verify_meta_signature(request):
-            logger.warning("META webhook: invalid signature – returning 200 anyway")
-            return JsonResponse({"status": "ignored", "reason": "invalid_signature"}, status=200)
+        # An unverifiable delivery is dropped, never ingested (#306).  The 200
+        # is deliberate and must stay: META throttles delivery on non-200
+        # responses, so the distinct ``reason`` carries what the status code
+        # cannot.
+        signature_reason = _verify_meta_signature(request)
+        if signature_reason:
+            logger.warning("META webhook: dropping unverified delivery (reason=%s)", signature_reason)
+            return JsonResponse({"status": "ignored", "reason": signature_reason}, status=200)
 
         # --- parse body ---------------------------------------------------
         try:
@@ -389,18 +465,42 @@ class MetaWebhookView(View):
             # Always return 200 to Meta — non-200 causes delivery throttling
             return JsonResponse({"status": "ignored", "reason": "missing_waba_id"}, status=200)
 
-        # Try to match by waba_id first, then fallback to phone_number_id.
+        # Match on the most specific identifier the payload carries:
+        # ``phone_number_id`` first, ``waba_id`` only as a fallback.
+        #
+        # One ``TenantWAApp`` holds one number, so a tenant with several
+        # numbers holds several rows — and those rows may share a ``waba_id``.
+        # ``waba_id`` is therefore not a unique routing key. Matching it first
+        # and taking ``.first()`` filed every event for every number on a
+        # shared WABA against whichever row the database happened to return,
+        # and the ``phone_number_id`` fallback could never correct it because
+        # it was guarded on the WABA match having failed (#309).
+        #
         # ``bsp_q`` rather than ``bsp=META`` because a blank column means
         # META too — filtering on the literal answered those apps' webhooks
         # with "unknown_app" while every other path served them (#265).
         from wa.adapters import bsp_q
 
         meta_apps = WAApp.objects.filter(bsp_q(BSPChoices.META))
-        wa_app = meta_apps.filter(waba_id=waba_id).first()
-        if wa_app is None and phone_number_id:
+
+        wa_app = None
+        if phone_number_id:
             wa_app = meta_apps.filter(phone_number_id=phone_number_id).first()
 
+        ambiguous_waba_apps: list = []
         if wa_app is None:
+            # No number in the payload — account-level updates legitimately
+            # carry none — or no row holds it. Fall back to the WABA, but only
+            # when it identifies exactly one app. Two or more and there is no
+            # non-arbitrary answer, which is the same conclusion
+            # ``MetaDirectAdapter.fetch_waba_info`` reaches on a shared WABA.
+            waba_matches = list(meta_apps.filter(waba_id=waba_id).order_by("created_at", "id")[:2])
+            if len(waba_matches) == 1:
+                wa_app = waba_matches[0]
+            elif len(waba_matches) > 1:
+                ambiguous_waba_apps = waba_matches
+
+        if wa_app is None and not ambiguous_waba_apps:
             logger.warning(
                 "META webhook: no META app with waba_id=%s / phone_number_id=%s",
                 waba_id,
@@ -412,6 +512,49 @@ class MetaWebhookView(View):
         # --- classify & persist -------------------------------------------
         event_type = _classify_cloud_api_event(payload)
 
+        if ambiguous_waba_apps:
+            # Recorded, not attributed. The payload is kept so the event is not
+            # lost, but it is stored already-processed with the ambiguity in
+            # ``error_message``, so nothing downstream applies it to an app it
+            # may not belong to. The FK has to point somewhere (it is NOT NULL,
+            # and a migration is out of scope here), so it points at the oldest
+            # matching app — deterministically, not arbitrarily — and the
+            # message says plainly that attribution was refused. An operator
+            # finds these by searching ``error_message`` in the admin, and once
+            # the owning app's ``phone_number_id`` is filled in, the existing
+            # "Reprocess selected webhook events" action replays it.
+            holder = ambiguous_waba_apps[0]
+            detail = (
+                f"Ambiguous routing: waba_id={waba_id} matches {len(ambiguous_waba_apps)} META apps "
+                f"({', '.join(str(app.pk) for app in ambiguous_waba_apps)}) and the payload carries no "
+                f"phone_number_id, so this event was recorded rather than attributed to any of them. "
+                f"Stored against {holder.pk} for retention only (#309)."
+            )
+            webhook_event = WAWebhookEvent.objects.create(
+                wa_app=holder,
+                event_type=event_type,
+                bsp=BSPChoices.META,
+                payload=payload,
+                is_processed=True,
+                error_message=detail,
+            )
+            logger.error(
+                "META webhook: ambiguous waba_id=%s (%s candidate apps, no phone_number_id) -- "
+                "recorded unattributed as pk=%s",
+                waba_id,
+                len(ambiguous_waba_apps),
+                webhook_event.pk,
+            )
+            return JsonResponse(
+                {
+                    "status": "recorded",
+                    "reason": "ambiguous_waba_id",
+                    "event_id": str(webhook_event.pk),
+                    "event_type": event_type,
+                },
+                status=200,
+            )
+
         webhook_event = WAWebhookEvent.objects.create(
             wa_app=wa_app,
             event_type=event_type,
@@ -420,10 +563,11 @@ class MetaWebhookView(View):
         )
 
         logger.info(
-            "META webhook ingested: event=%s waba=%s phone=%s pk=%s",
+            "META webhook ingested: event=%s waba=%s phone=%s app=%s pk=%s",
             event_type,
             waba_id,
             phone_number_id,
+            wa_app.pk,
             webhook_event.pk,
         )
 

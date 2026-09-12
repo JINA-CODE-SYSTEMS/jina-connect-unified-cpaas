@@ -18,9 +18,11 @@ def resolve_tenant(api_key: str) -> Tuple[Tenant, Optional[TenantWAApp]]:
 
     Raises ValueError with a human-readable message on failure.
     """
-    try:
-        access_key = TenantAccessKey.objects.select_related("tenant").get(key=api_key)
-    except TenantAccessKey.DoesNotExist:
+    # Resolved through the model, not a lookup on the key column: the key is
+    # stored as a digest now, so matching means hashing what was presented
+    # (#301). resolve() also skips revoked keys, which a raw get() did not.
+    access_key = TenantAccessKey.resolve(api_key)
+    if access_key is None:
         raise ValueError("Invalid API key. Check your Jina Connect access key.")
 
     tenant = access_key.tenant
