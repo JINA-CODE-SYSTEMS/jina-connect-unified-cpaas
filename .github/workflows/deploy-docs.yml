@@ -5,6 +5,13 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+  # Build docs on pull requests too, so a config or content change that breaks
+  # the build is caught in review rather than after it has merged. The deploy
+  # job below stays push-only.
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -13,8 +20,11 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  # Pages allows one deployment at a time, so every push shares a single group.
+  # Pull request builds deploy nothing, so they get a group per ref instead of
+  # queueing behind main -- and a superseded PR build is worth cancelling.
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -45,6 +55,8 @@ jobs:
 
   deploy:
     needs: build
+    # Never publish from a pull request; the build above is the PR's signal.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
