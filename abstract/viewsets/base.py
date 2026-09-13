@@ -85,12 +85,17 @@ class BaseModelViewSet(viewsets.ModelViewSet):
           they do not belong to is a real workflow, and it needs the body to be
           able to name that organisation. Narrowing it is a separate decision,
           the same one ``get_queryset`` leaves open for an ordinary superuser.
-        * **There is no authenticated user at all.** Some actions on tenant
-          viewsets are ``AllowAny`` webhook receivers (Gupshup delivery and
-          billing callbacks), and ``TenantAccessKeyAuthentication`` leaves
-          ``request.user`` as ``None`` outright. There is no membership to
+        * **There is no authenticated user at all.** A few actions on tenant
+          viewsets are deliberately unauthenticated webhook receivers (Gupshup
+          delivery and billing callbacks), and ``TenantAccessKeyAuthentication``
+          leaves ``request.user`` as ``None`` outright. There is no membership to
           compare a body against, and those handlers resolve the organisation
           from the payload themselves.
+
+          (Named by description rather than by the permission class, because
+          ``test_allowany_only_on_intended_endpoints`` greps source text for that
+          class name and this file is not an endpoint. Widening its allow-list to
+          admit a comment would also admit a real one here later.)
 
         Impersonation is read first and answers on its own. #300 refuses every
         non-safe method from a borrowed token at two independent layers, so this
