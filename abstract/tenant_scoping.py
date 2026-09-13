@@ -1,8 +1,15 @@
-"""Resolving "how do I filter this model down to one organisation?" (#326).
+"""Resolving "which organisation does this model belong to?" (#326, #346).
 
-The project already has a per-model declaration for tenant filtering,
-``filter_by_user_tenant_fk``, but it does not answer this question. It is a
-path ending in ``tenant_users__user`` and it filters by **membership**: "rows
+Two questions, one per direction. ``tenant_filter_path`` answers the read
+question — which rows may a request scoped to one organisation see — and
+``tenant_write_field`` answers the write question — which column on this row,
+if any, decides the organisation it lands in. They give different answers for
+the same model on purpose; see ``tenant_write_field``.
+
+The rest of this module is about the read question. The project already has a
+per-model declaration for tenant filtering, ``filter_by_user_tenant_fk``, but it
+does not answer that question either. It is a path ending in
+``tenant_users__user`` and it filters by **membership**: "rows
 belonging to an organisation *this user is a member of*". That is the right
 question for an ordinary request and the wrong one for an impersonated
 session, where the actor is a member of nothing in the organisation being
@@ -47,6 +54,48 @@ TENANT_PATH_ATTR = "filter_by_tenant_fk"
 # What ``Tenant`` itself gets: the row is the organisation, so the "path to the
 # tenant" is the row's own primary key.
 SELF_PATH = "pk"
+
+
+def tenant_write_field(model):
+    """The name of ``model``'s **own** foreign key to ``Tenant``, or None (#346).
+
+    The read question and the write question are not the same question, which is
+    why this sits next to ``tenant_filter_path`` rather than inside it.
+
+    ``tenant_filter_path`` answers "which rows belong to this organisation?" and
+    is happy to cross relations to find out — ``WAMessage`` resolves to
+    ``wa_app__tenant``. A write cannot use that answer: saving a row can only
+    set a column the row itself owns. So a model that reaches its tenant through
+    a parent returns None here, and that is the right answer rather than a gap —
+    its organisation is decided by the parent it is attached to, and the control
+    that matters for it is the one on that parent.
+
+    Two further differences from ``tenant_filter_path``, both deliberate:
+
+    * **It never raises.** An unfilterable queryset serves every organisation,
+      so silence there is the bug; an absent tenant column simply means there is
+      nothing on this row for a request body to aim at, so silence here is the
+      truth. Thirty-nine viewsets inherit the write scoping and eight of them
+      serve a model with no tenant column of its own (seven distinct models,
+      ``BroadcastMessage`` through two) — making that an error would break every
+      one of them to no purpose.
+    * **It reads the model, not a declaration.** Every one of the 48 models in
+      this project with a direct link to ``Tenant`` spells it ``tenant``, but
+      asking the field rather than assuming the name means a model that spells
+      it otherwise is still covered, and a model that drops the column stops
+      being covered without anybody having to remember to update a list.
+    """
+    from django.apps import apps
+
+    tenant_model = apps.get_model("tenants", "Tenant")
+    for field in model._meta.get_fields():
+        if not (getattr(field, "many_to_one", False) or getattr(field, "one_to_one", False)):
+            continue
+        if getattr(field, "auto_created", False):
+            continue
+        if getattr(field, "related_model", None) is tenant_model:
+            return field.name
+    return None
 
 
 def tenant_filter_path(model) -> str:
