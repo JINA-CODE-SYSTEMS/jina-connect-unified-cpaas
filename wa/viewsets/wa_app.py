@@ -66,6 +66,13 @@ class WAAppViewSet(BaseTenantModelViewSet):
         "quota": "wa_app.view",
         "reset_counter": "wa_app.manage",
         "capabilities": "wa_app.view",
+        # Deliberately ``view`` and not ``manage``, unlike every other action
+        # that touches onboarding. This one answers "what can be done here and
+        # by whom" — a viewer who cannot act still needs to be told what the
+        # options are and who to ask, rather than shown an empty page. What it
+        # must not do is *imply* the caller may act, which is why the response
+        # carries ``can_manage`` explicitly.
+        "onboarding_options": "wa_app.view",
         # The per-app callback URL is a setup credential, not app metadata (#310).
         "webhook_setup": "wa_app.manage",
         # Reads the stored credentials and talks to META with them. Same gate as
@@ -300,6 +307,101 @@ class WAAppViewSet(BaseTenantModelViewSet):
         wa_app.save(update_fields=["messages_sent_today"])
 
         return Response({"message": "Daily counter reset successfully"})
+
+    @swagger_auto_schema(
+        operation_description=(
+            "Which routes to a working WhatsApp app this deployment offers, and whether the "
+            "caller may take them. Read this before rendering any onboarding entry point: a "
+            "deployment can switch Gupshup's Embedded Signup off, and a client that decides "
+            "for itself which options exist will offer a button the server answers 403 to. "
+            "Requires wa_app.view so every role can be told what the options are; "
+            "'can_manage' says whether this caller may actually act on them."
+        ),
+        operation_summary="WhatsApp Onboarding Options",
+        operation_id="wa_app_onboarding_options",
+        tags=["WhatsApp Apps (v2)"],
+        responses={
+            200: openapi.Response(
+                description="Available onboarding routes",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "routes": openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    "key": openapi.Schema(type=openapi.TYPE_STRING),
+                                    "available": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                                    "requires_permission": openapi.Schema(type=openapi.TYPE_STRING),
+                                    "reason": openapi.Schema(type=openapi.TYPE_STRING, x_nullable=True),
+                                },
+                            ),
+                        ),
+                        "can_manage": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                    },
+                ),
+            ),
+            401: openapi.Response(description="Authentication required"),
+            403: openapi.Response(description="Permission denied"),
+        },
+    )
+    @action(detail=False, methods=["get"], url_path="onboarding-options", url_name="onboarding-options")
+    def onboarding_options(self, request):
+        """What onboarding this deployment offers, and whether this caller may act.
+
+        A list route, not a detail one: it is asked *before* any app exists,
+        which is the only moment onboarding matters.
+        """
+        from tenants.services.onboarding_routes import onboarding_routes
+
+        return Response(
+            {
+                "routes": onboarding_routes(),
+                "can_manage": self._can_manage_apps(request),
+            }
+        )
+
+    def _can_manage_apps(self, request):
+        """Whether this caller could actually create an app, answered honestly.
+
+        This exists because of #310's live bug, in which a screen was gated on
+        ``wa_app.view`` while the endpoint behind it required ``wa_app.manage``:
+        manager, agent and viewer each saw the link, clicked it, and were refused
+        with nothing to act on. Recomputing the same rule in the client would
+        reproduce it the first time the two drift, so the server says.
+
+        Three answers, in the order the permission layer itself resolves them,
+        so this cannot disagree with what the write will actually do:
+
+        * an impersonated session is read-only (#300), whatever else is true;
+        * a superuser bypasses RBAC — including the platform operator of #353,
+          who holds no membership and is nonetheless the caller this whole
+          screen is for;
+        * everyone else is judged by their role's ``wa_app.manage`` grant.
+
+        The impersonation test is ``request_is_impersonated`` and deliberately
+        **not** ``impersonation_write_denial``, which is what the permission
+        class uses. That one answers "should THIS request be refused", and this
+        request is a GET — a safe method, so it is not refused, so the denial is
+        empty and the superuser bypass below would advertise a create button to
+        a session that cannot create. The question here is about a *different*
+        request than the one being served: "if this caller posted, would it
+        work?" A test caught this; the first version of this method shipped the
+        wrong helper.
+        """
+        from tenants.permissions import has_permission
+        from users.impersonation import request_is_impersonated
+
+        if request_is_impersonated(request):
+            return False
+        if getattr(request.user, "is_superuser", False):
+            return True
+
+        tenant_user = self._get_tenant_user()
+        if tenant_user is None or tenant_user.role is None:
+            return False
+        return has_permission(tenant_user.role, "wa_app.manage")
 
     @swagger_auto_schema(
         operation_description=(
