@@ -851,6 +851,12 @@ class AddMemberSerializer(serializers.Serializer):
     Write serializer for POST /tenants/members/add/.
     Admin provides email, password, name, and role to add a member.
     password and first_name are only required when the email is new (validated in validate()).
+
+    ``context["tenant"]`` is the organisation the member lands in, and the
+    viewset — not this serializer — decides which one that is: a platform
+    operator names it in the body, everyone else gets their own (#356). This
+    serializer only has to validate the role *within* whatever organisation it
+    is handed.
     """
 
     email = serializers.EmailField()
@@ -864,6 +870,7 @@ class AddMemberSerializer(serializers.Serializer):
             value,
             self.context["request"],
             self.context["tenant"],
+            platform_operator=self.context.get("platform_operator", False),
         )
 
     def validate_email(self, value):
@@ -900,6 +907,12 @@ class AddMemberSerializer(serializers.Serializer):
 class ChangeRoleSerializer(serializers.Serializer):
     """
     Write serializer for PATCH /tenants/members/{id}/role/.
+
+    ``context["tenant"]`` is the organisation the member being edited belongs
+    to — read off the target row, not off the caller. Those were once allowed to
+    differ: the role was looked up in the target's organisation while the
+    priority rules were validated against the caller's, so a caller who belonged
+    to two organisations was judged by an arbitrary one of them (#356).
     """
 
     role_id = serializers.IntegerField()
@@ -909,6 +922,7 @@ class ChangeRoleSerializer(serializers.Serializer):
             value,
             self.context["request"],
             self.context["tenant"],
+            platform_operator=self.context.get("platform_operator", False),
         )
 
 
