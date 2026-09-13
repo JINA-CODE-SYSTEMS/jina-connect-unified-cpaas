@@ -75,9 +75,10 @@ def tenant_write_field(model):
     * **It never raises.** An unfilterable queryset serves every organisation,
       so silence there is the bug; an absent tenant column simply means there is
       nothing on this row for a request body to aim at, so silence here is the
-      truth. Thirty-nine viewsets inherit the write scoping and eleven of their
-      models have no tenant column of their own — making that an error would
-      break them all to no purpose.
+      truth. Thirty-nine viewsets inherit the write scoping and eight of them
+      serve a model with no tenant column of its own (seven distinct models,
+      ``BroadcastMessage`` through two) — making that an error would break every
+      one of them to no purpose.
     * **It reads the model, not a declaration.** Every one of the 48 models in
       this project with a direct link to ``Tenant`` spells it ``tenant``, but
       asking the field rather than assuming the name means a model that spells

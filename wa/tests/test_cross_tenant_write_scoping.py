@@ -467,10 +467,10 @@ def test_a_token_naming_one_organisation_may_write_into_that_one_only():
 
 @pytest.mark.django_db
 def test_a_model_with_no_tenant_column_of_its_own_is_untouched():
-    """Eleven of the models behind these viewsets reach their tenant through a
-    parent and have no column for a body to aim at. The control must be a no-op
-    for them, not an error — a base-class hook that assumed the attribute would
-    have broken every one of them."""
+    """Eight of the thirty-nine viewsets serve a model that reaches its tenant
+    through a parent and has no column for a body to aim at. The control must be
+    a no-op for them, not an error — a base-class hook that assumed the attribute
+    would have broken every one of them."""
     from abstract.tenant_scoping import tenant_write_field
     from wa.models import WAMessage, WASubscription
 

@@ -145,8 +145,8 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         """The serializer field a request body could use to choose an organisation.
 
         None — the overwhelmingly common case — when there is nothing to police:
-        the model has no tenant column of its own (eleven of the models behind
-        these viewsets reach their tenant through a parent), or the serializer
+        the model has no tenant column of its own (eight of these viewsets serve
+        a model that reaches its tenant through a parent), or the serializer
         does not expose the column, or exposes it read-only. Each of those
         already means the body cannot decide where the row lands, so there is
         nothing here to force and nothing to refuse.

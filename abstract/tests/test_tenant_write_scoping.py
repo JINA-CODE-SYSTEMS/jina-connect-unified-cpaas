@@ -26,9 +26,10 @@ another.*
   ``/tenants/tenant-users/`` — ``fields = "__all__"`` over a tenant column. The
   last is the worst of the three: a ``TenantUser`` row *is* a membership.
 * ``POST``/``PATCH`` on every broadcast viewset — ``/broadcast/``,
-  ``/mobile/broadcast/``, ``/wa/...``, ``/mobile/wa/...``. Four of the seven
-  broadcast viewsets already forced the tenant in ``perform_create``; the other
-  three did not, over the same model and the same serializer.
+  ``/mobile/broadcast/``, ``/wa/...``, ``/mobile/wa/...``. Three of the seven
+  broadcast viewsets already forced the tenant in ``perform_create`` (the SMS,
+  RCS and Telegram ones); the other four did not, over the same model and the
+  same serializer. One question, answered in three places out of seven.
 * ``POST``/``PATCH /chat-flow/`` — ``ChatFlow``.
 * ``PATCH`` on ``/team-inbox/`` messages — create used a serializer without
   ``tenant``, update did not.
@@ -43,11 +44,15 @@ another.*
 * ``/transaction/`` — ``TenantTransactionSerializer`` has a writable ``tenant``
   and the router registers create and update, but ``http_method_names = ["get"]``
   answers both with 405. Closed by the §07 wallet fix, not by anything here.
-* Eleven of the 39 viewsets serve models with **no tenant column of their own**
-  (``WAMessage``, ``WASubscription``, ``WAWebhookEvent``, ``WABAInfo``,
-  ``BroadcastMessage``, ``ChatFlowNode``, ``ChatFlowEdge`` …). They reach their
-  organisation through a parent, so there is nothing on the row for a body to
-  aim at; the control that matters for them is the one on the parent.
+* Eight of the 39 viewsets serve a model with **no tenant column of its own** —
+  seven distinct models (``WAMessage``, ``WASubscription``, ``WAWebhookEvent``,
+  ``WABAInfo``, ``BroadcastMessage`` through two viewsets, ``ChatFlowNode``,
+  ``ChatFlowEdge``). They reach their organisation through a parent, so there is
+  nothing on the row for a body to aim at; the control that matters for them is
+  the one on the parent. A further four (``TenantViewSet`` and the SMS, RCS and
+  Telegram message viewsets) build their queryset in ``get_queryset`` and are
+  judged by their serializer's model instead — two of those four do have a
+  tenant column and are in the exploitable list above.
 * ``TenantContact``, ``WAContacts`` and ``TenantUser``-via-``MemberSerializer``
   already had ``tenant`` read-only, and ``WATemplateV2Serializer``,
   ``NotificationSerializer``, ``WAOrderListSerializer``, ``TenantSerializer``,
