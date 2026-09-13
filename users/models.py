@@ -279,6 +279,111 @@ class ImpersonationSession(models.Model):
         return self.ended_at
 
 
+class PlatformAdminChange(models.Model):
+    """Audit record of one grant or revocation of platform administration (#358).
+
+    Until #358 the only ways to make a platform administrator were
+    ``manage.py createsuperuser`` and the Django admin, so the answer to "who
+    gave this person the keys to every customer's data, and when" was "nobody
+    knows". The ticket's own argument is the one this model implements:
+    *granting* platform access is at least as consequential as *viewing* an
+    organisation, and viewing already writes an ``ImpersonationSession`` row —
+    so the grant must not be the less traceable of the two.
+
+    **Append-only, one row per event**, rather than one mutable row per
+    administrator with a ``revoked_at`` on it. Two reasons, both practical:
+
+    * Most of the administrators that exist right now were made with
+      ``createsuperuser`` and have no row at all. A grant/revoke *pair* model
+      would have nowhere to record their revocation; an event log records it
+      fine and simply reports "granted: unknown" for them, which is the honest
+      answer rather than a fabricated one.
+    * Rights get granted, taken away and granted again. Each of those is a
+      separate thing that happened and a separate thing somebody may have to
+      account for later. Overwriting the first with the third loses the history
+      that makes this an audit trail rather than a status field.
+
+    "Who is an administrator *now*" is therefore **not** read from this table —
+    it is ``User.is_superuser``, the same flag every permission check in the
+    project already reads. This table says how it got that way. Deriving
+    current state from the log instead would create a second, disagreeable
+    answer to a question that already has one, which is the failure #353 and
+    #356 were both instances of.
+
+    ``actor`` and ``subject`` are ``SET_NULL`` with the identifying text
+    snapshotted alongside, for ``ImpersonationSession``'s reason: the record has
+    to outlive the deletion of either account, and "who" is the part that
+    matters most once it has.
+    """
+
+    ACTION_GRANTED = "granted"
+    ACTION_REVOKED = "revoked"
+    ACTION_CHOICES = [
+        (ACTION_GRANTED, "Granted"),
+        (ACTION_REVOKED, "Revoked"),
+    ]
+
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, db_index=True)
+    subject = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="platform_admin_changes",
+        help_text="The user whose platform administration was granted or revoked.",
+    )
+    subject_username = models.CharField(
+        max_length=150,
+        help_text="Username of the subject at the time — kept if the account is deleted.",
+    )
+    subject_email = models.EmailField(
+        blank=True,
+        help_text="Email of the subject at the time. The invite names an address, so the address is the record.",
+    )
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="platform_admin_changes_made",
+        help_text="The platform administrator who made the change.",
+    )
+    actor_username = models.CharField(
+        max_length=150,
+        help_text="Username of the actor at the time — kept if the account is deleted.",
+    )
+    changed_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        verbose_name = "Platform Administration Change"
+        verbose_name_plural = "Platform Administration Changes"
+        # ``-id`` breaks the tie: two changes can share a timestamp to the
+        # microsecond under a test clock, and an audit trail that reorders
+        # itself between two reads is hard to trust about anything else.
+        ordering = ["-changed_at", "-id"]
+
+    def __str__(self):
+        return f"{self.actor_username} {self.action} platform admin for {self.subject_username}"
+
+    @classmethod
+    def record(cls, *, action, actor, subject):
+        """Write one audit row, snapshotting the names that must survive deletion.
+
+        ``actor`` is always the authenticated user, never anything read out of a
+        request body — the same rule ``ImpersonationStartView`` states for
+        #301's benefit. A grant that could name its own granter is not an audit
+        trail.
+        """
+        return cls.objects.create(
+            action=action,
+            subject=subject,
+            subject_username=subject.username,
+            subject_email=subject.email or "",
+            actor=actor,
+            actor_username=actor.username,
+        )
+
+
 class PasswordResetToken(models.Model):
     """
     Model to store password reset tokens.
