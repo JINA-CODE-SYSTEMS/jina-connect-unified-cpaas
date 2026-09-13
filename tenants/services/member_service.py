@@ -83,11 +83,13 @@ def add_member_to_tenant(
             last_name=last_name or "",
             password=password,  # User.save() auto-hashes via identify_hasher
             is_active=False,  # Pending email verification
-            # Explicit, not omitted. ``mobile`` is unique, so "no number" has to
-            # be NULL — two NULLs do not collide in Postgres and two empty
-            # strings do. Leaving it to the field default is what made the
-            # second invitation on any deployment fail with an IntegrityError.
-            mobile=None,
+            # ``mobile`` is deliberately not passed, and that is now correct
+            # rather than the bug it used to be. It is unique, so "no number
+            # known" must be NULL — two NULLs do not collide in Postgres, two
+            # empty strings do — and since #360 made the column nullable,
+            # Django's default for an omitted value resolves to None rather
+            # than "". Passing ``mobile=None`` here would say the same thing
+            # twice; what makes it true is the model, not this call.
         )
 
         tenant_user = TenantUser.objects.create(
