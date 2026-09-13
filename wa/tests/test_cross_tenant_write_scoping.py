@@ -325,12 +325,13 @@ def test_a_platform_operator_may_still_create_for_an_organisation_they_are_not_i
     caller for whom the body is the only possible source of the organisation, so
     for them it is honoured.
 
-    Note what this does *not* claim: the same operator still cannot create a
-    **META** app, because ``WAAppViewSet.get_serializer_class`` reads a
-    ``TenantUser`` role priority they do not have and hands them the safe create
-    serializer, which has no ``waba_id`` field to satisfy the META requirement.
-    That is the known related defect recorded in #346 and is deliberately not
-    fixed here; this test pins that the write scoping does not make it worse.
+    Note what this does *not* claim: that the operator may also send the BSP
+    identifiers. That was the second half of the same person's problem —
+    ``get_serializer_class`` read a ``TenantUser`` role priority they do not
+    have and handed them the safe create serializer — and it is #353's, fixed
+    there and pinned by ``test_platform_operator_app_creation.py``. This test
+    stays deliberately about the organisation and nothing else, so that the two
+    controls keep failing separately when they break separately.
     """
     from wa.models import WAApp
 

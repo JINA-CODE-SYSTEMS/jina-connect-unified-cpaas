@@ -91,12 +91,24 @@ class WAAppViewSet(BaseTenantModelViewSet):
         that role already gets, so wiring this in adds a rule without adding a
         readable or writable field to either level. A role below priority 80 that
         holds ``wa_app.manage`` sees exactly the field surface it saw before.
+
+        #353: a platform operator has no ``TenantUser`` row at all, and reading a
+        role priority off it concluded "below manager" for the one caller who is
+        above every manager — the operator onboarding an organisation they are
+        not a member of, which is the entire premise of #345. "No membership"
+        is not a low role; it means not scoped to an organisation, and
+        ``acting_as_platform_operator`` is where that is decided for the whole
+        codebase, so this cannot drift from what the write scoping (#346, #352)
+        already concluded about the same person. It is deliberately an ``or``
+        and not a replacement: the #251 rule below priority 80 is untouched, and
+        an impersonated session — superuser, membershipless, and therefore the
+        exact shape of an operator — is excluded there rather than here.
         """
         if self.action == "list":
             return WAAppListSerializer
 
         tu = self._get_tenant_user()
-        privileged = bool(tu and tu.role and tu.role.priority >= 80)
+        privileged = bool(tu and tu.role and tu.role.priority >= 80) or self.acting_as_platform_operator()
 
         if self.action == "create":
             return WAAppCreateSerializer if privileged else WAAppSafeCreateSerializer
