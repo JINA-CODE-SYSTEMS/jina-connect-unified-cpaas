@@ -89,12 +89,6 @@ WRITE_METHODS = frozenset({"post", "patch", "put"})
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _all_subclasses(cls):
-    for sub in cls.__subclasses__():
-        yield sub
-        yield from _all_subclasses(sub)
-
-
 def _routed_viewsets():
     """Every viewset class the URL conf actually routes, with its action map.
 
@@ -251,10 +245,23 @@ def test_every_such_endpoint_refuses_an_organisation_the_caller_is_not_in():
         "These write endpoints accepted an organisation the caller is not a member of:\n  " + "\n  ".join(accepted)
     )
     # And the caller's own organisation is still accepted, or the sweep above
-    # would pass just as well against a control that refused everything.
-    view = next(iter(endpoints))[0]()
-    view.action, view.format_kwarg, view.request = next(iter(endpoints))[1], None, request
-    view.get_serializer(data={next(iter(endpoints))[3]: mine.id})
+    # would pass just as well against a control that refused everything. Every
+    # endpoint, not a sample: a control that refused one organisation too many on
+    # a single viewset is the kind of regression a sample misses.
+    over_refused = []
+    for viewset_cls, action, _serializer_cls, name in endpoints:
+        view = viewset_cls()
+        view.action = action
+        view.format_kwarg = None
+        view.request = request
+        try:
+            view.get_serializer(data={name: mine.id})
+        except PermissionDenied:
+            over_refused.append(f"{viewset_cls.__module__}.{viewset_cls.__name__}.{action}")
+
+    assert over_refused == [], "These write endpoints refused the caller's *own* organisation:\n  " + "\n  ".join(
+        over_refused
+    )
 
 
 @pytest.mark.django_db
