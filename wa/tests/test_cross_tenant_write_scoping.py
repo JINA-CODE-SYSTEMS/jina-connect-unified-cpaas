@@ -264,7 +264,16 @@ def test_an_update_that_omits_the_tenant_leaves_it_alone():
 def test_the_second_route_to_the_same_row_type_is_closed_too():
     """``POST /tenants/tenant-gupshup/`` writes the *same* ``TenantWAApp`` model
     through a different viewset and a different serializer, and had the identical
-    hole. Fixing only the reported endpoint would have left this one open."""
+    hole. Fixing only the reported endpoint would have left this one open.
+
+    **403 exactly, not "some 4xx".** ``TenantGupshupAppsSerializer`` is
+    ``fields = "__all__"`` with three required price fields, so a body this short
+    is a 400 for missing fields whatever the tenant says — a "some 4xx" assertion
+    here passes with the control removed and proves nothing. Demanding 403 is
+    possible because the refusal happens in ``get_serializer``, before
+    ``is_valid()``: the caller is told they may not write into that organisation
+    rather than which fields they forgot, and a 400 now fails this test.
+    """
     from wa.models import WAApp
 
     victim = _tenant("victim")
@@ -281,7 +290,7 @@ def test_the_second_route_to_the_same_row_type_is_closed_too():
         format="json",
     )
 
-    assert 400 <= response.status_code < 500, response.data
+    assert response.status_code == 403, response.data
     assert WAApp.objects.filter(tenant=victim).count() == 0
 
 
@@ -298,7 +307,10 @@ def test_a_different_app_entirely_is_covered_by_the_same_control():
 
     response = api.post(TAGS_URL, {"tenant": victim.id, "name": "planted"}, format="json")
 
-    assert 400 <= response.status_code < 500, response.data
+    # 403 exactly: this body *is* otherwise valid, so with the control removed it
+    # is a 201, and a "some 4xx" assertion could only ever be satisfied by the
+    # control itself. Pinning the code anyway keeps it that way.
+    assert response.status_code == 403, response.data
     assert TenantTags.objects.filter(tenant=victim).count() == 0
 
 
