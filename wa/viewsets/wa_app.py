@@ -380,20 +380,33 @@ class WAAppViewSet(BaseTenantModelViewSet):
           screen is for;
         * everyone else is judged by their role's ``wa_app.manage`` grant.
 
-        The impersonation test is ``request_is_impersonated`` and deliberately
-        **not** ``impersonation_write_denial``, which is what the permission
-        class uses. That one answers "should THIS request be refused", and this
-        request is a GET — a safe method, so it is not refused, so the denial is
-        empty and the superuser bypass below would advertise a create button to
-        a session that cannot create. The question here is about a *different*
-        request than the one being served: "if this caller posted, would it
-        work?" A test caught this; the first version of this method shipped the
-        wrong helper.
+        The impersonation test is neither of the two obvious helpers, and both
+        exclusions are deliberate.
+
+        Not ``impersonation_write_denial``, which is what the permission class
+        uses: that answers "should THIS request be refused", and this request is
+        a GET — a safe method, so nothing is refused, so the denial is empty and
+        the superuser bypass below would advertise a create button to a session
+        that cannot create. The question here is about a *different* request
+        than the one being served: "if this caller posted, would it work?"
+
+        Not ``request_is_impersonated`` either, because it falls back to
+        ``request.auth`` when the claim is absent from the user — and reading
+        ``request.auth`` on a DRF ``Request`` that has not been authenticated
+        *runs* authentication, which with no authenticators replaces
+        ``request.user`` with ``AnonymousUser``. ``impersonated_tenant_id``
+        documents that hazard and avoids it for the same reason. Over HTTP the
+        user is always resolved by the time this runs, so the fallback buys
+        nothing here and carries a trap for any caller that reaches this method
+        without going through the full stack.
+
+        So the claim is read off ``request.user``, which is where
+        ``CustomJWTAuthentication`` stamps it, and nowhere else.
         """
         from tenants.permissions import has_permission
-        from users.impersonation import request_is_impersonated
+        from users.impersonation import IMPERSONATED_BY_CLAIM
 
-        if request_is_impersonated(request):
+        if getattr(request.user, IMPERSONATED_BY_CLAIM, None):
             return False
         if getattr(request.user, "is_superuser", False):
             return True
