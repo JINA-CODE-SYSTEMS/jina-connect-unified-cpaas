@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from django.db import IntegrityError
 from django.utils import timezone
@@ -1036,43 +1036,89 @@ class GupshupAdapter(BaseBSPAdapter):
 
         return SubscriptionAPI(appId=app_id, token=token)
 
+    #: Canonical ``WebhookEventType`` value → the Gupshup subscription modes that
+    #: deliver it. The one place the translation is written down, at class scope
+    #: so the test that walks the enum can check the table itself rather than
+    #: trusting a docstring that lists its rows.
+    #:
+    #: ``PAYMENT`` earns a row because the two sides spell it differently — ours
+    #: is singular, Gupshup's mode is ``PAYMENTS``.
+    EVENT_TYPE_TO_MODES: ClassVar[dict[str, list[str]]] = {
+        "MESSAGE": ["MESSAGE", "ALL"],
+        "STATUS": ["FAILED", "SENT", "DELIVERED", "READ", "ENQUEUED"],
+        "TEMPLATE": ["TEMPLATE"],
+        "BILLING": ["BILLING"],
+        "ACCOUNT": ["ACCOUNT"],
+        "PAYMENT": ["PAYMENTS"],
+    }
+
+    #: Canonical event types Gupshup offers no subscription mode for, each with
+    #: the reason it is deliberately absent from ``EVENT_TYPE_TO_MODES``. An
+    #: event type that is neither mapped nor listed here is an oversight rather
+    #: than a decision, and ``wa/tests/test_auto_webhook_registration.py`` fails
+    #: the build on it.
+    UNSUPPORTED_EVENT_TYPES: ClassVar[dict[str, str]] = {
+        "UNKNOWN": (
+            "our own bucket for an inbound event the classifier could not place — not a category "
+            "any provider offers to subscribe to"
+        ),
+    }
+
     def _map_event_types_to_gupshup_modes(self, event_types: list) -> list:
         """
         Map canonical WebhookEventType values to Gupshup subscription modes.
 
-        Our WebhookEventType → Gupshup modes:
-            MESSAGE  → ["MESSAGE", "ALL"]
-            STATUS   → ["FAILED", "SENT", "DELIVERED", "READ", "ENQUEUED"]
-            TEMPLATE → ["TEMPLATE"]
-            BILLING  → ["BILLING"]
-            ACCOUNT  → ["ACCOUNT"]
-            PAYMENT  → ["PAYMENTS"]
+        The translation table is :attr:`EVENT_TYPE_TO_MODES`. An event type with
+        no row in it is **dropped**, and the rest of the list is still
+        subscribed to.
 
-        ``PAYMENT`` is mapped rather than left to the passthrough fallback
-        below because the two sides spell it differently — ours is singular,
-        Gupshup's mode is ``PAYMENTS`` — and the fallback therefore emitted a
-        mode ``SubscriptionFormData`` rejects outright. Auto-registration asks
-        for every canonical event type, so that single missing row made the
-        whole payload fail pydantic validation before any request was sent:
-        every Gupshup app created since exhausted its retries and registered
-        nothing (found while wiring #259).
+        It used to be passed straight through as though our spelling were
+        Gupshup's. ``SubscriptionFormData`` validates modes against a closed
+        ``Literal``, so an unmapped type did not degrade the subscription — it
+        raised ``ValidationError`` and took the *whole* payload down, every valid
+        mode with it, before any request was made. That is not hypothetical: with
+        auto-registration asking for every ``WebhookEventType`` member, ``PAYMENT``
+        and ``UNKNOWN`` had no row, the task burned its three retries on the
+        ``ValidationError``, and every Gupshup app created registered no webhook
+        at all — while the code read as though it worked (#259, #348).
 
-        The fallback stays, but it is a hazard worth naming: any
-        ``WebhookEventType`` member with no row here is passed through verbatim
-        and will be refused the same way, without the mapping being the obvious
-        suspect.
+        Dropping is chosen over raising because the realistic alternative to a
+        partial subscription here is *no* subscription. This runs on app
+        creation and behind both refresh surfaces — the ``/refresh/`` endpoint
+        and the admin *Reset & re-register webhooks* action — each passing
+        whatever event types a stored ``WASubscription`` happens to carry. A
+        missing ``PAYMENT`` is a gap; losing ``MESSAGE`` and ``STATUS`` as well,
+        because of it, is an outage, and raising at the mapping site only moves
+        the total failure one frame closer without making it partial.
+
+        Dropping *quietly* would be its own trap, so it is not quiet:
+
+        * a type listed in :attr:`UNSUPPORTED_EVENT_TYPES` is a recorded
+          decision and goes at ``debug``;
+        * anything else is a gap in the table and goes at ``warning``, naming
+          the type and what to do about it;
+        * ``register_webhook`` refuses outright when *every* requested type was
+          dropped, rather than quietly registering a default nobody asked for;
+        * and the enum-coverage test fails for any member that neither maps nor
+          is declared unsupported — which is what catches the next member added
+          to ``WebhookEventType``, the way #348 was not caught.
         """
-        mode_map = {
-            "MESSAGE": ["MESSAGE", "ALL"],
-            "STATUS": ["FAILED", "SENT", "DELIVERED", "READ", "ENQUEUED"],
-            "TEMPLATE": ["TEMPLATE"],
-            "BILLING": ["BILLING"],
-            "ACCOUNT": ["ACCOUNT"],
-            "PAYMENT": ["PAYMENTS"],
-        }
         modes = []
         for et in event_types:
-            modes.extend(mode_map.get(et, [et]))
+            mapped = self.EVENT_TYPE_TO_MODES.get(et)
+            if mapped is None:
+                reason = self.UNSUPPORTED_EVENT_TYPES.get(et)
+                if reason:
+                    self._log("debug", f"event type {et!r} is not subscribable on Gupshup — skipped ({reason})")
+                else:
+                    self._log(
+                        "warning",
+                        f"event type {et!r} has no Gupshup subscription mode — skipping it and subscribing to "
+                        f"the rest. Give it a row in GupshupAdapter.EVENT_TYPE_TO_MODES, or list it in "
+                        f"UNSUPPORTED_EVENT_TYPES if Gupshup has no mode for it.",
+                    )
+                continue
+            modes.extend(mapped)
         return list(dict.fromkeys(modes))  # dedupe, preserve order
 
     # Gupshup enforces a maximum of 5 subscriptions per app.
@@ -1134,9 +1180,29 @@ class GupshupAdapter(BaseBSPAdapter):
             self._log("warning", f"[STEP 3/5] Could not check existing count: {exc}")
 
         # Step 4: Build payload
-        modes = self._map_event_types_to_gupshup_modes(subscription.event_types or [])
+        requested_event_types = subscription.event_types or []
+        modes = self._map_event_types_to_gupshup_modes(requested_event_types)
         if not modes:
-            modes = ["MESSAGE", "ALL"]  # sensible default
+            if requested_event_types:
+                # Event types were asked for and every one of them was dropped.
+                # Falling through to the default below would subscribe to
+                # something nobody requested and report it as success, which is
+                # the shape of silence this whole path keeps being bitten by —
+                # so it is a refusal, naming what could not be mapped.
+                error_msg = (
+                    f"No Gupshup subscription mode for any requested event type "
+                    f"({', '.join(requested_event_types)}) — nothing to subscribe to."
+                )
+                self._log("error", f"[STEP 4/5] UNMAPPABLE — {error_msg}")
+                subscription.error_message = error_msg
+                subscription.status = SubscriptionStatus.FAILED
+                subscription.save(update_fields=["error_message", "status"])
+                return AdapterResult(
+                    success=False,
+                    provider=self.PROVIDER_NAME,
+                    error_message=error_msg,
+                )
+            modes = ["MESSAGE", "ALL"]  # sensible default for a subscription naming no events
 
         form_data = SubscriptionFormData(
             modes=modes,

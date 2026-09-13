@@ -9,7 +9,7 @@ from wa.models import MessageStatus, WAMessage, WATemplate, WAWebhookEvent
 logger = logging.getLogger(__name__)
 
 
-def _dispatch(task, *, what: str, pk) -> None:
+def _dispatch(task, *, what: str, pk, run_without_broker: bool = True) -> None:
     """Queue *task*, falling back to running it in-process.
 
     Three failure modes are collapsed here, because the symptom of each is the
@@ -26,6 +26,23 @@ def _dispatch(task, *, what: str, pk) -> None:
     Running in-process makes the caller slower, which for a webhook means a
     slower 200 back to META. That is a real cost, but a bounded one, and it is
     strictly better than silently dropping inbound messages.
+
+    ``run_without_broker=False`` narrows the fallback to the two *fault* cases.
+    Pass it where an empty ``CELERY_BROKER_URL`` is a legitimate configuration —
+    a dev box, CI, this test suite — rather than a fault, **and** where the work
+    is an outbound call that such a deployment should not be making: webhook
+    auto-registration talks to a BSP's partner API, so an unconditional
+    in-process fallback would turn every app creation on a broker-less machine
+    into a live partner request with credentials it probably does not have. The
+    mode that actually loses work is the configured-but-unreachable broker, and
+    that one still falls back.
+
+    The pk is stringified on the way out. The two ``wa`` callers pass UUID pks,
+    where a string is what survives a queue round trip; an integer pk arrives as
+    ``"27"`` and ``objects.get(pk="27")`` resolves it unchanged. Normalising in
+    the one place that hands work to a queue is the point of the helper, so this
+    is deliberate rather than incidental — task bodies taking a pk from here
+    should be typed ``int | str`` accordingly.
     """
     if settings.CELERY_BROKER_URL:
         try:
@@ -38,6 +55,13 @@ def _dispatch(task, *, what: str, pk) -> None:
                 pk,
                 exc,
             )
+    elif not run_without_broker:
+        logger.info(
+            "[wa.signals] no CELERY_BROKER_URL — skipping %s for %s (no in-process fallback for this dispatch)",
+            what,
+            pk,
+        )
+        return
     else:
         logger.info("[wa.signals] no CELERY_BROKER_URL — running %s for %s in-process", what, pk)
 
