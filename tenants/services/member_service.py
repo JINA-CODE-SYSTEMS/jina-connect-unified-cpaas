@@ -83,6 +83,11 @@ def add_member_to_tenant(
             last_name=last_name or "",
             password=password,  # User.save() auto-hashes via identify_hasher
             is_active=False,  # Pending email verification
+            # Explicit, not omitted. ``mobile`` is unique, so "no number" has to
+            # be NULL — two NULLs do not collide in Postgres and two empty
+            # strings do. Leaving it to the field default is what made the
+            # second invitation on any deployment fail with an IntegrityError.
+            mobile=None,
         )
 
         tenant_user = TenantUser.objects.create(
