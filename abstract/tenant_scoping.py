@@ -6,9 +6,10 @@ question — which rows may a request scoped to one organisation see — and
 if any, decides the organisation it lands in. They give different answers for
 the same model on purpose; see ``tenant_write_field``.
 
-The project already has a per-model declaration for tenant filtering,
-``filter_by_user_tenant_fk``, but it does not answer this question. It is a
-path ending in ``tenant_users__user`` and it filters by **membership**: "rows
+The rest of this module is about the read question. The project already has a
+per-model declaration for tenant filtering, ``filter_by_user_tenant_fk``, but it
+does not answer that question either. It is a path ending in
+``tenant_users__user`` and it filters by **membership**: "rows
 belonging to an organisation *this user is a member of*". That is the right
 question for an ordinary request and the wrong one for an impersonated
 session, where the actor is a member of nothing in the organisation being
