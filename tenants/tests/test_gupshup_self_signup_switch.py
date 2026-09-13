@@ -354,6 +354,41 @@ def test_can_manage_is_true_for_the_platform_operator_of_353():
 
 
 @pytest.mark.django_db
+def test_can_manage_does_not_disturb_the_user_it_is_asked_about():
+    """Found while verifying the deploy, on a request built by hand.
+
+    ``_can_manage_apps`` asked ``request_is_impersonated``, which falls back to
+    ``request.auth`` when the claim is absent from the user. Reading
+    ``request.auth`` on a DRF ``Request`` that has not been authenticated *runs*
+    authentication — and with no authenticators configured that replaces
+    ``request.user`` with ``AnonymousUser``. So merely asking "is this
+    impersonated?" logged the caller out, and a platform superuser came back
+    ``can_manage: False``.
+
+    Over HTTP it never bit, because the user is always resolved by then, which
+    is exactly why it needs a test at this level: the suite that goes through
+    ``APIClient`` cannot see it. ``impersonated_tenant_id`` documents the same
+    hazard and avoids it; this now does too.
+    """
+    from rest_framework.request import Request
+    from rest_framework.test import APIRequestFactory
+
+    from wa.viewsets.wa_app import WAAppViewSet
+
+    operator = _user(is_superuser=True, is_staff=True)
+    request = Request(APIRequestFactory().get(ONBOARDING_OPTIONS_URL))
+    request.user = operator
+
+    view = WAAppViewSet()
+    view.request = request
+
+    assert view._can_manage_apps(request) is True
+    # The user survived being asked about — the actual defect.
+    assert request.user is operator
+    assert request.user.is_superuser is True
+
+
+@pytest.mark.django_db
 def test_can_manage_is_false_for_an_impersonated_session():
     """Impersonation is read-only (#300). A superuser bypasses RBAC, so without
     an explicit check this would advertise a create button to a session that is
