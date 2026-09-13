@@ -103,7 +103,7 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         ``tenant_id`` claim instead keeps the write where #344 already confines
         the reads.
         """
-        request = self.request
+        request = getattr(self, "request", None)
         user = getattr(request, "user", None)
         if user is None or not getattr(user, "is_authenticated", False):
             return None
@@ -118,6 +118,14 @@ class BaseModelViewSet(viewsets.ModelViewSet):
             TenantUser.objects.filter(user=user, is_active=True).values_list("tenant_id", flat=True)
         )
 
+        # Tested before the claim is applied, not after: "holds no membership
+        # anywhere" is the platform operator, and that is the only caller the
+        # escape is for. Testing afterwards would also let a superuser who *is* a
+        # member of one organisation go unconstrained merely by carrying a token
+        # naming a different one.
+        if not memberships:
+            return None if getattr(user, "is_superuser", False) else frozenset()
+
         # A token naming one organisation may write into that one only, even for
         # a user who belongs to several — the same narrowing ``_get_tenant_user``
         # applies to reads. Intersecting rather than trusting the claim matters:
@@ -125,10 +133,7 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         # set, which refuses, where trusting it would grant.
         claim = getattr(user, "tenant_id", None)
         if claim is not None:
-            memberships &= frozenset({claim})
-
-        if not memberships and getattr(user, "is_superuser", False):
-            return None
+            return memberships & frozenset({claim})
         return memberships
 
     def tenant_write_field_name(self, serializer):
@@ -192,7 +197,13 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         ``is_valid()`` would 400 long before any ``save()`` kwarg could help.
         It also means the derived value is validated like any other.
         """
-        if self.request.method in SAFE_METHODS:
+        # ``drf_yasg`` instantiates viewsets with no request to introspect their
+        # serializers. It does not pass ``data``, so this should not be reachable
+        # from there — guarded anyway, because a schema build that 500s takes the
+        # whole API documentation down and this control has nothing to say about
+        # a request that does not exist.
+        request = getattr(self, "request", None)
+        if request is None or request.method in SAFE_METHODS:
             return
 
         permitted = self.permitted_write_tenant_ids()
@@ -228,7 +239,7 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         # who belongs to both A and B has an arbitrary one of the two resolved
         # here, so a PATCH of one of their rows in B would quietly relocate it
         # to A. An omitted tenant on an update means "leave it alone".
-        if serializer.instance is not None or self.request.method != "POST":
+        if serializer.instance is not None or request.method != "POST":
             return
 
         tenant_user = self._get_tenant_user()

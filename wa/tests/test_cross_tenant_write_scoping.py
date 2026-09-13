@@ -418,6 +418,42 @@ def test_the_impersonation_branch_confines_a_write_to_the_claimed_organisation()
 
 
 @pytest.mark.django_db
+def test_a_token_naming_one_organisation_may_write_into_that_one_only():
+    """A ``tenant_id`` claim narrows a multi-tenant user's writes the same way it
+    already narrows their reads in ``_get_tenant_user``.
+
+    Intersecting with the membership set rather than trusting the claim is the
+    part worth pinning: a claim naming an organisation the user has since been
+    removed from must yield *nothing*, where trusting it would grant.
+    """
+    from rest_framework.test import APIRequestFactory
+
+    from wa.viewsets.wa_app import WAAppViewSet
+
+    first = _tenant("first")
+    second = _tenant("second")
+    left = _tenant("left")
+    user = _user()
+    _member(first, user, "owner")
+    _member(second, user, "owner")
+
+    def permitted_for(claim):
+        user.tenant_id = claim
+        view = WAAppViewSet()
+        request = APIRequestFactory().post(APPS_URL, {}, format="json")
+        request.user = user
+        view.request = request
+        view.action = "create"
+        return view.permitted_write_tenant_ids()
+
+    assert permitted_for(None) == frozenset({first.id, second.id})
+    assert permitted_for(second.id) == frozenset({second.id})
+    # A claim for an organisation they are not a member of grants nothing, rather
+    # than granting that organisation.
+    assert permitted_for(left.id) == frozenset()
+
+
+@pytest.mark.django_db
 def test_a_model_with_no_tenant_column_of_its_own_is_untouched():
     """Eleven of the models behind these viewsets reach their tenant through a
     parent and have no column for a body to aim at. The control must be a no-op
