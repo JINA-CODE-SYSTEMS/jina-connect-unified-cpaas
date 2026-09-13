@@ -3583,12 +3583,18 @@ _AUTO_REGISTER_LOG = "auto_register_bsp_webhook"
 _WEBHOOK_CAPABILITY = "subscriptions"
 
 
-def _auto_register_webhook_for_app(task, wa_app_pk: int) -> dict:
+def _auto_register_webhook_for_app(task, wa_app_pk: int | str) -> dict:
     """Register this deployment's webhook receiver with whichever BSP the app is on.
 
     The body behind :func:`auto_register_bsp_webhook` and its deprecated alias,
     so both registered task names run identical code with their own retry
     budget. *task* is the bound Celery task, used only for ``retry``.
+
+    *wa_app_pk* is annotated ``int | str`` because it really is both:
+    ``wa.signals._dispatch``, which is what ``tenants.signals`` hands the app
+    to, stringifies every pk on its way to a queue. ``objects.get(pk="27")``
+    resolves an integer pk from its string form unchanged, so this only needs
+    saying rather than handling.
 
     **BSP-neutral at this call site.** The previous version opened with
     ``if wa_app.bsp != BSPChoices.GUPSHUP: return {"reason": "not_gupshup"}``,
@@ -3774,7 +3780,7 @@ def _auto_register_webhook_for_app(task, wa_app_pk: int) -> dict:
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=15)
-def auto_register_bsp_webhook(self, wa_app_pk: int):
+def auto_register_bsp_webhook(self, wa_app_pk: int | str):
     """Auto-register this deployment's webhook receiver for a newly created WAApp.
 
     Dispatched by name from ``tenants.signals``. See
@@ -3785,7 +3791,7 @@ def auto_register_bsp_webhook(self, wa_app_pk: int):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=15, name="wa.tasks.auto_register_gupshup_webhook")
-def auto_register_gupshup_webhook(self, wa_app_pk: int):
+def auto_register_gupshup_webhook(self, wa_app_pk: int | str):
     """Deprecated name for :func:`auto_register_bsp_webhook`. Dispatched by nobody.
 
     Kept registered, and kept behaving identically, for the rolling-deploy

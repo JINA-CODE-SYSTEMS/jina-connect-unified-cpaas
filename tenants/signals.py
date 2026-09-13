@@ -1,7 +1,6 @@
 import logging
 import os
 
-from django.conf import settings
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from djmoney.contrib.exchange.exceptions import MissingRate
@@ -46,14 +45,33 @@ def create_waba_info_on_wa_app_creation(sender, instance, created, **kwargs):
         WABAInfo.objects.get_or_create(wa_app=instance)
         logger.info(f"Created WABAInfo entry for TenantWAApp {instance.id} ({instance.app_name})")
 
-        # Auto-register our webhook receiver with whichever BSP this app is on
-        if settings.CELERY_BROKER_URL:
-            from wa.tasks import auto_register_bsp_webhook
+        # Auto-register our webhook receiver with whichever BSP this app is on,
+        # through ``wa.signals._dispatch`` rather than a local
+        # ``if settings.CELERY_BROKER_URL`` check. That check asks whether a
+        # string is set, not whether a queue is reachable — the setting has a
+        # non-empty default — so with a broker configured and down, which is the
+        # common shape, ``.delay()`` raised straight out of this ``post_save``
+        # and the app was left with no subscription at all: #259's own bug,
+        # recoverable only by an operator who knows to press *Refresh Webhooks*.
+        # #269 is the same shape for webhook events, and ``_dispatch`` is what
+        # came out of it; since #259 made this signal the dispatch point for
+        # every app on every BSP, a dispatch lost here costs every new app.
+        #
+        # ``run_without_broker=False``: a deployment with no broker at all is a
+        # dev box, CI or the test suite rather than a fault, and registration is
+        # an outbound call to a BSP partner API — running it inline there would
+        # make creating an app reach for the network with credentials it
+        # probably does not have. The mode that loses work is the unreachable
+        # broker, and that one falls back.
+        from wa.signals import _dispatch
+        from wa.tasks import auto_register_bsp_webhook
 
-            auto_register_bsp_webhook.delay(instance.pk)
-            logger.info(f"Queued auto webhook registration for app {instance.pk}")
-        else:
-            logger.info(f"Skipping auto webhook registration for app {instance.pk} (no Celery broker configured)")
+        _dispatch(
+            auto_register_bsp_webhook,
+            what="webhook auto-registration",
+            pk=instance.pk,
+            run_without_broker=False,
+        )
 
 
 def upload_media_to_whatsapp(tenant_media_instance, method="upload_media"):
