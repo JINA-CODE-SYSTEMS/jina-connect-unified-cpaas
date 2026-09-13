@@ -70,6 +70,68 @@ class BaseModelViewSet(viewsets.ModelViewSet):
             )
         return getattr(self.request, cache_attr)
 
+    def _active_tenant_ids(self):
+        """Every organisation this request's user is an active member of.
+
+        Cached per-request beside ``_get_tenant_user``'s cache, because three
+        decisions now ask the same question — which organisations a body may
+        name, whether the caller is a platform operator, and which serializer
+        they get — and asking it three times would be three queries for one
+        answer that cannot change mid-request.
+        """
+        cache_attr = "_cached_tenant_ids"
+        if not hasattr(self.request, cache_attr):
+            from tenants.models import TenantUser
+
+            user = getattr(self.request, "user", None)
+            if user is None or not getattr(user, "is_authenticated", False):
+                memberships = frozenset()
+            else:
+                memberships = frozenset(
+                    TenantUser.objects.filter(user=user, is_active=True).values_list("tenant_id", flat=True)
+                )
+            setattr(self.request, cache_attr, memberships)
+        return getattr(self.request, cache_attr)
+
+    def acting_as_platform_operator(self) -> bool:
+        """Whether this request is a superuser acting outside every organisation.
+
+        The one caller who holds no ``TenantUser`` row and is *more* privileged
+        for it rather than less: an operator onboarding an organisation they are
+        not a member of (#345). Two decisions needed this same answer and were
+        disagreeing about the same person (#353) — ``permitted_write_tenant_ids``
+        said "let the body name the organisation", while
+        ``WAAppViewSet.get_serializer_class`` read a role priority they do not
+        have and concluded "below manager", so the operator could choose an
+        organisation and then not be allowed to say anything about it. One
+        definition, asked twice, is the fix.
+
+        Three things make it false, each for its own reason:
+
+        * **Not a superuser.** Someone with no membership and no platform rights
+          is not an operator, they are a user with nothing.
+        * **Impersonated.** A borrowed token keeps ``is_superuser`` true and holds
+          no membership, so it matches this shape exactly. #300 refuses its writes
+          at two independent layers already and this branch is unreachable over
+          HTTP today — it is written anyway, because the alternative if that
+          refusal is ever relaxed is that impersonation silently becomes the most
+          privileged field surface in the product.
+        * **Holds a membership.** A superuser who is also a member is acting as
+          that organisation's user and gets that role's rules. Otherwise "add
+          yourself to the org to debug it" would be a step *down* in privilege,
+          and worse, the unconstrained write scoping would follow them into every
+          other organisation.
+        """
+        request = getattr(self, "request", None)
+        user = getattr(request, "user", None)
+        if user is None or not getattr(user, "is_authenticated", False):
+            return False
+        if not getattr(user, "is_superuser", False):
+            return False
+        if impersonated_tenant_id(request) is not None:
+            return False
+        return not self._active_tenant_ids()
+
     # ── write scoping (#346) ───────────────────────────────────────────
 
     def permitted_write_tenant_ids(self):
@@ -85,6 +147,9 @@ class BaseModelViewSet(viewsets.ModelViewSet):
           they do not belong to is a real workflow, and it needs the body to be
           able to name that organisation. Narrowing it is a separate decision,
           the same one ``get_queryset`` leaves open for an ordinary superuser.
+          Asked through ``acting_as_platform_operator`` rather than re-derived
+          here, because #353 was two places answering this about the same caller
+          and giving opposite answers.
         * **There is no authenticated user at all.** A few actions on tenant
           viewsets are deliberately unauthenticated webhook receivers (Gupshup
           delivery and billing callbacks), and ``TenantAccessKeyAuthentication``
@@ -117,11 +182,7 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         if impersonated is not None:
             return frozenset({impersonated})
 
-        from tenants.models import TenantUser
-
-        memberships = frozenset(
-            TenantUser.objects.filter(user=user, is_active=True).values_list("tenant_id", flat=True)
-        )
+        memberships = self._active_tenant_ids()
 
         # Tested before the claim is applied, not after: "holds no membership
         # anywhere" is the platform operator, and that is the only caller the
@@ -129,7 +190,7 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         # member of one organisation go unconstrained merely by carrying a token
         # naming a different one.
         if not memberships:
-            return None if getattr(user, "is_superuser", False) else frozenset()
+            return None if self.acting_as_platform_operator() else frozenset()
 
         # A token naming one organisation may write into that one only, even for
         # a user who belongs to several — the same narrowing ``_get_tenant_user``

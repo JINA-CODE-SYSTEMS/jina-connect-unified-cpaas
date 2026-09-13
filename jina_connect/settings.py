@@ -962,6 +962,27 @@ EXCHANGE_BACKEND = "djmoney.contrib.exchange.backends.OpenExchangeRatesBackend"
 GUPSHUP_EMAIL = config("GUPSHUP_EMAIL", "")
 GUPSHUP_PASSWORD = config("GUPSHUP_PASSWORD", "")
 
+# Whether a tenant with no WhatsApp Business Account may apply for one through
+# Gupshup's Embedded Signup from inside the product — ``POST
+# /tenants/tenant-gupshup/create-app/`` and the ESF URL it mints.
+#
+# Default True: this is a real capability of the open-source product and the
+# only self-serve route to a WABA that exists today, so removing it outright
+# would be taking a feature away from every deployment to express one
+# deployment's commercial preference.
+#
+# A deployment that resells its *own* Meta apps, or that onboards clients who
+# bring their own, turns it off. What that changes is narrow and deliberate:
+# only the two actions that MINT something (a new Gupshup app, a new ESF URL)
+# are refused. Reading ESF status, syncing WABA info, sending, receiving,
+# billing and every existing Gupshup app go on working exactly as before —
+# switching this off must never be a way to strand a live customer.
+#
+# Clients discover it through ``GET /wa/v2/apps/onboarding-options/`` rather
+# than being told by a hard-coded UI, so the story a client is shown and the
+# routes the server will actually accept cannot disagree.
+GUPSHUP_SELF_SIGNUP_ENABLED = config("GUPSHUP_SELF_SIGNUP_ENABLED", True, cast=bool)
+
 
 # =============================================================================
 # LOGGING CONFIGURATION

@@ -11,6 +11,11 @@ from abstract.viewsets.base import BaseTenantModelViewSet
 from tenants.models import TenantWAApp
 from tenants.serializers import TenantGupshupAppsSerializer
 from tenants.services.esf_service import ESFService, ESFServiceError
+from tenants.services.onboarding_routes import (
+    SELF_SIGNUP_DISABLED_CODE,
+    SELF_SIGNUP_DISABLED_DETAIL,
+    gupshup_self_signup_enabled,
+)
 from tenants.utility.guphup_webhook_handler import GupshupWebhookHandler
 
 
@@ -35,6 +40,28 @@ class TenantGupshupAppsViewSet(BaseTenantModelViewSet):
         "sync_waba_info": "wa_app.manage",
         "default": "wa_app.view",
     }
+
+    def _self_signup_refusal(self):
+        """A 403 when this deployment does not offer Gupshup signup, else None.
+
+        403 rather than 404: the route exists, the deployment has closed it, and
+        a client that cannot tell those apart will retry a URL it thinks it got
+        wrong. The body carries a stable ``code`` beside the prose because three
+        different things can refuse this same button — the deployment, the
+        caller's role, and Gupshup itself — and each wants something different
+        said to the user.
+
+        Guarding only the two actions that MINT something is the whole point.
+        ``esf_url_status`` and ``sync_waba_info`` stay open, so an organisation
+        already part-way through signup when the switch is thrown still sees its
+        own state and still completes activation.
+        """
+        if gupshup_self_signup_enabled():
+            return None
+        return Response(
+            {"error": SELF_SIGNUP_DISABLED_DETAIL, "code": SELF_SIGNUP_DISABLED_CODE},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     def get_queryset(self):
         """
@@ -139,6 +166,10 @@ their WhatsApp Business Account setup.
             - esf_url_expires_at: ESF URL expiration
             - message: Status message
         """
+        refusal = self._self_signup_refusal()
+        if refusal is not None:
+            return refusal
+
         # Get tenant from the user's context
         tenant = getattr(request, "tenant", None)
         if not tenant:
@@ -292,6 +323,10 @@ their WhatsApp Business Account setup.
             - is_waba_active: Whether WABA is currently active
             - message: Status message
         """
+        refusal = self._self_signup_refusal()
+        if refusal is not None:
+            return refusal
+
         wa_app = self.get_object()
 
         # Get optional parameters from request
