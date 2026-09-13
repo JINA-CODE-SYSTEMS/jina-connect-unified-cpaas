@@ -90,7 +90,7 @@ def validate_permission_escalation(permissions_dict, request, tenant):
 # ─── Role Assignment ──────────────────────────────────────────────────────
 
 
-def validate_role_assignment(role_id, request, tenant):
+def validate_role_assignment(role_id, request, tenant, *, platform_operator=False):
     """
     Validate that *role_id* can be assigned by the requester.
 
@@ -98,6 +98,26 @@ def validate_role_assignment(role_id, request, tenant):
     1. Role must exist in the tenant.
     2. Cannot assign OWNER directly.
     3. Target role priority must be < requester's priority.
+
+    Parameters
+    ----------
+    platform_operator : bool
+        The caller is a superuser acting outside every organisation — see
+        ``BaseModelViewSet.acting_as_platform_operator``, which is the single
+        place that state is decided (#353). Only rule 3 is waived, and only
+        because it has nothing to compare against: rule 3 is a *member's*
+        ceiling, and an operator holds no role in *tenant* to have one. Rules 1
+        and 2 still bind — the role must belong to the organisation being
+        written into, and OWNER still moves only through transfer-ownership,
+        for an operator exactly as for an owner.
+
+        Passed in rather than re-derived here on purpose. #353 was two places
+        deciding "is this a platform operator?" about the same caller and
+        disagreeing; a third derivation living in a serializer validator —
+        which is also reachable from management commands and tests, where
+        there is no viewset to ask — would be the same mistake again. It
+        defaults to ``False``, so every existing construction of these
+        serializers keeps the member rules unchanged.
 
     Returns
     -------
@@ -114,6 +134,15 @@ def validate_role_assignment(role_id, request, tenant):
 
     if target_role.slug == "owner":
         raise serializers.ValidationError("OWNER role cannot be assigned directly. Use the transfer-ownership flow.")
+
+    # #356: answered here, above the lookup, rather than by letting the operator
+    # fall through to the ``not requester_tu`` refusal below. That refusal is
+    # correct for who it was written for — a member of some *other* organisation,
+    # or a user with no organisation at all — and wrong for the one caller whose
+    # missing membership is the source of their authority rather than the absence
+    # of it.
+    if platform_operator:
+        return role_id
 
     requester_tu = get_requester_tenant_user(request, tenant)
     if not requester_tu or not requester_tu.role:
