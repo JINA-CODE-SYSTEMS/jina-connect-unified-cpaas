@@ -1,12 +1,35 @@
 """
-Media validators for WhatsApp template uploads.
-Based on Meta/Gupshup requirements for different media types.
+Media validators for WhatsApp template and message uploads.
+
+**What WhatsApp accepts is answered in one place: the Graph media client.**
+``wa.utility.apis.meta.media_api`` is what actually POSTs to
+``/{PHONE_NUMBER_ID}/media``, and it carries Meta's table of accepted MIME
+types and per-type size ceilings. This module used to keep a second, older
+copy of that table, and because this copy is the *gate* — it runs before the
+client is ever reached — the stricter, staler answer silently won. A voice
+note recorded in Safari arrives as ``.m4a`` (``audio/mp4``), which the client
+accepts and uploads happily; the copy here listed only ``.ogg``/``.amr``/
+``.mp3``, so team-inbox voice notes were rejected with "Unsupported file
+extension '.m4a'" and never got near Graph.
+
+``MediaTypeConfig`` below is therefore *derived* from the client's tables
+rather than transcribed from them. Two deliberate deltas remain, both named
+and justified where they are declared: ``EXCLUDED_DOCUMENT_EXTENSIONS`` and
+the image *message* size ceiling.
 """
 
 import os
 
 from django.core.exceptions import ValidationError
 from rest_framework import serializers
+
+from wa.utility.apis.meta.media_api import (
+    EXTENSION_TO_MIME,
+    SUPPORTED_AUDIO,
+    SUPPORTED_DOCUMENT,
+    SUPPORTED_IMAGE,
+    SUPPORTED_VIDEO,
+)
 
 # Try to import magic, but make it optional
 try:
@@ -24,62 +47,131 @@ except ImportError:
     )
 
 
+# ---------------------------------------------------------------------------
+# Deliberate deltas from what the Graph client accepts
+# ---------------------------------------------------------------------------
+
+# Document extensions Meta accepts that this validator does *not*.
+#
+# ``.doc``/``.xls``/``.ppt``: the macro check in ``_validate_docx`` /
+# ``_validate_xlsx`` / ``_validate_pptx`` works by opening the file as a ZIP
+# and looking for ``vbaProject.bin``. That only works on the OOXML formats;
+# the legacy binaries are OLE compound files this module cannot inspect, so
+# accepting them would mean accepting macro-bearing documents unexamined.
+# The narrowing is deliberate and already published: ``get_document_rules()``
+# has listed "No old format files (.doc, .xls, .ppt) - use modern formats"
+# under ``restrictions`` since this module was introduced, and that dict is
+# served to clients from the ``tenant-media/supported-formats`` endpoint.
+#
+# ``.txt``: no such rationale — Meta accepts ``text/plain`` and nothing here
+# argues against it. It is held back only because widening the accepted
+# document set is a product decision, not part of the voice-note fix. Drop it
+# from this set to allow it; nothing else needs to change.
+EXCLUDED_DOCUMENT_EXTENSIONS = frozenset({".doc", ".xls", ".ppt", ".txt"})
+
+# Names detectors give a container that Meta's table spells differently.
+#
+# These are *recognition* aliases used when comparing a sniffed MIME type
+# against the accepted set — never something we would send to Graph. libmagic
+# calls an M4A file ``audio/x-m4a`` and an ADTS stream
+# ``audio/x-hx-aac-adts``, and browsers send ``audio/mp3`` for MP3; without
+# these the extension check would pass and the very next check would reject
+# the same file as "content does not match extension".
+MIME_DETECTION_ALIASES = {
+    "audio/mp4": ("audio/x-m4a", "audio/m4a"),
+    "audio/aac": ("audio/x-aac", "audio/x-hx-aac-adts", "audio/aacp"),
+    "audio/mpeg": ("audio/mp3", "audio/x-mpeg"),
+    "audio/ogg": ("application/ogg", "audio/opus"),
+}
+
+
+def _extensions_for(supported, exclude=frozenset()):
+    """Extensions the client maps onto one of ``supported``'s MIME types."""
+    return [ext for ext, mime in EXTENSION_TO_MIME.items() if mime in supported and ext not in exclude]
+
+
+def _mime_types_for(supported, exclude=frozenset()):
+    """Accepted MIME types for a category, plus the detector aliases for each."""
+    mimes = []
+    for ext, mime in EXTENSION_TO_MIME.items():
+        if mime not in supported or ext in exclude:
+            continue
+        for name in (mime, *MIME_DETECTION_ALIASES.get(mime, ())):
+            if name not in mimes:
+                mimes.append(name)
+    return mimes
+
+
+def _max_size_bytes(supported):
+    """The category's size ceiling.
+
+    The client keys its limits per MIME type; every category it lists uses a
+    single value today. Taking the maximum keeps this a category-level gate
+    even if Meta ever differentiates — the exact per-type limit is the
+    client's to enforce at upload time, and it does (``validate_media_size``).
+    """
+    return max(supported.values())
+
+
+def _describe(label, extensions):
+    return f"{label} ({', '.join(ext.lstrip('.').upper() for ext in extensions)})"
+
+
 class MediaTypeConfig:
-    """Configuration for each media type with validation rules."""
+    """Validation rules per media category, derived from the Graph client.
+
+    Stickers are the one category the client knows about that is absent here:
+    they are a separate WhatsApp message type with kilobyte-scale ceilings
+    (100 KB static / 500 KB animated), and a ``.webp`` uploaded as ordinary
+    media is converted to PNG rather than sent as a sticker.
+    """
 
     # Document configurations
     DOCUMENT = {
-        "extensions": [".pdf", ".docx", ".xlsx", ".pptx"],
-        "mime_types": [
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ],
-        "max_size_mb": 100,
-        "max_size_bytes": 100 * 1024 * 1024,  # 100 MB
-        "description": "Document (PDF, DOCX, XLSX, PPTX)",
+        "extensions": _extensions_for(SUPPORTED_DOCUMENT, EXCLUDED_DOCUMENT_EXTENSIONS),
+        "mime_types": _mime_types_for(SUPPORTED_DOCUMENT, EXCLUDED_DOCUMENT_EXTENSIONS),
+        "max_size_mb": _max_size_bytes(SUPPORTED_DOCUMENT) // (1024 * 1024),
+        "max_size_bytes": _max_size_bytes(SUPPORTED_DOCUMENT),
+        "description": _describe("Document", _extensions_for(SUPPORTED_DOCUMENT, EXCLUDED_DOCUMENT_EXTENSIONS)),
     }
 
     # Image configurations
+    #
+    # Template limit comes from the client (5 MB, which is what Meta documents
+    # for images in both contexts). The *message* limit stays at the 16 MB this
+    # validator has advertised since it was introduced — the two disagree, and
+    # narrowing a published limit is not part of a voice-note fix. Nothing
+    # enforces it today in any case: every upload path runs with
+    # ``is_template=True``, so 16 MB is only ever reported by
+    # ``get_image_rules(is_template=False)``.
     IMAGE = {
-        "extensions": [".jpg", ".jpeg", ".png"],
-        "mime_types": [
-            "image/jpeg",
-            "image/png",
-        ],
-        "max_size_mb_template": 5,
+        "extensions": _extensions_for(SUPPORTED_IMAGE),
+        "mime_types": _mime_types_for(SUPPORTED_IMAGE),
+        "max_size_mb_template": _max_size_bytes(SUPPORTED_IMAGE) // (1024 * 1024),
         "max_size_mb_message": 16,
-        "max_size_bytes_template": 5 * 1024 * 1024,  # 5 MB for templates
-        "max_size_bytes_message": 16 * 1024 * 1024,  # 16 MB for messages
-        "description": "Image (JPG, JPEG, PNG)",
+        "max_size_bytes_template": _max_size_bytes(SUPPORTED_IMAGE),
+        "max_size_bytes_message": 16 * 1024 * 1024,
+        "description": _describe("Image", _extensions_for(SUPPORTED_IMAGE)),
     }
 
-    # Video configurations
+    # Video configurations — client and validator agree at 16 MB either way.
     VIDEO = {
-        "extensions": [".mp4"],
-        "mime_types": [
-            "video/mp4",
-        ],
-        "max_size_mb_template": 16,
-        "max_size_mb_message": 16,
-        "max_size_bytes_template": 16 * 1024 * 1024,  # 16 MB for templates (Meta allows 16 MB)
-        "max_size_bytes_message": 16 * 1024 * 1024,  # 16 MB for messages
-        "description": "Video (MP4 H.264)",
+        "extensions": _extensions_for(SUPPORTED_VIDEO),
+        "mime_types": _mime_types_for(SUPPORTED_VIDEO),
+        "max_size_mb_template": _max_size_bytes(SUPPORTED_VIDEO) // (1024 * 1024),
+        "max_size_mb_message": _max_size_bytes(SUPPORTED_VIDEO) // (1024 * 1024),
+        "max_size_bytes_template": _max_size_bytes(SUPPORTED_VIDEO),
+        "max_size_bytes_message": _max_size_bytes(SUPPORTED_VIDEO),
+        "description": _describe("Video", _extensions_for(SUPPORTED_VIDEO)),
     }
 
     # Audio configurations
     AUDIO = {
-        "extensions": [".ogg", ".amr", ".mp3"],
-        "mime_types": [
-            "audio/ogg",
-            "audio/amr",
-            "audio/mpeg",
-            "audio/mp3",
-        ],
-        "max_size_mb": 16,
-        "max_size_bytes": 16 * 1024 * 1024,  # 16 MB
-        "description": "Audio (OGG, AMR, MP3)",
+        "extensions": _extensions_for(SUPPORTED_AUDIO),
+        "mime_types": _mime_types_for(SUPPORTED_AUDIO),
+        "max_size_mb": _max_size_bytes(SUPPORTED_AUDIO) // (1024 * 1024),
+        "max_size_bytes": _max_size_bytes(SUPPORTED_AUDIO),
+        "description": _describe("Audio", _extensions_for(SUPPORTED_AUDIO)),
     }
 
 
@@ -170,22 +262,9 @@ class WhatsAppMediaValidator:
         if hasattr(file, "content_type") and file.content_type:
             return file.content_type
 
-        # Fallback to extension-based detection
-        ext = cls.get_file_extension(file)
-        mime_map = {
-            ".pdf": "application/pdf",
-            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".mp4": "video/mp4",
-            ".ogg": "audio/ogg",
-            ".mp3": "audio/mpeg",
-            ".amr": "audio/amr",
-        }
-        return mime_map.get(ext)
+        # Fallback to extension-based detection, using the client's own map so
+        # this does not become a third answer to "what MIME is a .m4a".
+        return EXTENSION_TO_MIME.get(cls.get_file_extension(file))
 
     @classmethod
     def validate_extension(cls, file):
@@ -776,12 +855,13 @@ class WhatsAppMediaValidator:
         """
         ext = cls.get_file_extension(file)
 
-        if ext not in [".mp4"]:
+        if ext not in MediaTypeConfig.VIDEO["extensions"]:
+            allowed = ", ".join(MediaTypeConfig.VIDEO["extensions"])
             raise MediaValidationError(
-                f"Video format '{ext}' is not supported. Please use MP4 format with H.264 codec."
+                f"Video format '{ext}' is not supported. Supported: {allowed}. MP4 with H.264 is recommended."
             )
 
-        # Basic MP4 header check
+        # Basic MP4/3GP header check — both are ISO base media containers
         try:
             if hasattr(file, "seek"):
                 file.seek(0)
@@ -809,8 +889,10 @@ class WhatsAppMediaValidator:
 
         # Recommend OGG (Opus) as best supported
         if ext not in MediaTypeConfig.AUDIO["extensions"]:
+            allowed = ", ".join(MediaTypeConfig.AUDIO["extensions"])
             raise MediaValidationError(
-                f"Audio format '{ext}' is not supported. Recommended: OGG (Opus). Also supported: AMR, MP3."
+                f"Audio format '{ext}' is not supported. Supported: {allowed}. "
+                f"OGG must use the Opus codec; other formats are accepted as-is."
             )
 
         return True
@@ -1016,10 +1098,11 @@ def get_audio_rules():
         "allowed_extensions": MediaTypeConfig.AUDIO["extensions"],
         "max_size_mb": MediaTypeConfig.AUDIO["max_size_mb"],
         "recommendations": [
-            "Use OGG (Opus) — best supported",
+            "Use OGG (Opus) — best supported, and the format WhatsApp renders as a voice note",
             "Bitrate < 96 kbps recommended",
         ],
         "restrictions": [
+            "OGG files must use the Opus codec — Meta accepts no other codec in an OGG container",
             "No WAV or FLAC formats",
             "No multi-channel audio",
         ],

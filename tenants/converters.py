@@ -28,14 +28,25 @@ class MediaConverter:
     Conversions supported:
     - Images: HEIC/HEIF → JPEG, WebP → PNG, CMYK → RGB, resize large images
     - Videos: MOV/AVI/MKV/WebM → MP4 (H.264)
-    - Audio: WAV/FLAC/M4A → OGG (Opus) or MP3
+    - Audio: WAV/FLAC/WMA/WebM → OGG (Opus) or MP3
     - Documents: Compress large PDFs
+
+    **Nothing WhatsApp already accepts belongs in these maps.** Every entry
+    costs a re-encode, and a re-encode is quality loss on an already-lossy
+    file, CPU on the request path, and — on a host without FFmpeg — an
+    outright upload failure. ``.m4a``, ``.aac`` and ``.3gp`` used to be listed
+    here even though Meta accepts ``audio/mp4``, ``audio/aac`` and
+    ``video/3gpp`` natively, which is why Safari voice notes were transcoded
+    to MP3 (and, with no FFmpeg installed, failed outright).
+    ``tenants.tests.test_voice_note_media_upload`` pins the invariant.
     """
 
     # Conversion mappings
     IMAGE_CONVERT_MAP = {
         ".heic": ".jpg",
         ".heif": ".jpg",
+        # Meta accepts image/webp, but only as a *sticker* (100 KB static /
+        # 500 KB animated). Ordinary media uploads become PNG.
         ".webp": ".png",
         ".bmp": ".png",
         ".tiff": ".png",
@@ -51,26 +62,61 @@ class MediaConverter:
         ".wmv": ".mp4",
         ".flv": ".mp4",
         ".m4v": ".mp4",
-        ".3gp": ".mp4",
     }
 
     AUDIO_CONVERT_MAP = {
         ".wav": ".ogg",
         ".flac": ".ogg",
-        ".m4a": ".mp3",
-        ".aac": ".mp3",
         ".wma": ".mp3",
+        # A voice note recorded by Chrome/Android MediaRecorder. OGG/Opus is
+        # what WhatsApp renders as a voice note, so that is the target.
+        ".webm": ".ogg",
     }
 
+    # Extensions whose container carries either audio or video. The extension
+    # alone cannot say which, and neither can content sniffing — libmagic
+    # reads the EBML DocType and answers ``video/webm`` for an audio-only
+    # WebM too. The browser knows, and says so in the multipart part's
+    # ``Content-Type``, so that is what decides the route.
+    AMBIGUOUS_CONTAINER_EXTENSIONS = frozenset({".webm"})
+
+    @staticmethod
+    def declared_category(content_type: Optional[str]) -> Optional[str]:
+        """Top-level type of a declared content type, or None if unusable.
+
+        ``MediaRecorder`` sends parameters along with the type
+        (``audio/webm;codecs=opus``), so the parameters are stripped.
+        """
+        if not content_type:
+            return None
+        top = str(content_type).split(";")[0].strip().lower().split("/")[0]
+        return top if top in ("audio", "video", "image") else None
+
     @classmethod
-    def needs_conversion(cls, filename: str) -> Tuple[bool, str, Optional[str]]:
+    def needs_conversion(cls, filename: str, content_type: Optional[str] = None) -> Tuple[bool, str, Optional[str]]:
         """
         Check if a file needs conversion.
+
+        Args:
+            filename: Name of the uploaded file
+            content_type: The browser-declared MIME type, where one exists.
+                Only consulted for extensions that are genuinely ambiguous.
 
         Returns:
             Tuple of (needs_conversion, media_type, target_extension)
         """
         ext = os.path.splitext(filename.lower())[1]
+
+        if ext in cls.AMBIGUOUS_CONTAINER_EXTENSIONS:
+            # Audio only when the uploader actually says so. Video is the
+            # default because WebM is overwhelmingly a video container and
+            # because every non-browser path — a file picked off disk, a
+            # server-side re-upload — arrives with no usable content type.
+            # Defaulting the other way would turn genuine video uploads into
+            # audio, which is the mirror image of the bug this fixes.
+            if cls.declared_category(content_type) == "audio":
+                return True, "audio", cls.AUDIO_CONVERT_MAP[ext]
+            return True, "video", cls.VIDEO_CONVERT_MAP[ext]
 
         if ext in cls.IMAGE_CONVERT_MAP:
             return True, "image", cls.IMAGE_CONVERT_MAP[ext]
@@ -83,7 +129,12 @@ class MediaConverter:
 
     @classmethod
     def convert(
-        cls, file, target_format: Optional[str] = None, max_size_mb: Optional[float] = None, is_template: bool = True
+        cls,
+        file,
+        target_format: Optional[str] = None,
+        max_size_mb: Optional[float] = None,
+        is_template: bool = True,
+        content_type: Optional[str] = None,
     ) -> Tuple[BinaryIO, str, str]:
         """
         Convert a file to WhatsApp-compatible format.
@@ -93,6 +144,8 @@ class MediaConverter:
             target_format: Optional target format override
             max_size_mb: Optional max size in MB (will compress if exceeded)
             is_template: If True, use stricter template limits
+            content_type: Declared MIME type; defaults to the file's own.
+                Decides audio-vs-video for ambiguous containers.
 
         Returns:
             Tuple of (converted_file, new_filename, mime_type)
@@ -100,7 +153,10 @@ class MediaConverter:
         filename = file.name.lower() if hasattr(file, "name") else "unknown"
         ext = os.path.splitext(filename)[1]
 
-        needs_conv, media_type, target_ext = cls.needs_conversion(filename)
+        if content_type is None:
+            content_type = getattr(file, "content_type", None)
+
+        needs_conv, media_type, target_ext = cls.needs_conversion(filename, content_type)
 
         if target_format:
             target_ext = target_format if target_format.startswith(".") else f".{target_format}"
@@ -638,11 +694,22 @@ class AutoMediaConverter:
         """
         Automatically convert file if needed.
 
+        Raises:
+            ConversionError: if the file needs converting and the conversion
+                could not be done. This used to be swallowed here and the
+                original file returned unchanged, which made the failure
+                indistinguishable from "no conversion was needed": the caller
+                then validated the *original* file and told the user their
+                file type was unsupported, when the truth was that the server
+                has no FFmpeg installed. The caller can say that only if it is
+                told, so the error propagates.
+
         Returns:
             Tuple of (file, filename, was_converted)
         """
         filename = file.name if hasattr(file, "name") else "file"
-        needs_conv, media_type, target_ext = MediaConverter.needs_conversion(filename)
+        content_type = getattr(file, "content_type", None)
+        needs_conv, media_type, target_ext = MediaConverter.needs_conversion(filename, content_type)
 
         if not needs_conv:
             # Check if file needs optimization (size/format issues)
@@ -666,32 +733,27 @@ class AutoMediaConverter:
             if not needs_conv:
                 return file, filename, False
 
-        try:
-            converted_file, new_filename, mime_type = MediaConverter.convert(
-                file, target_format=target_ext, is_template=is_template
-            )
+        converted_file, new_filename, mime_type = MediaConverter.convert(
+            file, target_format=target_ext, is_template=is_template, content_type=content_type
+        )
 
-            # Create new InMemoryUploadedFile
-            from django.core.files.uploadedfile import InMemoryUploadedFile
+        # Create new InMemoryUploadedFile
+        from django.core.files.uploadedfile import InMemoryUploadedFile
 
-            converted_file.seek(0, 2)  # Seek to end
-            size = converted_file.tell()
-            converted_file.seek(0)
+        converted_file.seek(0, 2)  # Seek to end
+        size = converted_file.tell()
+        converted_file.seek(0)
 
-            new_file = InMemoryUploadedFile(
-                file=converted_file,
-                field_name="media",
-                name=new_filename,
-                content_type=mime_type,
-                size=size,
-                charset=None,
-            )
+        new_file = InMemoryUploadedFile(
+            file=converted_file,
+            field_name="media",
+            name=new_filename,
+            content_type=mime_type,
+            size=size,
+            charset=None,
+        )
 
-            return new_file, new_filename, True
-
-        except ConversionError as e:
-            logger.warning(f"Auto-conversion failed: {e}")
-            return file, filename, False
+        return new_file, new_filename, True
 
 
 def get_conversion_capabilities() -> dict:
