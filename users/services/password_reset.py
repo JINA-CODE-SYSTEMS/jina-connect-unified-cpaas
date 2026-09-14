@@ -12,6 +12,8 @@ import logging
 from django.conf import settings
 from django.core.mail import send_mail
 
+from tenants.branding import product_name as branding_product_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,7 +68,8 @@ class PasswordResetService:
         """
         reset_url = PasswordResetService.get_reset_url(token.token)
 
-        subject = "Reset your password - Jina Connect"
+        product_name = branding_product_name()
+        subject = f"Reset your password - {product_name}"
 
         # HTML message
         html_message = f"""
@@ -92,7 +95,7 @@ class PasswordResetService:
                 </div>
                 <div class="content">
                     <h2>Hi {user.first_name},</h2>
-                    <p>We received a request to reset the password for your Jina Connect account associated with this email address.</p>
+                    <p>We received a request to reset the password for your {product_name} account associated with this email address.</p>
 
                     <p>Click the button below to reset your password:</p>
 
@@ -112,7 +115,7 @@ class PasswordResetService:
                     </p>
                 </div>
                 <div class="footer">
-                    <p>&copy; 2024 Jina Connect. All rights reserved.</p>
+                    <p>&copy; 2024 {product_name}. All rights reserved.</p>
                     <p>This is an automated message. Please do not reply to this email.</p>
                 </div>
             </div>
@@ -124,7 +127,7 @@ class PasswordResetService:
         plain_message = f"""
 Hi {user.first_name},
 
-We received a request to reset the password for your Jina Connect account.
+We received a request to reset the password for your {product_name} account.
 
 Click the link below to reset your password:
 {reset_url}
@@ -134,7 +137,7 @@ This link will expire in 1 hour.
 If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
 
 Best regards,
-The Jina Connect Team
+The {product_name} Team
         """
 
         try:
