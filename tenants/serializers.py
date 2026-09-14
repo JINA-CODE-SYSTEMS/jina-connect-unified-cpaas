@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 
@@ -241,11 +242,15 @@ class TenantMediaSerializer(BaseSerializer):
             auto_convert_enabled = auto_convert_enabled.lower() not in ["false", "0", "no"]
 
         original_filename = value.name if hasattr(value, "name") else "unknown"
+        original_ext = os.path.splitext(original_filename)[1].lower() or "this file"
+        # The browser's declared type, which is the only thing that can tell an
+        # audio WebM (a Chrome voice note) from a video one.
+        content_type = getattr(value, "content_type", None)
         was_converted = False
 
         # Try auto-conversion if enabled
         if auto_convert_enabled:
-            needs_conv, media_type, target_ext = MediaConverter.needs_conversion(original_filename)
+            needs_conv, media_type, target_ext = MediaConverter.needs_conversion(original_filename, content_type)
 
             if needs_conv:
                 try:
@@ -258,11 +263,16 @@ class TenantMediaSerializer(BaseSerializer):
                         self._was_converted = True
                         self._original_filename = original_filename
                 except ConversionError as e:
-                    # Log warning but continue with validation
+                    # Name the real cause. Until the converter stopped
+                    # swallowing this, the request fell through to the
+                    # extension check instead and told the user their file
+                    # type was unsupported — when in fact it is supported,
+                    # just not convertible on this host.
                     logger.warning(f"Auto-conversion failed for {original_filename}: {e}")
                     raise serializers.ValidationError(
-                        f"File format '{target_ext}' requires conversion but conversion failed: {str(e)}. "
-                        f"Please convert the file manually to a supported format."
+                        f"'{original_ext}' files must be converted to '{target_ext}' before WhatsApp "
+                        f"will accept them, and the conversion failed: {e} "
+                        f"Please convert the file yourself and upload the result."
                     )
 
         # Now validate the (possibly converted) file
@@ -277,7 +287,7 @@ class TenantMediaSerializer(BaseSerializer):
             return value
         except MediaValidationError as e:
             # If validation fails and file could be converted, suggest it
-            needs_conv, media_type, target_ext = MediaConverter.needs_conversion(original_filename)
+            needs_conv, media_type, target_ext = MediaConverter.needs_conversion(original_filename, content_type)
             if needs_conv and not auto_convert_enabled:
                 raise serializers.ValidationError(
                     f"{str(e)} Enable auto_convert=true to automatically convert this file."
