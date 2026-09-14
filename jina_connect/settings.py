@@ -19,6 +19,7 @@ from pathlib import Path
 
 from decouple import Config, RepositoryEnv
 from decouple import config as _auto_config
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -548,14 +549,45 @@ RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = config("RAZORPAY_WEBHOOK_SECRET", "")
 RAZORPAY_URL = config("RAZORPAY_URL", "https://api.razorpay.com/v1/")
 
-# Email Configuration
+# ── Email (SMTP) ─────────────────────────────────────────────────────────────
+# Nothing here is Gmail-specific except the defaults. This is Django's plain
+# SMTP backend, so any provider that speaks authenticated SMTP — xneelo,
+# Hetzner, a corporate relay, a transactional service — is a matter of
+# environment variables and no code.
+#
+# The one thing a .env cannot express before this block existed is the other
+# encrypted transport. Port 587 is STARTTLS (EMAIL_USE_TLS); port 465 is
+# implicit SSL (EMAIL_USE_SSL), which several hosts offer alongside or instead
+# of 587. Pointing EMAIL_PORT at 465 without EMAIL_USE_SSL does not fail — it
+# hangs, because Django opens a plaintext socket and waits for a greeting that
+# an SSL-only listener will never send in the clear.
 EMAIL_BACKEND = config("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = config("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = config("EMAIL_PORT", 587, cast=int)
-EMAIL_USE_TLS = config("EMAIL_USE_TLS", True, cast=bool)
+EMAIL_USE_SSL = config("EMAIL_USE_SSL", False, cast=bool)
+# Defaults to the opposite of EMAIL_USE_SSL rather than to True, so that
+# setting EMAIL_USE_SSL alone is a complete instruction. Django treats the two
+# as mutually exclusive and raises when both are on — but it raises inside
+# EmailBackend.__init__, which runs at the first *send*, so a deployment that
+# set only EMAIL_USE_SSL would boot clean and then fail on somebody's password
+# reset. An explicit EMAIL_USE_TLS still wins, including an explicit True.
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", not EMAIL_USE_SSL, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", "")
+# Django's own default is None, meaning "block forever". A provider that
+# silently drops outbound SMTP — which is the ordinary behaviour of cloud
+# egress filtering on ports 25, 465 and 587 — would then wedge the worker
+# thread that is sending, not return an error to it.
+EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", 30, cast=int)
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", "Jina Connect <noreply@jinaconnect.com>")
+
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ImproperlyConfigured(
+        "EMAIL_USE_TLS and EMAIL_USE_SSL are mutually exclusive; set one. "
+        "Port 587 is normally EMAIL_USE_TLS=True (STARTTLS) and port 465 is "
+        "EMAIL_USE_SSL=True (implicit SSL). Refusing at startup rather than at "
+        "the first send, which is where Django would otherwise raise this."
+    )
 
 MEDIA_URL = "/media/"
 
