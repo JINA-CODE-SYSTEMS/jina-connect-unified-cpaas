@@ -944,6 +944,26 @@ def _parse_gupshup_message_payload(payload: dict) -> dict:
     return extracted_data
 
 
+#: Hosts that serve media only to an authenticated caller. A URL on one of
+#: these is useless to a browser: META's media links carry no credentials of
+#: their own, require the app's access token as a bearer header, and expire
+#: minutes after the webhook arrives. Matched on the registrable host and its
+#: subdomains, not by substring, so a lookalike domain elsewhere in a URL — a
+#: query parameter, say — cannot be mistaken for the real host.
+_PROVIDER_AUTHENTICATED_MEDIA_HOSTS = ("lookaside.fbsbx.com", "lookaside.facebook.com", "fbcdn.net")
+
+
+def _is_provider_authenticated_media_url(url: str) -> bool:
+    """Whether *url* points at a host that will refuse an unauthenticated browser."""
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return any(host == known or host.endswith("." + known) for known in _PROVIDER_AUTHENTICATED_MEDIA_HOSTS)
+
+
 def _download_and_save_meta_media(wa_app, media_id: str, mime_type: str = None) -> str:
     """
     Download an incoming media file from META Cloud API and persist it
@@ -1140,17 +1160,40 @@ def _parse_meta_message_payload(payload: dict, wa_app=None) -> dict:
     # both use the META Cloud API message format.
     msg_type = extracted_data["message_type"]
 
-    # Helper to resolve media: download+save if wa_app available,
-    # otherwise fall back to whatever the payload gives us.
     def _resolve_media(media_obj: dict) -> str:
-        """Return a persistent URL for the media, or the raw id as fallback."""
-        # If the payload already contains a URL (e.g. Gupshup-proxied), use it.
-        if media_obj.get("url"):
-            return media_obj["url"]
+        """Return a URL a browser can actually render, or "" if none can be had.
+
+        The subtlety is that a ``url`` in the payload is not automatically
+        useful. This used to short-circuit on one — written for Gupshup, which
+        proxies media through its own public CDN, so re-downloading it would be
+        a round trip for nothing.
+
+        META's inbound webhook also carries a ``url``, and it is a completely
+        different animal: a ``lookaside.fbsbx.com`` address that requires an
+        ``Authorization: Bearer`` header and expires minutes after delivery. A
+        browser given it as an ``<img src>`` gets refused, so every inbound
+        image, video, audio note and document from a META app drew a broken
+        attachment — while the download path right below, which exists precisely
+        to make a durable copy, was never reached.
+
+        So the payload URL is used only when it is one a browser could fetch on
+        its own. Otherwise the media is downloaded by id and persisted, which is
+        the only way to get a URL still valid an hour later.
+        """
+        payload_url = media_obj.get("url") or ""
         media_id = media_obj.get("id", "")
+
+        if payload_url and not _is_provider_authenticated_media_url(payload_url):
+            return payload_url
+
         if wa_app and media_id:
             return _download_and_save_meta_media(wa_app, media_id, mime_type=media_obj.get("mime_type"))
-        return media_id
+
+        # Deliberately "" rather than the provider URL or the bare id. #274
+        # established that an un-renderable string draws a blank bubble with no
+        # error marker and no way to retry, whereas "" becomes an explicit
+        # failed attachment that says what happened.
+        return ""
 
     if msg_type == "text":
         text_obj = message.get("text", {})
