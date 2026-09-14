@@ -1,4 +1,5 @@
 import logging
+from dataclasses import asdict, dataclass
 from decimal import Decimal
 
 from django.conf import settings
@@ -785,14 +786,87 @@ class TenantRoleSerializer(BaseSerializer):
         return not obj.is_system
 
 
-class MyPermissionsSerializer(serializers.Serializer):
-    """Response serializer for GET /tenants/my-permissions/."""
+@dataclass(frozen=True)
+class SyntheticRole:
+    """A ``role`` for a caller of my-permissions who holds no ``TenantRole`` (#363).
 
-    role = TenantRoleSerializer(read_only=True)
+    Two callers have real, describable authority in an organisation and no row
+    describing it: a platform admin inside a "view as organisation" session
+    (#300), and a platform operator acting outside every organisation (#345).
+    The web client reads ``role`` to label the session and to compare
+    ``priority`` against its own thresholds, so answering ``null`` would leave
+    it with nothing to render and nothing to compare.
+
+    Not a ``TenantRole``, and nothing here is written to the database — the
+    slugs below deliberately match no seeded role. ``id`` is ``None``, and that
+    is the field that keeps the answer honest: a client that tries to fetch this
+    role from ``/tenants/roles/`` or PATCH it finds nothing, rather than finding
+    somebody else's row.
+
+    ``is_system`` and ``is_custom`` are both false because both are false: this
+    is neither one of the five seeded roles nor one an organisation defined.
+    That pairing is impossible for a real ``TenantRole``, where
+    ``TenantRoleSerializer`` derives ``is_custom`` as ``not is_system``, so it
+    also reads as "not a row" to anyone inspecting the payload.
+    """
+
+    slug: str
+    name: str
+    priority: int
+    id: None = None
+    is_system: bool = False
+    is_custom: bool = False
+
+
+# A read-only view of somebody else's organisation. Priority 0 sits below every
+# seeded role (VIEWER is 20) because the session may do less than any of them —
+# less even than a viewer, who at least owns their own account. A client gating
+# an action on ``priority >= n`` must not be told anything this session cannot
+# back up.
+IMPERSONATED_ROLE = SyntheticRole(
+    slug="impersonated-read-only",
+    name="Viewing as organisation (read-only)",
+    priority=0,
+)
+
+# A platform operator bypasses RBAC outright in ``TenantRolePermission``, so
+# they can do everything an OWNER can and more. Priority 100 matches OWNER
+# rather than exceeding it: the scale tops out there, and inventing a higher
+# number would give clients a value no seeded role can produce and no threshold
+# was written against.
+PLATFORM_OPERATOR_ROLE = SyntheticRole(
+    slug="platform-operator",
+    name="Platform operator",
+    priority=100,
+)
+
+
+class MyPermissionsSerializer(serializers.Serializer):
+    """Response serializer for GET /tenants/my-permissions/.
+
+    ``role`` is a ``TenantRoleSerializer`` payload for a member and a
+    ``SyntheticRole`` for the two callers who hold no row (#363) — the same six
+    field names either way, so the client has one shape to render.
+
+    A ``SerializerMethodField`` rather than a nested ``TenantRoleSerializer``
+    because that one is a ``ModelSerializer`` that derives ``is_custom`` from
+    ``is_system``. Handing it a synthetic role would have it answer
+    ``is_custom: true`` about a role no organisation ever defined — a small lie,
+    but in the one field a client would use to decide whether the role is
+    editable.
+    """
+
+    role = serializers.SerializerMethodField()
     permissions = serializers.DictField(
         child=serializers.BooleanField(),
         read_only=True,
     )
+
+    def get_role(self, obj):
+        role = obj["role"]
+        if isinstance(role, SyntheticRole):
+            return asdict(role)
+        return TenantRoleSerializer(role).data
 
 
 # ---------------------------------------------------------------------------
