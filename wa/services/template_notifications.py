@@ -3,6 +3,8 @@ import logging
 from django.conf import settings
 from django.core.mail import send_mail
 
+from tenants.branding import product_name as branding_product_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,6 +27,7 @@ class TemplateNotificationService:
         Returns:
             bool: True if email sent successfully, False otherwise
         """
+        product_name = branding_product_name()
         try:
             # Get tenant users to notify
             if not template.wa_app:
@@ -120,7 +123,7 @@ class TemplateNotificationService:
                         </p>
                     </div>
                     <div class="footer">
-                        <p>&copy; 2024 Jina Connect. All rights reserved.</p>
+                        <p>&copy; 2024 {product_name}. All rights reserved.</p>
                         <p>Tenant: {tenant.name}</p>
                     </div>
                 </div>
@@ -142,7 +145,7 @@ Status: {template.status}
 This change was made by Meta/WhatsApp and is automatically synced to your account.
 
 Best regards,
-The Jina Connect Team
+The {product_name} Team
             """
 
             from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@jinaconnect.com")
@@ -179,6 +182,7 @@ The Jina Connect Team
         Returns:
             bool: True if email sent successfully, False otherwise
         """
+        product_name = branding_product_name()
         try:
             if not template.wa_app:
                 logger.warning("Cannot send status change notification: template %s has no wa_app", template.pk)
@@ -256,7 +260,7 @@ The Jina Connect Team
                         {reason_html}
                     </div>
                     <div class="footer">
-                        <p>&copy; 2024 Jina Connect. All rights reserved.</p>
+                        <p>&copy; 2024 {product_name}. All rights reserved.</p>
                         <p>Tenant: {tenant.name}</p>
                     </div>
                 </div>
@@ -276,7 +280,7 @@ Type: {template.template_type}
 {f"Reason: {reason}" if reason else ""}
 
 Best regards,
-The Jina Connect Team
+The {product_name} Team
             """
 
             from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@jinaconnect.com")
