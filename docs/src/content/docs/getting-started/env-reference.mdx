@@ -56,15 +56,57 @@ All configuration is done via environment variables. Copy `.env.example` to `.en
 
 ## Email (SMTP)
 
+Platform email is Django's plain SMTP backend. Nothing is tied to one provider —
+Gmail with an app password, xneelo, Hetzner, a corporate relay or a transactional
+service are all a matter of the variables below.
+
 | Variable | Default | Description |
 |---|---|---|
 | `EMAIL_BACKEND` | `django.core.mail.backends.smtp.EmailBackend` | Django email backend class |
 | `EMAIL_HOST` | `smtp.gmail.com` | SMTP server host |
 | `EMAIL_PORT` | `587` | SMTP port |
-| `EMAIL_USE_TLS` | `True` | Enable TLS |
-| `EMAIL_HOST_USER` | — | SMTP username |
-| `EMAIL_HOST_PASSWORD` | — | SMTP app password |
+| `EMAIL_USE_TLS` | `True` unless `EMAIL_USE_SSL` is on | STARTTLS, the usual choice for port 587 |
+| `EMAIL_USE_SSL` | `False` | Implicit SSL, the usual choice for port 465 |
+| `EMAIL_HOST_USER` | — | SMTP username, normally the full mailbox address |
+| `EMAIL_HOST_PASSWORD` | — | SMTP password (an app password on Gmail) |
+| `EMAIL_TIMEOUT` | `30` | Socket timeout in seconds |
 | `DEFAULT_FROM_EMAIL` | `Jina Connect <noreply@jinaconnect.com>` | Default sender address |
+
+### Choosing the transport
+
+`EMAIL_USE_TLS` and `EMAIL_USE_SSL` are mutually exclusive and the application
+refuses to start with both on. Match the one you set to the port:
+
+- **587** — `EMAIL_USE_TLS=True`. The connection opens in the clear and upgrades.
+- **465** — `EMAIL_USE_SSL=True`. The connection is encrypted from the first byte.
+
+Setting `EMAIL_PORT=465` while leaving STARTTLS on does not raise an error: it
+**hangs** until `EMAIL_TIMEOUT`, because the client waits in the clear for a
+greeting an SSL-only listener never sends.
+
+### The sender address
+
+Most providers only let an authenticated mailbox send as itself or as one of its
+configured aliases. `DEFAULT_FROM_EMAIL` therefore usually has to match
+`EMAIL_HOST_USER`. When it does not, the symptom is misleading: the login
+succeeds and the message is refused afterwards, at `MAIL FROM`, which reads as
+"SMTP works but mail does not".
+
+### Checking it
+
+```bash
+python manage.py check_email                      # open the connection only
+python manage.py check_email --to you@example.com # and deliver a test message
+```
+
+The first form proves the host, port, transport and credentials. Only the second
+proves the provider will accept mail *from* your configured sender, which is a
+separate question with its own failure.
+
+<Aside type="caution">
+Accepted is not delivered. Mail from a domain with no SPF or DKIM record is
+routinely accepted by the relay and then filtered by the recipient.
+</Aside>
 
 ## Storage
 
