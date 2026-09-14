@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
 
-from users.models import EmailVerificationToken, ImpersonationSession, User
+from users.models import EmailVerificationToken, ImpersonationSession, PlatformAdminChange, User
 
 
 def duplicate_users(modeladmin, request, queryset):
@@ -132,6 +132,42 @@ class ImpersonationSessionAdmin(admin.ModelAdmin):
 
     is_live.boolean = True
     is_live.short_description = "Live"
+
+
+@admin.register(PlatformAdminChange)
+class PlatformAdminChangeAdmin(admin.ModelAdmin):
+    """Read the platform-administration audit trail (#358).
+
+    Add, change and delete are all off, for ``ImpersonationSessionAdmin``'s
+    reason and one more of its own: the Django admin's ``User`` page is one of
+    the two ways a grant can still be made without passing through the endpoint
+    that records it, so the record of those grants is precisely the thing an
+    admin must not also be able to edit.
+    """
+
+    list_display = ("changed_at", "action", "subject_username", "subject_email", "actor_username")
+    list_filter = ("action", "changed_at")
+    search_fields = ("subject_username", "subject_email", "actor_username")
+    readonly_fields = (
+        "action",
+        "subject",
+        "subject_username",
+        "subject_email",
+        "actor",
+        "actor_username",
+        "changed_at",
+    )
+    raw_id_fields = ("subject", "actor")
+    ordering = ("-changed_at", "-id")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(EmailVerificationToken)

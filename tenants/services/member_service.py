@@ -9,7 +9,11 @@ import logging
 from django.db import transaction
 
 from tenants.models import TenantUser
-from users.models import EmailVerificationToken, User
+from users.services.account_provisioning import (
+    create_pending_user,
+    find_user_by_email,
+    send_account_verification,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ def add_member_to_tenant(
         ValueError: If user is already an active member, or if new-user fields are missing.
     """
     email = email.lower()
-    user = User.objects.filter(email__iexact=email).first()
+    user = find_user_by_email(email)
 
     with transaction.atomic():
         if user:
@@ -71,25 +75,17 @@ def add_member_to_tenant(
             return tenant_user, False
 
         # --- Path 2: new user ---
-        if not password:
-            raise ValueError("Password is required for new users.")
-        if not first_name:
-            raise ValueError("First name is required for new users.")
-
-        user = User.objects.create(
-            username=email,  # Use email as username
+        # Account creation and the verification mail are shared with the
+        # platform-administrator invite (#358) rather than written twice — see
+        # ``users.services.account_provisioning``. The ordering here is
+        # unchanged and load-bearing: the membership is created before the mail
+        # goes out, so an invitee who clicks the link immediately finds the
+        # organisation already waiting for them.
+        user = create_pending_user(
             email=email,
+            password=password,
             first_name=first_name,
-            last_name=last_name or "",
-            password=password,  # User.save() auto-hashes via identify_hasher
-            is_active=False,  # Pending email verification
-            # ``mobile`` is deliberately not passed, and that is now correct
-            # rather than the bug it used to be. It is unique, so "no number
-            # known" must be NULL — two NULLs do not collide in Postgres, two
-            # empty strings do — and since #360 made the column nullable,
-            # Django's default for an omitted value resolves to None rather
-            # than "". Passing ``mobile=None`` here would say the same thing
-            # twice; what makes it true is the model, not this call.
+            last_name=last_name,
         )
 
         tenant_user = TenantUser.objects.create(
@@ -99,13 +95,6 @@ def add_member_to_tenant(
             created_by=created_by,
         )
 
-        # Create verification token and send email
-        token = EmailVerificationToken.create_for_user(user)
-        try:
-            from users.services.email_verification import EmailVerificationService
-
-            EmailVerificationService.send_verification_email(user, token)
-        except Exception:
-            logger.exception("Failed to send verification email to %s", email)
+        send_account_verification(user)
 
         return tenant_user, True

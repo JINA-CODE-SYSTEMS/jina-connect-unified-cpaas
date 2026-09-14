@@ -877,18 +877,16 @@ class AddMemberSerializer(serializers.Serializer):
         return value.lower()
 
     def validate_password(self, value):
-        """Validate password strength: min 8 chars, 1 upper, 1 digit, 1 special."""
-        import re
+        """Validate password strength: min 8 chars, 1 upper, 1 digit, 1 special.
 
-        if len(value) < 8:
-            raise serializers.ValidationError("Password must be at least 8 characters.")
-        if not re.search(r"[A-Z]", value):
-            raise serializers.ValidationError("Password must contain at least one uppercase letter.")
-        if not re.search(r"[0-9]", value):
-            raise serializers.ValidationError("Password must contain at least one digit.")
-        if not re.search(r"[^A-Za-z0-9]", value):
-            raise serializers.ValidationError("Password must contain at least one special character.")
-        return value
+        The rule itself moved to ``users.services.account_provisioning`` with
+        #358 so the platform-administrator invite applies the same one. It is
+        the same code and the same messages; what changed is that there is now
+        only one copy to weaken.
+        """
+        from users.services.account_provisioning import validate_password_strength
+
+        return validate_password_strength(value)
 
     def validate(self, attrs):
         """If email is new (no existing User), password and first_name are required."""

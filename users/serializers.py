@@ -177,3 +177,93 @@ class JwtUserSerializer(TokenObtainPairSerializer):
                 token["role_priority"] = tenant_user.role.priority
 
         return token
+
+
+class PlatformAdministratorSerializer(serializers.ModelSerializer):
+    """One row of ``GET /users/platform-admins/`` — who, when granted, by whom.
+
+    ``granted_at`` and ``granted_by`` are **nullable and often null**, and that
+    is not a defect to paper over. Every administrator who predates #358 was
+    made with ``manage.py createsuperuser`` or in the Django admin, and no
+    record of it exists to report. Null says "we do not know"; substituting
+    ``date_joined`` would say something false about the exact question this
+    endpoint exists to answer.
+
+    Both come from annotations the viewset attaches (see
+    ``PlatformAdminViewSet.get_queryset``) rather than from a per-row query, so
+    a page of ten administrators costs two queries and not twenty-one.
+
+    ``is_active`` is on the list on purpose: an invited administrator has not
+    verified their email yet, cannot obtain a token, and so is an administrator
+    in name only. A client that drops the column shows two identical-looking
+    rows for two very different states.
+    """
+
+    granted_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    granted_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "granted_at",
+            "granted_by",
+        ]
+        read_only_fields = fields
+
+    def get_granted_by(self, obj):
+        """The administrator who granted this one, or ``None`` if unrecorded.
+
+        ``id`` can be null while ``username`` is not: the audit row keeps the
+        granter's username after their account is deleted, and a name with no
+        account to link to is still the answer to "who did this".
+        """
+        username = getattr(obj, "granted_by_username", None)
+        if not username:
+            return None
+        return {"id": getattr(obj, "granted_by_user_id", None), "username": username}
+
+
+class InvitePlatformAdministratorSerializer(serializers.Serializer):
+    """Body of ``POST /users/platform-admins/invite/``.
+
+    Deliberately shaped like ``AddMemberSerializer`` minus ``role_id`` — there
+    is no role to choose, which is the whole of #358's deferred decision (see
+    ``users.viewsets.platform_admin``). Same two branches, same field names,
+    same password rule, so an operator who has invited an organisation member
+    already knows this form.
+
+    ``password`` and ``first_name`` are required only when the address has no
+    account yet, for the reason ``AddMemberSerializer`` gives: an existing user
+    keeps the password they already have, and being handed a new one by whoever
+    granted them platform rights would be worse than not.
+    """
+
+    email = serializers.EmailField()
+    password = serializers.CharField(required=False, write_only=True)
+    first_name = serializers.CharField(required=False, max_length=150)
+    last_name = serializers.CharField(required=False, max_length=150, default="")
+
+    def validate_email(self, value):
+        return value.lower()
+
+    def validate_password(self, value):
+        from users.services.account_provisioning import validate_password_strength
+
+        return validate_password_strength(value)
+
+    def validate(self, attrs):
+        """If the email is new, an account has to be creatable from this body."""
+        from users.services.account_provisioning import find_user_by_email
+
+        if find_user_by_email(attrs.get("email", "")) is None:
+            if not attrs.get("password"):
+                raise serializers.ValidationError({"password": "Password is required for new users."})
+            if not attrs.get("first_name"):
+                raise serializers.ValidationError({"first_name": "First name is required for new users."})
+        return attrs
