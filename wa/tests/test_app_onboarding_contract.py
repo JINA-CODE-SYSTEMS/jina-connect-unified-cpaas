@@ -53,6 +53,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
+from wa.tests.json_keys import json_field_names
+
 User = get_user_model()
 
 _mobile_seq = itertools.count(1)
@@ -283,10 +285,16 @@ def test_the_secret_fields_never_appear_in_any_read_response():
         bodies.append(api.post(_preflight_url(app_id)).content.decode())
 
     for body in bodies:
+        # The values, anywhere in the body, however spelled into it.
         assert _bearer("hidden") not in body, body
         assert _hmac_key("hidden") not in body, body
+        # The fields, by name. Asked of the parsed keys rather than as a
+        # substring search of the body: a substring cannot tell
+        # ``meta_app_secret`` from ``meta_app_secret_hint``, which is a masked
+        # tail the credentials screen is meant to read (#370).
+        fields = json_field_names(json.loads(body))
         for key in ("meta_app_secret", "bsp_access_token", "bsp_partner_app_token", "bsp_credentials"):
-            assert key not in body, f"{key} appears in a read response: {body}"
+            assert key not in fields, f"{key} appears in a read response: {body}"
 
 
 @pytest.mark.django_db

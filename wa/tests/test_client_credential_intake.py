@@ -53,6 +53,8 @@ from django.db import connection
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from wa.tests.json_keys import json_field_names
+
 User = get_user_model()
 
 _mobile_seq = itertools.count(1)
@@ -329,8 +331,12 @@ def test_the_app_secret_never_comes_back_out_of_the_api():
     ]
 
     for body in bodies:
+        # The secret itself, anywhere in the body.
         assert _hmac_key("hidden") not in body
-        assert "meta_app_secret" not in body
+        # The field, by name — asked of the parsed keys, because a substring
+        # search cannot tell ``meta_app_secret`` from ``meta_app_secret_hint``,
+        # the masked tail #370 added for the credentials screen.
+        assert "meta_app_secret" not in json_field_names(json.loads(body))
 
 
 @pytest.mark.django_db
