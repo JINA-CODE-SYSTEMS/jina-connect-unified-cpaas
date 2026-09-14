@@ -96,6 +96,13 @@ class WAAppSerializer(BaseSerializer):
     # empty string is far more often a form that submitted nothing than a
     # deliberate "forget the key that verifies my webhooks". It is rejected
     # rather than quietly interpreted either way.
+    # The stored secrets are write-only and stay that way. These say whether one
+    # is set, and which one, without returning it — the question an operator in
+    # the credentials screen is actually asking. "Does it work" is the preflight's
+    # to answer (#311); it asks META rather than showing anybody a string.
+    access_token_hint = serializers.CharField(read_only=True)
+    meta_app_secret_hint = serializers.CharField(read_only=True)
+
     meta_app_secret = serializers.CharField(
         write_only=True,
         required=False,
@@ -141,6 +148,8 @@ class WAAppSerializer(BaseSerializer):
             "bsp_access_token",
             "bsp_partner_app_token",
             "meta_app_secret",
+            "access_token_hint",
+            "meta_app_secret_hint",
             "verify_with_meta",
             "is_active",
             "is_verified",
