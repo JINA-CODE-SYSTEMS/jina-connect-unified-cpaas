@@ -21,6 +21,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.cache import cache_control
 from django.views.decorators.http import require_GET
 
+from tenants.branding import product_name as branding_product_name
 from users.models import EmailVerificationToken, PasswordResetToken
 
 logger = logging.getLogger(__name__)
@@ -215,7 +216,7 @@ def verify_email_deep_link(request, token):
         "token": token,
         "action": "verify-email",
         "action_title": "Verify Your Email",
-        "action_description": "Click below to verify your email address and activate your Jina Connect account.",
+        "action_description": f"Click below to verify your email address and activate your {branding_product_name()} account.",
         "action_button_text": "Verify Email",
         "ios_app_store_url": ios_app_store_url,
         "android_play_store_url": android_play_store_url,
@@ -265,7 +266,7 @@ def reset_password_deep_link(request, token):
         "token": token,
         "action": "reset-password",
         "action_title": "Reset Your Password",
-        "action_description": "Click below to reset your password and regain access to your Jina Connect account.",
+        "action_description": f"Click below to reset your password and regain access to your {branding_product_name()} account.",
         "action_button_text": "Reset Password",
         "ios_app_store_url": ios_app_store_url,
         "android_play_store_url": android_play_store_url,

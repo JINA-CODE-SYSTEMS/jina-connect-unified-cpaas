@@ -65,6 +65,10 @@ class WAAppViewSet(BaseTenantModelViewSet):
         "destroy": "wa_app.delete",
         "quota": "wa_app.view",
         "reset_counter": "wa_app.manage",
+        # The strictest thing this viewset does, on the same key as the actions
+        # that *change* an app — reading a stored secret is at least as
+        # consequential as rotating one, and a viewer must never reach it.
+        "reveal_credential": "wa_app.manage",
         "capabilities": "wa_app.view",
         # Deliberately ``view`` and not ``manage``, unlike every other action
         # that touches onboarding. This one answers "what can be done here and
@@ -510,6 +514,63 @@ class WAAppViewSet(BaseTenantModelViewSet):
             404: openapi.Response(description="WA App not found"),
         },
     )
+    @action(detail=True, methods=["post"], url_path="reveal-credential")
+    def reveal_credential(self, request, pk=None):
+        """Return one stored credential in plaintext, and record that it happened.
+
+        A deliberate reversal of #289, which encrypted these columns so the
+        plaintext left the database for a Graph call and nothing else. Asked for
+        because an operator holding a credential they cannot see cannot tell a
+        working one from a wrong one, and the masked hint (#370) answers "is one
+        set" without answering "is it this".
+
+        Three things make it defensible rather than a hole:
+
+        * **POST, not GET.** A secret in a query string lands in access logs,
+          browser history and any proxy in between; a body does not.
+        * **Audited before it is returned.** The row is written first, so a
+          reveal that could not be recorded does not happen. A META access token
+          can send as the tenant, read their message history and rewrite their
+          templates — if it is readable, "who read it, and when" has to be
+          answerable.
+        * **A whitelist of two fields.** A column added later is not readable by
+          default, which is the direction #346 set for writes and matters more
+          for reads of secrets.
+
+        ``no-store`` because a credential must not sit in a shared cache.
+        Nothing here is logged: the value is in the response body and the audit
+        row names the field, never its contents.
+        """
+        from tenants.models import WACredentialReveal
+
+        wa_app = self.get_object()
+        field = str(request.data.get("field") or "")
+        allowed = {choice for choice, _ in WACredentialReveal.FIELD_CHOICES}
+        if field not in allowed:
+            return Response(
+                {"field": [f"Unknown credential. Expected one of: {', '.join(sorted(allowed))}."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        value = getattr(wa_app, field, "") or ""
+        if not value:
+            # Not an error: "nothing is stored" is a real answer, and the caller
+            # needs to tell it apart from "stored but empty-looking".
+            return Response({"field": field, "value": "", "is_set": False})
+
+        actor = request.user
+        WACredentialReveal.objects.create(
+            wa_app=wa_app,
+            tenant_name=getattr(wa_app.tenant, "name", "") or "",
+            field=field,
+            actor=actor if getattr(actor, "pk", None) else None,
+            actor_username=getattr(actor, "username", "") or "",
+        )
+
+        response = Response({"field": field, "value": value, "is_set": True})
+        response["Cache-Control"] = "no-store"
+        return response
+
     @action(detail=True, methods=["post"], url_path="preflight")
     def preflight(self, request, pk=None):
         """Re-run the META credential checks against META on demand (#311).

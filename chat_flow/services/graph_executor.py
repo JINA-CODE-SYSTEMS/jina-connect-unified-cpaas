@@ -35,6 +35,8 @@ from django.conf import settings
 from django.utils import timezone
 from langgraph.graph import END, StateGraph
 
+from tenants.branding import product_name as branding_product_name
+
 from ..constants import canonical_session_message_type, session_message_awaits_reply
 from ..models import ChatFlow, ChatFlowEdge, ChatFlowNode, UserChatFlowSession
 
@@ -1262,6 +1264,7 @@ def _send_api_error_email(
 ):
     """Send an error email to the tenant's users when an API call returns
     a status code that has no matching edge in the flow."""
+    product_name = branding_product_name()
     try:
         from django.core.mail import send_mail
 
@@ -1310,7 +1313,7 @@ Response Preview:
 
 Please check the API endpoint or add a status code handler for {status_code} in the flow editor.
 
-— Jina Connect
+— {product_name}
 """
 
         html_message = f"""
@@ -1335,7 +1338,7 @@ Please check the API endpoint or add a status code handler for {status_code} in 
                 <div style="background: #1F2937; color: #D1D5DB; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 200px; overflow: auto; white-space: pre-wrap;">{response_preview}</div>
                 <p style="margin-top: 16px; color: #6b7280; font-size: 13px;">The flow has been stopped for this contact. Please check the API endpoint or add a handler for status <strong>{status_code}</strong> in the flow editor.</p>
             </div>
-            <div style="text-align: center; padding: 12px; color: #9CA3AF; font-size: 11px;">Jina Connect — {tenant.name}</div>
+            <div style="text-align: center; padding: 12px; color: #9CA3AF; font-size: 11px;">{product_name} — {tenant.name}</div>
         </div>
         """
 

@@ -3,6 +3,8 @@ import logging
 from django.conf import settings
 from django.core.mail import send_mail
 
+from tenants.branding import product_name as branding_product_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,7 +59,8 @@ class EmailVerificationService:
         """
         verification_url = EmailVerificationService.get_verification_url(token.token)
 
-        subject = "Verify your email address - Jina Connect"
+        product_name = branding_product_name()
+        subject = f"Verify your email address - {product_name}"
 
         # HTML message
         html_message = f"""
@@ -78,11 +81,11 @@ class EmailVerificationService:
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>Welcome to Jina Connect!</h1>
+                    <h1>Welcome to {product_name}!</h1>
                 </div>
                 <div class="content">
                     <h2>Hi {user.first_name},</h2>
-                    <p>Thank you for registering with Jina Connect. To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+                    <p>Thank you for registering with {product_name}. To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
 
                     <p style="text-align: center;">
                         <a href="{verification_url}" class="button" style="display: inline-block; background-color: #4F46E5; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">Verify Email Address</a>
@@ -91,10 +94,10 @@ class EmailVerificationService:
                     <p>Or copy and paste this link into your browser:</p>
                     <p style="word-break: break-all; color: #4F46E5;">{verification_url}</p>
 
-                    <p class="warning">This link will expire in 24 hours. If you didn't create an account with Jina Connect, please ignore this email.</p>
+                    <p class="warning">This link will expire in 24 hours. If you didn't create an account with {product_name}, please ignore this email.</p>
                 </div>
                 <div class="footer">
-                    <p>&copy; 2024 Jina Connect. All rights reserved.</p>
+                    <p>&copy; 2024 {product_name}. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -105,16 +108,16 @@ class EmailVerificationService:
         plain_message = f"""
 Hi {user.first_name},
 
-Thank you for registering with Jina Connect. To complete your registration and activate your account, please verify your email address by clicking the link below:
+Thank you for registering with {product_name}. To complete your registration and activate your account, please verify your email address by clicking the link below:
 
 {verification_url}
 
 This link will expire in 24 hours.
 
-If you didn't create an account with Jina Connect, please ignore this email.
+If you didn't create an account with {product_name}, please ignore this email.
 
 Best regards,
-The Jina Connect Team
+The {product_name} Team
         """
 
         try:
