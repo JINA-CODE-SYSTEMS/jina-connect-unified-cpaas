@@ -58,9 +58,7 @@ def _client(user):
 def test_the_stored_token_comes_back_in_full(app_and_owner):
     app, user, _ = app_and_owner
 
-    res = _client(user).post(
-        f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "bsp_access_token"}, format="json"
-    )
+    res = _client(user).post(f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "bsp_access_token"}, format="json")
 
     assert res.status_code == 200
     assert res.data["value"] == STORED_TOKEN
@@ -71,9 +69,7 @@ def test_the_stored_token_comes_back_in_full(app_and_owner):
 def test_every_reveal_is_recorded_before_the_value_is_returned(app_and_owner):
     app, user, tenant = app_and_owner
 
-    _client(user).post(
-        f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "meta_app_secret"}, format="json"
-    )
+    _client(user).post(f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "meta_app_secret"}, format="json")
 
     row = WACredentialReveal.objects.get(wa_app=app)
     assert row.field == "meta_app_secret"
@@ -88,9 +84,7 @@ def test_a_field_outside_the_whitelist_is_refused(app_and_owner):
     """A column added later must not become readable by default."""
     app, user, _ = app_and_owner
 
-    res = _client(user).post(
-        f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "app_secret"}, format="json"
-    )
+    res = _client(user).post(f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "app_secret"}, format="json")
 
     assert res.status_code == 400
     assert WACredentialReveal.objects.count() == 0
@@ -98,14 +92,12 @@ def test_a_field_outside_the_whitelist_is_refused(app_and_owner):
 
 @pytest.mark.django_db()
 def test_nothing_stored_is_an_answer_not_an_error(app_and_owner):
-    """"Not configured" must be told apart from "configured and blank-looking"."""
+    """ "Not configured" must be told apart from "configured and blank-looking"."""
     app, user, _ = app_and_owner
     app.meta_app_secret = ""
     app.save(update_fields=["meta_app_secret"])
 
-    res = _client(user).post(
-        f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "meta_app_secret"}, format="json"
-    )
+    res = _client(user).post(f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "meta_app_secret"}, format="json")
 
     assert res.status_code == 200
     assert res.data["is_set"] is False
@@ -118,9 +110,7 @@ def test_nothing_stored_is_an_answer_not_an_error(app_and_owner):
 def test_the_response_is_not_cacheable(app_and_owner):
     app, user, _ = app_and_owner
 
-    res = _client(user).post(
-        f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "bsp_access_token"}, format="json"
-    )
+    res = _client(user).post(f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "bsp_access_token"}, format="json")
 
     assert res["Cache-Control"] == "no-store"
 
@@ -139,9 +129,7 @@ def test_a_member_without_manage_cannot_reveal(app_and_owner):
     )
     TenantUser.objects.create(user=viewer, tenant=tenant, role=viewer_role)
 
-    res = _client(viewer).post(
-        f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "bsp_access_token"}, format="json"
-    )
+    res = _client(viewer).post(f"/wa/v2/apps/{app.id}/reveal-credential/", {"field": "bsp_access_token"}, format="json")
 
     assert res.status_code in (403, 404)
     assert WACredentialReveal.objects.count() == 0

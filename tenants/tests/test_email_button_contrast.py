@@ -38,7 +38,7 @@ def _button(sender) -> str:
     import inspect
 
     match = ANCHOR.search(inspect.getsource(sender))
-    assert match, "the mail no longer has a button with class=\"button\""
+    assert match, 'the mail no longer has a button with class="button"'
     return match.group(0)
 
 

@@ -39,9 +39,7 @@ class ReadOnlySocketTests(TestCase):
         cls.operator = User.objects.create_user(username=f"op-{suffix}", email=f"op-{suffix}@x.com")
         cls.operator.is_superuser = True
         cls.operator.save(update_fields=["is_superuser"])
-        cls.outsider = User.objects.create_user(
-            username=f"out-{suffix}", email=f"out-{suffix}@x.com"
-        )
+        cls.outsider = User.objects.create_user(username=f"out-{suffix}", email=f"out-{suffix}@x.com")
 
     def _consumer(self, user, read_only):
         consumer = TeamInboxConsumer()
@@ -67,9 +65,7 @@ class ReadOnlySocketTests(TestCase):
 
     def test_a_member_is_unaffected(self):
         role = TenantRole.objects.get(tenant=self.tenant, slug="viewer")
-        member = User.objects.create_user(
-            username=f"m-{uuid.uuid4().hex[:6]}", email=f"m-{uuid.uuid4().hex[:6]}@x.com"
-        )
+        member = User.objects.create_user(username=f"m-{uuid.uuid4().hex[:6]}", email=f"m-{uuid.uuid4().hex[:6]}@x.com")
         TenantUser.objects.create(user=member, tenant=self.tenant, role=role)
 
         self.assertTrue(self._access(self._consumer(member, read_only=False)))
