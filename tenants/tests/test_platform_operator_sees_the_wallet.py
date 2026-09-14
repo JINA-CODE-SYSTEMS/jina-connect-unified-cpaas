@@ -139,9 +139,7 @@ def test_a_member_below_admin_still_has_the_wallet_hidden():
     """#251. Widening the operator test must not widen the member test."""
     tenant = _tenant()
     member = _user()
-    TenantUser.objects.create(
-        tenant=tenant, user=member, role=TenantRole.objects.get(tenant=tenant, slug="agent")
-    )
+    TenantUser.objects.create(tenant=tenant, user=member, role=TenantRole.objects.get(tenant=tenant, slug="agent"))
     member.tenant_id = tenant.pk
 
     rows = _rows(member)
@@ -153,9 +151,7 @@ def test_a_member_below_admin_still_has_the_wallet_hidden():
 def test_an_owner_still_sees_their_own_wallet():
     tenant = _tenant()
     owner = _user()
-    TenantUser.objects.create(
-        tenant=tenant, user=owner, role=TenantRole.objects.get(tenant=tenant, slug="owner")
-    )
+    TenantUser.objects.create(tenant=tenant, user=owner, role=TenantRole.objects.get(tenant=tenant, slug="owner"))
     owner.tenant_id = tenant.pk
 
     assert _wallet_fields_present(_rows(owner)[0]) == set(WALLET_FIELDS)
