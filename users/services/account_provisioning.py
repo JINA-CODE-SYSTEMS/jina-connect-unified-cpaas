@@ -86,6 +86,14 @@ def create_pending_user(*, email, password, first_name, last_name=""):
         last_name=last_name or "",
         password=password,  # User.save() auto-hashes via identify_hasher
         is_active=False,  # Pending email verification
+        # ``mobile`` is deliberately not passed, and that is correct rather
+        # than the bug it used to be. It is unique, so "no number known" must
+        # be NULL — two NULLs do not collide in Postgres, two empty strings do,
+        # which is why the *second* account ever created this way used to die
+        # on ``users_user_mobile_key`` (#360). Since that made the column
+        # nullable, Django's default for an omitted value resolves to None;
+        # passing ``mobile=None`` here would say the same thing twice. What
+        # makes it true is the model, not this call.
     )
 
 

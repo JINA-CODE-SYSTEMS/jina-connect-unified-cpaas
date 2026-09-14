@@ -64,7 +64,20 @@ class User(AbstractUser):
     # accept local numbers in national format. Keeping it as a field kwarg
     # would bake it into the migration, and any deployment with a different
     # region would then fail `makemigrations --check`.
-    mobile = PhoneNumberField(unique=True)
+    # Nullable, and that is the whole point of the column being usable at all.
+    #
+    # ``unique=True`` on a NOT NULL column means the "no number known" value is
+    # the empty string, and the empty string fits exactly once. So the second
+    # account ever created without a number — the second person invited to any
+    # organisation who has no account yet — died on
+    # ``users_user_mobile_key``, globally, across every tenant. The first one
+    # worked, which made it read as a fluke rather than a rule.
+    #
+    # Postgres does not consider two NULLs equal, so NULL is the value that can
+    # mean "unknown" more than once while a real number stays unique. Anything
+    # that writes "no number" must write None, never "" — see
+    # ``member_service.add_member_to_tenant``.
+    mobile = PhoneNumberField(unique=True, null=True, blank=True)
     image = models.ImageField(upload_to="user_images/", blank=True, null=True)
     birth_date = models.DateField(blank=True, null=True)
 

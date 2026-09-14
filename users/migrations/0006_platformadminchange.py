@@ -8,7 +8,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("users", "0004_impersonationsession"),
+        ("users", "0005_mobile_nullable"),
     ]
 
     operations = [
