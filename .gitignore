@@ -204,3 +204,18 @@ jina-connect-web
 # test suite) from a UUID per trunk. Generated state, not source — 19 of
 # these were committed by accident before this rule existed.
 asterisk-config/pjsip.d/voice-*.conf
+
+# Installed dependencies, never source. The docs site's node_modules has been
+# committed to this repo twice — 4,984 files in April 2026, deleted three days
+# later, then 4,124 files again in September by a `git add -A` that had no rule
+# to stop it. The second time it reached a *public* repository, where every
+# clone pays for it.
+#
+# Unanchored on purpose: this matches node_modules at any depth, so a second
+# package.json added anywhere in the tree is covered the day it appears rather
+# than the day someone notices.
+node_modules/
+
+# Editor state, per-developer by nature. Committed alongside the September
+# node_modules sweep; its content was a colour theme.
+.vscode/
