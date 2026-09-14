@@ -21,10 +21,26 @@ from team_inbox.models import MessageEventIds, Messages
 from team_inbox.serializers import MessagesSerializer
 from team_inbox.utils.read_receipts import send_read_receipt
 from tenants.models import DefaultRoleSlugs, TenantUser
-from users.impersonation import impersonated_actor_id
+from users.impersonation import impersonated_actor_id, live_session_for
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+#: Inbound frames a "view as organisation" socket may not send (#300).
+#:
+#: Named rather than derived from "everything except the reads": a frame added
+#: later is then refused by default on a borrowed session only if someone lists
+#: it — which is the wrong default, but the alternative is worse. An allowlist
+#: would silently break every new *read* frame on impersonated sessions, and
+#: that failure is invisible. This one is a code review away, and the test below
+#: pins the list against `receive`'s own branches so a new frame cannot be added
+#: without someone deciding which half it belongs to.
+WRITE_FRAMES = frozenset({"mark_as_read", "typing_indicator"})
+
+READ_ONLY_FRAME_MESSAGE = (
+    "This is a read-only view of the organisation. "
+    "You can read conversations, but not mark them read or signal typing."
+)
 
 
 class TeamInboxConsumer(AsyncWebsocketConsumer):
@@ -41,6 +57,8 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
         self.client_type = "web"  # Default to web, can be 'mobile' or 'web'
         self.role_slug = None
         self.role_priority = None
+        # True while a "view as organisation" token is driving this socket.
+        self.read_only = False
 
     async def connect(self):
         """
@@ -91,6 +109,9 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
                         "tenant_id": self.tenant_id,
                         "user_id": self.user.id,
                         "role": self.role_slug,
+                        # So the UI can say "read-only" rather than leaving an
+                        # operator to discover it by having a frame refused.
+                        "read_only": self.read_only,
                         "timestamp": datetime.now().isoformat(),
                     }
                 )
@@ -119,6 +140,24 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
         try:
             data = json.loads(text_data)
             message_type = data.get("type")
+
+            # The write half of the superuser bypass, taken back (#300).
+            #
+            # `mark_as_read` is the one that matters and it is not a local
+            # bookkeeping flag: it clears the organisation's unread state AND
+            # calls `send_read_receipt`, which tells their customer over
+            # WhatsApp that their message has been read. An operator looking at
+            # a support question must not send blue ticks from the customer's
+            # own account. `typing_indicator` is the same kind of thing one step
+            # smaller — it broadcasts presence the operator does not have.
+            if self.read_only and message_type in WRITE_FRAMES:
+                logger.info(
+                    "Refused '%s' on a read-only team inbox socket (#300): tenant=%s",
+                    message_type,
+                    self.tenant_id,
+                )
+                await self.send_error(READ_ONLY_FRAME_MESSAGE)
+                return
 
             if message_type == "mark_as_read":
                 await self.handle_mark_as_read(data)
@@ -702,13 +741,24 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
             jwt_auth = JWTAuthentication()
             validated_token = jwt_auth.get_validated_token(token)
 
-            # A "view as organisation" token is read-only (#300). This socket
-            # both reads the inbox and sends messages on it, so there is no
-            # method to refuse — the token does not authenticate here at all.
+            # A "view as organisation" token is read-only (#300), and this
+            # socket used to refuse it outright: there is no HTTP method here
+            # to gate on, so the whole connection was closed and an operator
+            # looking at a support question saw "Disconnected" instead of the
+            # conversation they were asked about.
+            #
+            # A socket does have something to gate on — the `type` of each
+            # inbound frame — so the refusal moved to `receive`, where it can
+            # name the two frames that actually write. The session is still
+            # checked here, because a borrowed token whose audit row has ended
+            # or expired is no longer a credential at all, and `enforce_
+            # impersonation` never runs on this path.
             if impersonated_actor_id(validated_token):
-                logger.warning("Team inbox socket refused for an impersonation token (#300): sessions are read-only")
-                self.user = AnonymousUser()
-                return
+                if live_session_for(validated_token) is None:
+                    logger.warning("Team inbox socket refused: impersonation session is over (#300)")
+                    self.user = AnonymousUser()
+                    return
+                self.read_only = True
 
             self.user = await database_sync_to_async(jwt_auth.get_user)(validated_token)
 
@@ -721,10 +771,21 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_tenant_access(self) -> bool:
-        """
-        Check if user has access to the tenant
+        """Whether this user may open this tenant's inbox.
+
+        The superuser bypass mirrors ``TenantRolePermission``, and is what makes
+        a platform operator's read possible at all: they hold no ``TenantUser``
+        row in the organisation they are viewing, so a membership lookup alone
+        refuses the one person the view-as feature exists for. It is the same
+        answer the HTTP path has always given — this socket was simply asking a
+        narrower question than the rest of the codebase.
+
+        The write half of that bypass is taken back in ``receive`` for a
+        read-only connection, in the same order the HTTP layer does it.
         """
         try:
+            if getattr(self.user, "is_superuser", False):
+                return True
             return TenantUser.objects.filter(user=self.user, tenant_id=self.tenant_id).exists()
         except Exception:
             return False
