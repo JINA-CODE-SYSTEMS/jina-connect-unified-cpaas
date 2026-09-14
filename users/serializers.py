@@ -154,6 +154,23 @@ class JwtUserSerializer(TokenObtainPairSerializer):
         # Add username
         token["username"] = user.username
 
+        # Who this is, for anything that has to *show* it.
+        #
+        # Every signed-in person read as "User" until this existed: the web app
+        # takes the header name from a `name` claim, and no claim was ever
+        # written, so the fallback was the only thing anyone ever saw. It falls
+        # back to the username rather than to a placeholder because a username
+        # is at least this person, and in this product it is usually their email
+        # address — an operator glancing at the header wants to know which
+        # account they are in, and "User" answers a different question.
+        #
+        # `email` is here for the same reason and carries nothing new: the
+        # username IS the email for every account created through an invite, so
+        # a token that already states one is not made more revealing by stating
+        # the other.
+        token["name"] = user.get_full_name().strip() or user.username
+        token["email"] = user.email or ""
+
         # Add groups (list of group names)
         token["groups"] = list(user.groups.values_list("name", flat=True))
 
