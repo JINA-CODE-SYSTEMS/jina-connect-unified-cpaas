@@ -10,8 +10,10 @@ from abstract.exceptions import WalletCreditError
 from abstract.viewsets.base import BaseTenantModelViewSet
 from tenants.filters import TenantFilter
 from tenants.models import RolePermission, Tenant, TenantRole, TenantUser
-from tenants.permissions import ALL_PERMISSIONS
+from tenants.permissions import ALL_PERMISSIONS, read_only_permission_map
 from tenants.serializers import (
+    IMPERSONATED_ROLE,
+    PLATFORM_OPERATOR_ROLE,
     MyPermissionsSerializer,
     TenantAdminCreateSerializer,
     TenantLimitedSerializer,
@@ -22,6 +24,7 @@ from tenants.serializers import (
 )
 from tenants.services.onboarding import create_tenant_with_owner
 from tenants.services.wallet import credit_tenant_wallet, debit_tenant_wallet
+from users.impersonation import impersonated_tenant_id
 
 
 class TenantViewSet(BaseTenantModelViewSet):
@@ -115,17 +118,76 @@ class TenantViewSet(BaseTenantModelViewSet):
     @action(detail=False, methods=["get"], url_path="my-permissions", url_name="my-permissions")
     def my_permissions(self, request):
         """
-        Return the current user's role and effective permissions map.
+        Return the current caller's role and effective permissions map.
 
         Response:
         {
             "role": { "id": 42, "slug": "manager", "name": "Manager", ... },
             "permissions": { "tenant.view": true, "billing.manage": false, ... }
         }
-        """
-        from tenants.models import TenantUser
 
-        tenant_user = TenantUser.objects.filter(user=request.user, is_active=True).select_related("role").first()
+        ``permissions`` always carries every key in ``ALL_PERMISSIONS``; the web
+        sidebar looks each one up by name and hides what it cannot find.
+
+        **Three kinds of caller, and only one of them holds a ``TenantUser``**
+        (#363). Reading a membership row was the whole answer here, which meant
+        a platform admin inside a "view as organisation" session — who by
+        definition belongs to no organisation they are viewing — got a 404, the
+        client recorded "no role", every permission resolved false and the
+        organisation UI rendered nothing but its one ungated nav item. The same
+        mistake as #353 and #356: asking what a caller may do by reading a row
+        only ordinary members have. The two states are named once, in
+        ``impersonated_tenant_id`` and ``acting_as_platform_operator``, and are
+        asked here rather than re-derived.
+
+        Order matters. An impersonated token is a superuser holding no
+        membership — the exact shape of a platform operator — so it has to be
+        settled first or the operator branch below would hand a read-only
+        session every permission in somebody else's organisation.
+        (``acting_as_platform_operator`` excludes impersonation too; the order
+        here does not depend on that, and neither should depend on the other.)
+        """
+        # An impersonated session: read-only at two independent layers
+        # (#300/#326/#344), so it is told exactly that. Reporting every
+        # permission false would be equally safe and would leave the UI as blank
+        # as the bug did; reporting them all true would tell an operator they
+        # may act inside a customer's account and then 403 every attempt.
+        if impersonated_tenant_id(request) is not None:
+            serializer = MyPermissionsSerializer({"role": IMPERSONATED_ROLE, "permissions": read_only_permission_map()})
+            return Response(serializer.data)
+
+        # A platform operator acting outside every organisation (#345): every
+        # permission true. Not a courtesy — ``TenantRolePermission`` returns True
+        # for a superuser before it looks at any role, so anything less would be
+        # this endpoint contradicting what the API will actually do, which is the
+        # class of disagreement #353 was. A 404 would be defensible on the
+        # grounds that they act for no organisation, and it is what shipped by
+        # accident; it is rejected because the host dashboard is a real UI that
+        # would then have to special-case a 404 to show the operator's own
+        # abilities.
+        #
+        # Not reached by a superuser who *is* a member: ``acting_as_platform_operator``
+        # excludes them, so they fall through and get their real role (#352).
+        # Their map then understates the bypass — a superuser who joined an
+        # organisation as VIEWER is told they may not create a contact, and the
+        # API would in fact let them. That is #352's rule and it is the right
+        # trade: the alternative hands an all-true map to anyone who adds
+        # themselves to a customer's organisation to debug it.
+        if self.acting_as_platform_operator():
+            serializer = MyPermissionsSerializer(
+                {
+                    "role": PLATFORM_OPERATOR_ROLE,
+                    "permissions": dict.fromkeys(ALL_PERMISSIONS, True),
+                }
+            )
+            return Response(serializer.data)
+
+        # An ordinary member, unchanged — except that the membership now comes
+        # from ``_get_tenant_user``, the same lookup every other decision on this
+        # viewset already uses. For anyone in one organisation it is the same
+        # row; for a user in several it is the one their token names, instead of
+        # whichever ``.first()`` returned.
+        tenant_user = self._get_tenant_user()
         if not tenant_user or not tenant_user.role:
             return Response(
                 {"detail": "No active tenant membership or role found."},

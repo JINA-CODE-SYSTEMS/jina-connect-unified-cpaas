@@ -264,6 +264,44 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
 # Helper functions
 # ---------------------------------------------------------------------------
 
+# The action half of a permission key. Keys are ``<module>.<action>``, and the
+# voice group nests deeper (``voice.call.recording.play``), so the action is the
+# last dot-separated segment rather than the second one.
+_VIEW_ACTION = "view"
+
+
+def is_non_mutating(permission: str) -> bool:
+    """Whether *permission* can be granted to a caller who may not write (#363).
+
+    Derived from the key rather than from a list kept beside it, so a permission
+    added to ``ALL_PERMISSIONS`` tomorrow is denied by this rule until somebody
+    decides otherwise. A hand-kept allow-list would default the other way the
+    day it is forgotten, and the caller this exists for is a platform admin
+    inside somebody else's organisation.
+
+    **It errs towards false, deliberately.** Four keys name actions that only
+    read — ``contact.export``, ``broadcast.charge_breakdown``,
+    ``voice.call.recording.play`` and ``…download`` — and this rule reports them
+    false anyway, because ``export`` and ``download`` cannot be told apart from
+    ``edit`` or ``delete`` by the key alone. The cost of understating is a
+    greyed-out button on a read the session could in fact make; the cost of
+    overstating is telling an operator they may act inside a customer's account
+    when the API will refuse them, which is the worse of the two.
+    """
+    return permission.rsplit(".", 1)[-1] == _VIEW_ACTION
+
+
+def read_only_permission_map() -> dict[str, bool]:
+    """Every permission key, true only where the action does not write (#363).
+
+    The map an impersonated "view as organisation" session is told it holds.
+    Every key in ``ALL_PERMISSIONS`` is present — the web client looks each one
+    up by name and treats a missing key as a denial it cannot explain — so the
+    shape matches an ordinary member's response exactly and only the values
+    differ.
+    """
+    return {perm: is_non_mutating(perm) for perm in ALL_PERMISSIONS}
+
 
 def has_permission(tenant_role, permission: str) -> bool:
     """
