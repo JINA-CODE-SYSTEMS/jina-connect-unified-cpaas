@@ -56,12 +56,34 @@ class TenantViewSet(BaseTenantModelViewSet):
         strips exactly the fields the operator is there to manage. The host
         grid then reads them as absent and shows every tenant as zero.
 
-        ``is_staff`` is the same test ``get_permissions`` already uses to
-        recognise a host operation on this viewset, so the two agree on who the
-        host is.
+        **Either flag makes someone the host, and asking for only one of them
+        was a bug.** ``is_staff`` is what ``get_permissions`` uses for the host
+        *write* operations on this viewset (``IsAdminUser``), so it has to be
+        here. But every other decision in the codebase about whether a caller
+        is a platform operator reads ``is_superuser`` — the RBAC bypass in
+        ``TenantRolePermission``, ``acting_as_platform_operator``,
+        ``TenantTransactionViewSet.get_queryset``, the impersonation guard, and
+        the token claim itself. Reading only ``is_staff`` here meant two
+        accounts of identical standing — both platform admins belonging to no
+        organisation — disagreed about whether the product has a wallet: the
+        one created by ``createsuperuser`` (which sets both flags) saw it, and
+        one granted ``is_superuser`` alone got ``TenantLimitedSerializer`` and
+        a tenant grid with no money in it.
+
+        Nothing is exposed by widening it. A superuser already bypasses RBAC
+        outright and already reads every organisation's transactions, from
+        which the balance follows; this only stops the summary disagreeing with
+        the ledger.
+
+        It deliberately does **not** become ``acting_as_platform_operator()``,
+        which is false for a superuser who *is* a member. That is #352's rule
+        for write scoping and the right rule there, but applying it here would
+        take the wallet away from a superuser who joined an organisation to
+        debug it — a change nobody asked for, in the opposite direction to this
+        fix.
         """
         user = getattr(self.request, "user", None)
-        if user is not None and user.is_authenticated and user.is_staff:
+        if user is not None and user.is_authenticated and (user.is_superuser or user.is_staff):
             return TenantSerializer
 
         tu = self._get_tenant_user()
