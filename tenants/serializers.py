@@ -462,10 +462,44 @@ class HostWalletSerializer(serializers.Serializer):
 
     def get_wallet_balance(self):
         """
-        Fetch wallet balance from BSP and outstanding tenant balance.
+        Fetch wallet balance from the BSP, plus outstanding tenant balance.
+
+        **Only Gupshup has a prepaid wallet to read.** This asked the Gupshup
+        partner API for a balance whatever the app's BSP was, using
+        ``app_id``/``app_secret`` — which on a Meta Direct app are the *Gupshup*
+        fields, so they are empty or hold something else entirely. The result was
+        a host header showing a Gupshup figure, in Gupshup's currency, on a
+        deployment with no Gupshup account (#256).
+
+        Meta has no equivalent to substitute: ``extendedcredits`` returns ids and
+        configuration, a WABA exposes no balance field, and the Solution Partner
+        model is post-paid invoicing rather than a prepaid float. So the honest
+        answer for a non-Gupshup deployment is that there is no BSP wallet —
+        ``available: False`` with a reason — and not a zero, which reads as an
+        empty wallet rather than an absent one.
+
+        The tenant-side figures below are ours rather than the BSP's, so they are
+        returned either way.
         """
-        # ✅ use helper
+        from tenants.models import BSPChoices
+        from wa.adapters import resolve_bsp
+
         wa_app = self._get_active_tenant_app()
+        bsp = resolve_bsp(wa_app)
+
+        if bsp != BSPChoices.GUPSHUP:
+            balance = Tenant.objects.aggregate_total_balance()
+            outstanding = Tenant.objects.get_outstanding_balance_total()
+            return {
+                "gupshup": {
+                    "available": False,
+                    "reason": f"no prepaid BSP wallet on {bsp}",
+                    "gupshup_wallet": None,
+                    "total_tenants_balance": money_to_dict(balance),
+                    "creditors_outstanding": money_to_dict(outstanding),
+                    "total_tenant_count": Tenant.objects.count(),
+                }
+            }
 
         wallet_api = WalletAPI(appId=wa_app.app_id, token=wa_app.app_secret)
 
@@ -486,6 +520,7 @@ class HostWalletSerializer(serializers.Serializer):
         outstanding = Tenant.objects.get_outstanding_balance_total()
         return {
             "gupshup": {
+                "available": True,
                 "gupshup_wallet": wallet_data,
                 "total_tenants_balance": money_to_dict(balance),
                 "creditors_outstanding": money_to_dict(outstanding),
