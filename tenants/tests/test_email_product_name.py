@@ -1,5 +1,10 @@
 """Outbound email calls the deployment by its own name (#252).
 
+The fixture name below is invented. This repository is public, and a white-label
+deployment's product name identifies the customer it was built for as surely as
+their company name does — so the thing under test is "a name that is not ours",
+and any name that is not ours will do.
+
 A white-label deployment greeted its customers' staff by our product's name —
 twenty-one literals across five services, in the subject, the header, the body
 and the footer of every verification and password-reset mail.
@@ -24,10 +29,10 @@ from tenants.models import BrandingSettings
 @override_settings(DEFAULT_PRODUCT_NAME="JinaConnect")
 def test_a_configured_name_is_what_goes_out():
     branding = BrandingSettings.get_instance()
-    branding.product_name = "FabResolve"
+    branding.product_name = "Northwind Messaging"
     branding.save(update_fields=["product_name"])
 
-    assert product_name() == "FabResolve"
+    assert product_name() == "Northwind Messaging"
 
 
 @pytest.mark.django_db()
@@ -40,7 +45,7 @@ def test_an_unset_name_falls_back_to_the_deployment_default():
     assert product_name() == "JinaConnect"
 
 
-@override_settings(DEFAULT_PRODUCT_NAME="FabResolve")
+@override_settings(DEFAULT_PRODUCT_NAME="Northwind Messaging")
 def test_an_unreadable_branding_table_does_not_stop_the_mail(db, monkeypatch):
     """A branding table that cannot be read is not a reason to fail a sign-up.
 
@@ -53,17 +58,17 @@ def test_an_unreadable_branding_table_does_not_stop_the_mail(db, monkeypatch):
 
     monkeypatch.setattr(BrandingSettings, "get_instance", staticmethod(boom))
 
-    assert product_name() == "FabResolve"
+    assert product_name() == "Northwind Messaging"
 
 
 @pytest.mark.django_db()
-@override_settings(DEFAULT_PRODUCT_NAME="FabResolve")
+@override_settings(DEFAULT_PRODUCT_NAME="Northwind Messaging")
 def test_the_verification_email_carries_it_everywhere_it_used_to_say_ours():
     """Subject and body both — the subject line is what a recipient sees first."""
     from users.services.email_verification import EmailVerificationService
 
     branding = BrandingSettings.get_instance()
-    branding.product_name = "FabResolve"
+    branding.product_name = "Northwind Messaging"
     branding.save(update_fields=["product_name"])
 
     import inspect
