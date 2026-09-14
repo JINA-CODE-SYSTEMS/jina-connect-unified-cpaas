@@ -185,6 +185,34 @@ def generate_wa_webhook_identifier() -> str:
     return f"{WA_WEBHOOK_IDENTIFIER_PREFIX}{secrets.token_urlsafe(24)}"
 
 
+#: How much of a stored secret an operator may see.
+#:
+#: Four trailing characters: enough to answer "is one set" and "is this the same
+#: one I pasted", which is what an operator in the credentials screen is actually
+#: asking, and not enough to be worth anything to anyone who obtains it.
+#:
+#: Deliberately *not* a reveal. ``bsp_access_token`` and ``meta_app_secret`` are
+#: ``EncryptedTextField`` precisely so the plaintext leaves the database for
+#: nothing but a Graph call (#289), and an endpoint that returns a live Meta
+#: token — one that can send as the tenant, read their message history and
+#: rewrite their templates — would be gated on ``is_superuser``, which is
+#: all-or-nothing (#358). "Does this credential work" is answered properly by the
+#: preflight from #311, which asks Meta rather than showing anybody a string.
+WA_SECRET_HINT_TRAILING = 4
+
+
+def mask_wa_secret(secret: str | None) -> str:
+    """The part of a stored secret that may be shown. Never the whole of it.
+
+    Returns "" for an unset secret, so "not configured" and "configured" are
+    distinguishable without leaking which is which by length.
+    """
+    if not secret:
+        return ""
+    tail = secret[-WA_SECRET_HINT_TRAILING:]
+    return f"…{tail}"
+
+
 def mask_wa_webhook_identifier(identifier: str | None) -> str:
     """The most of *identifier* that may be written down — a short prefix.
 
@@ -612,6 +640,21 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         return tuple(touched)
 
     # ── Webhook identity helpers ─────────────────────────────────────────
+    @property
+    def access_token_hint(self) -> str:
+        """The last few characters of the stored access token, or "".
+
+        So a credentials screen can say "set, ending 7Fx" rather than showing an
+        empty box that reads as "not configured" — which is what an operator sees
+        today, and why they reasonably assume the value was lost.
+        """
+        return mask_wa_secret(self.bsp_access_token)
+
+    @property
+    def meta_app_secret_hint(self) -> str:
+        """The last few characters of the stored META app secret, or ""."""
+        return mask_wa_secret(self.meta_app_secret)
+
     @property
     def webhook_identifier_hint(self) -> str:
         """The part of the identifier that may be shown or logged."""
