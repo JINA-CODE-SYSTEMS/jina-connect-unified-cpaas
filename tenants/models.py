@@ -693,6 +693,75 @@ class TenantWAApp(BaseTenantModelForFilterUser):
         super().save(*args, **kwargs)
 
 
+class WACredentialReveal(models.Model):
+    """Audit record of one stored credential being shown to a person.
+
+    ``bsp_access_token`` and ``meta_app_secret`` are ``EncryptedTextField`` so
+    the plaintext leaves the database for a Graph call and nothing else (#289),
+    and the API withheld them for the same reason. Showing one to an operator is
+    a deliberate reversal of that, asked for because an operator who cannot see
+    what is stored cannot tell a working credential from a wrong one — and the
+    masked hint alone did not settle it for them.
+
+    **So the reveal is recorded rather than refused.** A Meta access token can
+    send as the tenant, read their message history and rewrite their templates;
+    if one is going to be readable, "who read it, whose, and when" must be
+    answerable afterwards. That is the same argument ``ImpersonationSession``
+    makes for viewing an organisation and ``PlatformAdminChange`` makes for
+    granting access, and this is the more sensitive of the three: those two are
+    scoped and expire, a revealed secret does neither.
+
+    Append-only, and written **before** the value is returned — a reveal that
+    could not be recorded does not happen.
+
+    ``actor`` is ``SET_NULL`` with the username snapshotted, for the reason the
+    other two audit tables give: the record has to outlive the account.
+    """
+
+    FIELD_ACCESS_TOKEN = "bsp_access_token"
+    FIELD_META_APP_SECRET = "meta_app_secret"
+    #: Only these. A whitelist rather than "any field on the model", so a column
+    #: added later is not readable by default — the direction #346 established
+    #: for writes applies at least as strongly to reads of secrets.
+    FIELD_CHOICES = [
+        (FIELD_ACCESS_TOKEN, "BSP access token"),
+        (FIELD_META_APP_SECRET, "META app secret"),
+    ]
+
+    wa_app = models.ForeignKey(
+        "tenants.TenantWAApp",
+        on_delete=models.CASCADE,
+        related_name="credential_reveals",
+        help_text="The app whose credential was shown.",
+    )
+    tenant_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Whose credential it was, at the time. Kept if the organisation is deleted.",
+    )
+    field = models.CharField(max_length=32, choices=FIELD_CHOICES, db_index=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="wa_credential_reveals",
+        help_text="Who asked to see it.",
+    )
+    actor_username = models.CharField(
+        max_length=150,
+        help_text="Username of the actor at the time — kept if the account is deleted.",
+    )
+    revealed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-revealed_at"]
+        verbose_name = "WA credential reveal"
+
+    def __str__(self):
+        return f"{self.actor_username} read {self.field} of app {self.wa_app_id} at {self.revealed_at:%Y-%m-%d %H:%M}"
+
+
 class TenantVoiceApp(BaseTenantModelForFilterUser):
     """Per-tenant voice channel enablement and defaults.
 
