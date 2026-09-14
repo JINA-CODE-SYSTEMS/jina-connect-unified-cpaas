@@ -42,19 +42,54 @@ ws://your-domain.com/ws/team-inbox/{tenant_id}/?token=eyJhbGci...
 | Event | Description |
 |---|---|
 | `new_message` | New message received from any channel |
-| `message_status` | Delivery status update (sent, delivered, read) |
-| `typing_indicator` | Contact is typing |
+| `new_event` | Timeline event (ticket opened, assigned, closed) |
+| `message_status_update` | Delivery status update (`SENT`, `DELIVERED`, `READ`, `FAILED`) |
+| `messages_read` | Another agent marked messages read |
+| `typing_indicator` | Contact or agent is typing |
 | `assignment_update` | Contact assigned/reassigned |
-| `ticket_update` | Ticket opened/closed |
+| `payment_status_update` | Order/payment status changed |
+| `mention_notification` | An agent was @-mentioned |
+| `error` | The server rejected a client message |
 
 **Outgoing events (client → server):**
 
 | Event | Description |
 |---|---|
-| `send_message` | Send a reply to a contact |
-| `mark_read` | Mark messages as read |
-| `typing` | Send typing indicator |
-| `assign` | Assign contact to agent |
+| `mark_as_read` | Mark messages as read |
+| `get_timeline` | Fetch a contact's message timeline |
+| `get_chat_list` | Fetch the conversation list |
+| `typing_indicator` | Send typing indicator |
+| `client_info` | Declare client type |
+
+Replies are posted over REST, not the socket. The authoritative list is
+served live from `/team-inbox/websocket/info/`.
+
+### Correlating a broadcast bubble
+
+`POST`ing a broadcast answers `201` before anything is sent, so a client that
+draws an optimistic pending bubble per recipient needs a way to match the
+inbox row that follows. Body text does not work — two identical templates to
+one contact render the same string — so every inbox row created by a broadcast
+carries its identity in `content._meta`:
+
+```json
+{
+  "source": "broadcast",
+  "broadcast_id": 7,
+  "broadcast_message_id": 42,
+  "contact_id": 789
+}
+```
+
+`broadcast_message_id` is the per-recipient send and is unique on its own;
+`(broadcast_id, contact_id)` is the same identity spelled in what the client
+already holds at `201` time. Delivery state is read from `outgoing_status`,
+`outgoing_failed_at` and `outgoing_error` on the row, not from `_meta`.
+
+A send that fails before the provider accepts it produces an inbox row with
+`outgoing_status: "FAILED"` **and** a `message_status_update` naming the same
+identifiers, with `external_message_id: null` (nothing was ever accepted) and
+`error` carrying the provider's wording.
 
 ## Message Model
 

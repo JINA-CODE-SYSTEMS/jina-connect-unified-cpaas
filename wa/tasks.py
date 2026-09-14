@@ -3450,9 +3450,16 @@ def _broadcast_broadcast_message_status_update(broadcast_msg, status: str):
 
     Looks up the corresponding Messages entry to include its ID for frontend matching.
 
+    Emits ``message_status_update`` (see ``TeamInboxConsumer`` for the wire
+    shape). Called from the status webhook for provider-reported transitions,
+    and from ``broadcast.tasks`` when a send fails before the provider ever
+    accepts it (#658) — in that case there is no provider message id, so the
+    ``broadcast_message_id``/``broadcast_id``/``contact_id`` identifiers are
+    the only handle the client has on the bubble.
+
     Args:
         broadcast_msg: BroadcastMessage instance
-        status: Status string ('sent', 'delivered', 'read', 'failed')
+        status: Status string ('SENT', 'DELIVERED', 'READ', 'FAILED')
     """
     import json
 
@@ -3460,7 +3467,8 @@ def _broadcast_broadcast_message_status_update(broadcast_msg, status: str):
     from channels.layers import get_channel_layer
     from django.core.serializers.json import DjangoJSONEncoder
 
-    from team_inbox.models import Messages
+    from broadcast.models import MessageStatusChoices
+    from team_inbox.utils.inbox_message_factory import find_inbox_message_for_broadcast
 
     try:
         # Get tenant ID from the broadcast
@@ -3480,16 +3488,19 @@ def _broadcast_broadcast_message_status_update(broadcast_msg, status: str):
         if broadcast_msg.contact:
             contact_id = broadcast_msg.contact.pk
 
-        # Look up the corresponding Messages entry by external_message_id
-        messages_entry = None
+        # Look up the corresponding Messages entry. By provider message id
+        # where there is one, and otherwise by the ``content["_meta"]`` stamp
+        # the broadcast sender leaves on every row it creates (#658) — a send
+        # that failed before the provider accepted it has no provider id at
+        # all, and its row would otherwise be unnameable, leaving the client
+        # an event it cannot attach to any bubble.
+        messages_entry = find_inbox_message_for_broadcast(broadcast_msg)
         messages_id = None
         message_event_id = None
 
-        if broadcast_msg.message_id:
-            messages_entry = Messages.objects.filter(external_message_id=broadcast_msg.message_id).first()
-            if messages_entry:
-                messages_id = messages_entry.pk
-                message_event_id = messages_entry.message_id_id  # FK to MessageEventIds
+        if messages_entry:
+            messages_id = messages_entry.pk
+            message_event_id = messages_entry.message_id_id  # FK to MessageEventIds
 
         # Get the channel layer and broadcast
         channel_layer = get_channel_layer()
@@ -3506,10 +3517,19 @@ def _broadcast_broadcast_message_status_update(broadcast_msg, status: str):
             "id": messages_id,
             "message_id": message_event_id,
             "broadcast_message_id": broadcast_msg.pk,
+            "broadcast_id": broadcast_msg.broadcast_id,
             "external_message_id": broadcast_msg.message_id,
             "contact_id": contact_id,
             "status": status,
             "outgoing_status": status,
+            # Why it failed, in the provider's own words — the inbox showed
+            # FAILED and nothing else, which is the #274 complaint, and a send
+            # that never reached the provider needs it most because there is
+            # no delivery report coming to explain it. Only on failure:
+            # ``response`` holds the success payload otherwise.
+            "error": (
+                (broadcast_msg.response or None) if str(status).upper() == MessageStatusChoices.FAILED.value else None
+            ),
             "sent_at": format_dt(broadcast_msg.sent_at),
             "delivered_at": format_dt(broadcast_msg.delivered_at),
             "read_at": format_dt(broadcast_msg.read_at),

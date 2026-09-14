@@ -184,17 +184,33 @@ class Messages(BaseTenantModelForFilterUser):
     @property
     def _broadcast_message(self):
         """
-        Lazy lookup of BroadcastMessage by external_message_id.
+        Lazy lookup of the BroadcastMessage this row came from.
         Cached to avoid repeated DB queries.
+
+        By provider message id first, which is what a row created from an
+        accepted send carries. A send that failed before the provider accepted
+        it has no provider id at all, so that row is reachable only through
+        the ``content["_meta"]`` stamp the broadcast sender leaves on every
+        row it creates (#658) — without this fallback a failed broadcast
+        bubble would serialize with ``outgoing_status`` of ``None``, which the
+        inbox renders as still pending.
         """
         if not hasattr(self, "_cached_broadcast_message"):
             self._cached_broadcast_message = None
-            if self.external_message_id and not self.outgoing_message:
+            if not self.outgoing_message:
                 from broadcast.models import BroadcastMessage
 
-                self._cached_broadcast_message = BroadcastMessage.objects.filter(
-                    message_id=self.external_message_id
-                ).first()
+                if self.external_message_id:
+                    self._cached_broadcast_message = BroadcastMessage.objects.filter(
+                        message_id=self.external_message_id
+                    ).first()
+
+                if self._cached_broadcast_message is None:
+                    broadcast_message_id = ((self.content or {}).get("_meta") or {}).get("broadcast_message_id")
+                    if broadcast_message_id:
+                        self._cached_broadcast_message = BroadcastMessage.objects.filter(
+                            pk=broadcast_message_id, broadcast__tenant_id=self.tenant_id
+                        ).first()
         return self._cached_broadcast_message
 
     @property
@@ -270,7 +286,13 @@ class Messages(BaseTenantModelForFilterUser):
         Without this the inbox showed FAILED and nothing else, so an agent
         whose reply fell outside the 24h service window (or hit any other
         Cloud API error) had no way to learn what to do differently (#274).
-        BroadcastMessage has no error field to read, hence its absence here.
+
+        ``BroadcastMessage`` has no dedicated error field, but it does keep
+        the provider's wording: ``response`` holds the error text on a failed
+        send (the status webhook writes the ``errors`` array there, and the
+        batch loop writes whatever the adapter reported). It is only an error
+        when the row actually failed — on a successful send the same column
+        holds the accepted response — hence the status guard (#658).
         """
         if self.direction == MessageDirectionChoices.OUTGOING:
             if self.outgoing_message:
@@ -278,6 +300,12 @@ class Messages(BaseTenantModelForFilterUser):
             telegram_msg = self.telegram_outbound.first()
             if telegram_msg:
                 return telegram_msg.error_message
+            broadcast_msg = self._broadcast_message
+            if broadcast_msg:
+                from broadcast.models import MessageStatusChoices
+
+                if broadcast_msg.status in (MessageStatusChoices.FAILED, MessageStatusChoices.BLOCKED):
+                    return broadcast_msg.response or None
         return None
 
     def __str__(self):

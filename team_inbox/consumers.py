@@ -456,12 +456,24 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
         Event structure for broadcast messages:
         {
             'type': 'message_status_update',
-            'broadcast_message_id': int,  # BroadcastMessage.pk
-            'external_message_id': str,  # WhatsApp message ID (gs_id) for matching
+            'broadcast_message_id': int,  # BroadcastMessage.pk — the per-recipient send
+            'broadcast_id': int,  # Broadcast.pk
+            'external_message_id': str | None,  # WhatsApp message ID (gs_id); None if the
+                                                # send never reached the provider
+            'id': int | None,  # Messages.pk of the inbox row, when there is one
+            'message_id': int | None,  # MessageEventIds.pk
             'contact_id': int,
-            'status': str,
+            'status': str,  # 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'
+            'error': str | None,  # why it failed, when it did (#658)
             ...timestamps...
         }
+
+        A send that fails before the provider accepts it arrives here too
+        (#658): the client drew a pending bubble on the create endpoint's 201
+        and has no provider id to match on, so it matches on
+        ``broadcast_message_id`` — or, for a bubble drawn before any
+        ``BroadcastMessage`` row existed, on ``(broadcast_id, contact_id)``,
+        which is the same identity (they are unique together).
         """
         try:
             # RBAC: Agent only receives events for assigned contacts
@@ -479,11 +491,13 @@ class TeamInboxConsumer(AsyncWebsocketConsumer):
                         "message_id": event.get("message_id"),  # MessageEventIds.pk
                         # Broadcast message identifiers
                         "broadcast_message_id": event.get("broadcast_message_id"),
+                        "broadcast_id": event.get("broadcast_id"),
                         "external_message_id": event.get("external_message_id"),  # gs_id for matching
                         # Common fields
                         "contact_id": event.get("contact_id"),
                         "status": event.get("status"),
                         "outgoing_status": event.get("outgoing_status"),
+                        "error": event.get("error"),
                         "sent_at": event.get("sent_at"),
                         "delivered_at": event.get("delivered_at"),
                         "read_at": event.get("read_at"),

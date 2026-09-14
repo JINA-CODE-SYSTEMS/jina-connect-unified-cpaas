@@ -126,6 +126,31 @@ def websocket_info(request):
                     "user_name": "Jane Doe",
                     "timestamp": "2024-01-01T12:01:00Z",
                 },
+                # A broadcast send that failed (#658). The create endpoint
+                # answers 201 before anything is sent, so a client that drew a
+                # pending bubble needs this to move it out of pending —
+                # matched on ``broadcast_message_id``, or on
+                # ``(broadcast_id, contact_id)`` for a bubble drawn before the
+                # per-recipient row existed. ``external_message_id`` is null
+                # here precisely because the provider never accepted the send.
+                # The same failure also creates the inbox row named by ``id``,
+                # so a client that was disconnected finds it on reload with
+                # ``outgoing_status: "FAILED"``.
+                "message_status_update": {
+                    "type": "message_status_update",
+                    "id": 123,
+                    "message_id": 456,
+                    "broadcast_message_id": 42,
+                    "broadcast_id": 7,
+                    "external_message_id": None,
+                    "contact_id": 789,
+                    "status": "FAILED",
+                    "outgoing_status": "FAILED",
+                    "error": "(#132001) Template name does not exist in the translation",
+                    "failed_at": "2024-01-01T12:00:05Z",
+                    "outgoing_failed_at": "2024-01-01T12:00:05Z",
+                    "timestamp": "2024-01-01T12:00:05Z",
+                },
             },
             "connection_flow": [
                 "1. Get JWT token from /token/ endpoint",
