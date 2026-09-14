@@ -8,6 +8,10 @@ from django.utils import timezone
 
 import team_inbox.signals  # noqa: F401, E402 — ensure signals are loaded for broadcasting
 from broadcast.utils.placeholder_renderer import render_placeholders
+from team_inbox.utils.inbox_message_factory import (
+    broadcast_correlation_meta,
+    find_inbox_message_for_broadcast,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +251,12 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
         if template:
             content["template"] = {"name": template.element_name, "language": template.language_code}
 
+        # Which send produced this bubble (#658). Without it the only thing
+        # distinguishing two rows of the same template to the same contact is
+        # their body text, which is identical by definition — see
+        # ``broadcast_correlation_meta`` for the identifiers and why these.
+        content["_meta"] = broadcast_correlation_meta(broadcast_message)
+
         # Map broadcast platform to team_inbox platform
         platform_map = {
             BroadcastPlatformChoices.WHATSAPP: MessagePlatformChoices.WHATSAPP,
@@ -279,6 +289,89 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
         logger.exception(f"[_create_team_inbox_message_from_broadcast] Error creating team inbox message: {str(e)}")
         result["error"] = str(e)
         return result
+
+
+def _record_broadcast_message_failure(broadcast_message) -> dict:
+    """Make a failed broadcast send visible in the inbox (#658).
+
+    The create endpoint answers 201 and the client draws a pending bubble.
+    Every other outcome then reaches the inbox: a send produces a row, and a
+    provider-side failure produces a ``message_status_update`` from the status
+    webhook (``wa.tasks._process_message_status_webhook``). A send that fails
+    *before* the provider accepts it produced neither — no row, no event — so
+    that bubble spun forever, with no failure state to move it to.
+
+    It now produces both, matching the two ways failure is already
+    represented:
+
+    * **A row.** Every other outbound message in the inbox is a ``Messages``
+      row whose ``outgoing_status`` reads ``FAILED`` — that is how a failed
+      agent reply looks (#274), how a failed Telegram send looks, and how a
+      broadcast message that fails *at* the provider looks, since its row was
+      written when the send was accepted. A failed broadcast send should not
+      be the one kind of failure with nothing in the timeline. It is also the
+      half that survives a client which was not connected: a spinner is lost
+      on reload, a row is not.
+    * **An event.** ``message_status_update`` on the same channel-layer group
+      the webhook path uses, so a *connected* client flips its bubble now
+      rather than on next reload.
+
+    Deliberately only for terminal failures. A transient error goes back to
+    PENDING for another attempt (#271) and must not draw a failed bubble for a
+    message that is about to send; the callers only reach here on the
+    transitions that are final.
+
+    Never raises: the inbox is a consequence of the send, and must not change
+    whether the send is retried or refunded.
+
+    Args:
+        broadcast_message: a ``BroadcastMessage`` already saved as FAILED.
+
+    Returns:
+        dict with ``row_created`` (bool), ``message_id`` (int or None) and
+        ``event_sent`` (bool) — for logs and tests; no caller branches on it.
+    """
+    outcome = {"row_created": False, "message_id": None, "event_sent": False}
+
+    try:
+        # A row may exist already: the message may have been sent and failed
+        # later at the provider, or an earlier terminal failure may have been
+        # recorded. Either way the bubble is already there and a second row
+        # would be a duplicate of it — but the event is still worth sending,
+        # because this call is what tells a connected client the state moved.
+        existing = find_inbox_message_for_broadcast(broadcast_message)
+        if existing is None:
+            created = _create_team_inbox_message_from_broadcast(broadcast_message)
+            if created.get("created"):
+                outcome["row_created"] = True
+                outcome["message_id"] = created.get("message_id")
+            else:
+                logger.warning(
+                    "[_record_broadcast_message_failure] No inbox row for failed broadcast message %s: %s",
+                    broadcast_message.pk,
+                    created.get("error"),
+                )
+        else:
+            outcome["message_id"] = existing.pk
+    except Exception:
+        logger.exception(
+            "[_record_broadcast_message_failure] Error creating inbox row for broadcast message %s",
+            broadcast_message.pk,
+        )
+
+    try:
+        from broadcast.models import MessageStatusChoices
+        from wa.tasks import _broadcast_broadcast_message_status_update
+
+        _broadcast_broadcast_message_status_update(broadcast_message, MessageStatusChoices.FAILED)
+        outcome["event_sent"] = True
+    except Exception:
+        logger.exception(
+            "[_record_broadcast_message_failure] Error broadcasting failure for broadcast message %s",
+            broadcast_message.pk,
+        )
+
+    return outcome
 
 
 def _convert_template_buttons_to_inbox_format(
@@ -733,6 +826,7 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
 
         # Process each message
         for message in messages:
+            failed_now = False
             try:
                 # A batch retry re-runs the whole message_ids list, so without
                 # this guard one late failure re-sends everything before it
@@ -842,12 +936,25 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                         )
                     else:
                         message.status = MessageStatusChoices.FAILED
+                        # Stamped here rather than left NULL because it is what
+                        # the inbox reads back for a failed bubble
+                        # (``Messages.outgoing_failed_at``) and what the status
+                        # event carries; the webhook failure path already sets
+                        # it. Nothing in the refund keys on it — refunds count
+                        # statuses (#271) — so this changes no money.
+                        message.failed_at = timezone.now()
+                        failed_now = True
                         failed_count += 1
                         logger.error(f"Message {message.id} failed: {error_text}")
 
-                message.save(update_fields=["status", "message_id", "response", "retry_count", "sent_at"])
+                message.save(update_fields=["status", "message_id", "response", "retry_count", "sent_at", "failed_at"])
                 processed_count += 1
                 processed_ids.append(message.id)
+
+                # After the save, so the row the client is told about is the
+                # row on disk (#658).
+                if failed_now:
+                    _record_broadcast_message_failure(message)
 
             except Exception as e:
                 logger.exception(f"Error processing message {message.id}: {str(e)}")
@@ -856,10 +963,12 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                     message.status = MessageStatusChoices.FAILED
                     message.response = f"Processing error: {str(e)}"
                     message.retry_count += 1
-                    message.save(update_fields=["status", "response", "retry_count"])
+                    message.failed_at = timezone.now()
+                    message.save(update_fields=["status", "response", "retry_count", "failed_at"])
                     failed_count += 1
                     processed_count += 1
                     processed_ids.append(message.id)
+                    _record_broadcast_message_failure(message)
                 except Exception as save_error:
                     logger.exception(f"Error saving failed message {message.id}: {str(save_error)}")
 
@@ -891,19 +1000,40 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
         else:
             # Mark all messages as failed after max retries
             logger.error(f"Max retries exceeded for batch {message_ids}")
+            newly_failed_ids: List[int] = []
             try:
                 with transaction.atomic():
                     # Only messages that never reached the provider. Blanket-
                     # failing the batch marked delivered messages FAILED, and
                     # since failures are refunded, credited the tenant for
                     # traffic that really went out (#271).
-                    BroadcastMessage.objects.filter(id__in=message_ids).exclude(
-                        status__in=ALREADY_SENT_STATUSES
-                    ).exclude(message_id__isnull=False, message_id__gt="").update(
-                        status=MessageStatusChoices.FAILED, response=f"Max retries exceeded: {str(exc)}"
+                    doomed = (
+                        BroadcastMessage.objects.filter(id__in=message_ids)
+                        .exclude(status__in=ALREADY_SENT_STATUSES)
+                        .exclude(message_id__isnull=False, message_id__gt="")
                     )
+                    # Which rows this update actually moves *into* FAILED.
+                    # Anything already FAILED was reported when it got there,
+                    # and re-reporting it would draw a second failed bubble
+                    # for one send (#658).
+                    newly_failed_ids = list(
+                        doomed.exclude(status=MessageStatusChoices.FAILED).values_list("id", flat=True)
+                    )
+                    doomed.update(status=MessageStatusChoices.FAILED, response=f"Max retries exceeded: {str(exc)}")
+                    # Only the rows that just became FAILED — a row that was
+                    # already FAILED has the timestamp of the failure that got
+                    # it there, and this batch is not it.
+                    BroadcastMessage.objects.filter(id__in=newly_failed_ids).update(failed_at=timezone.now())
             except Exception as update_error:
                 logger.exception(f"Error updating failed messages: {str(update_error)}")
+
+            # Outside the atomic block, and re-reading the status rather than
+            # trusting the ids: if that block rolled back, nothing failed and
+            # nothing should be announced (#658).
+            for failed_message in BroadcastMessage.objects.select_related("broadcast", "contact").filter(
+                id__in=newly_failed_ids, status=MessageStatusChoices.FAILED
+            ):
+                _record_broadcast_message_failure(failed_message)
 
             return {
                 "status": "failed",
