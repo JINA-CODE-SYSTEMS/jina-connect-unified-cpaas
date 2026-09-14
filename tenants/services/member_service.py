@@ -83,6 +83,13 @@ def add_member_to_tenant(
             last_name=last_name or "",
             password=password,  # User.save() auto-hashes via identify_hasher
             is_active=False,  # Pending email verification
+            # ``mobile`` is deliberately not passed, and that is now correct
+            # rather than the bug it used to be. It is unique, so "no number
+            # known" must be NULL — two NULLs do not collide in Postgres, two
+            # empty strings do — and since #360 made the column nullable,
+            # Django's default for an omitted value resolves to None rather
+            # than "". Passing ``mobile=None`` here would say the same thing
+            # twice; what makes it true is the model, not this call.
         )
 
         tenant_user = TenantUser.objects.create(

@@ -101,7 +101,10 @@ class LoginPatchUserSerializer(serializers.Serializer):
             "username": user.username,
             "first_name": user.first_name,
             "last_name": user.last_name,
-            "mobile": str(user.mobile),
+            # `str(None)` is the string "None", which would ship to clients as a
+            # phone number made of four letters. Absent is "", as it was before
+            # the column became nullable, so the response shape is unchanged.
+            "mobile": str(user.mobile) if user.mobile else "",
         }
 
 
