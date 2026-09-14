@@ -53,6 +53,7 @@ def test_an_unreadable_branding_table_does_not_stop_the_mail(db, monkeypatch):
     already configured — and the failure is logged, because sending quietly under
     the default is the state this function exists to end.
     """
+
     def boom(*args, **kwargs):
         raise RuntimeError("database is on fire")
 

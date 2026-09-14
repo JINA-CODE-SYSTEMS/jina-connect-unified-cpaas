@@ -38,8 +38,7 @@ logger = logging.getLogger(__name__)
 WRITE_FRAMES = frozenset({"mark_as_read", "typing_indicator"})
 
 READ_ONLY_FRAME_MESSAGE = (
-    "This is a read-only view of the organisation. "
-    "You can read conversations, but not mark them read or signal typing."
+    "This is a read-only view of the organisation. You can read conversations, but not mark them read or signal typing."
 )
 
 

@@ -6,27 +6,63 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('tenants', '0031_wa_app_webhook_verify_token'),
+        ("tenants", "0031_wa_app_webhook_verify_token"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='WACredentialReveal',
+            name="WACredentialReveal",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('tenant_name', models.CharField(blank=True, help_text='Whose credential it was, at the time. Kept if the organisation is deleted.', max_length=255)),
-                ('field', models.CharField(choices=[('bsp_access_token', 'BSP access token'), ('meta_app_secret', 'META app secret')], db_index=True, max_length=32)),
-                ('actor_username', models.CharField(help_text='Username of the actor at the time — kept if the account is deleted.', max_length=150)),
-                ('revealed_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('actor', models.ForeignKey(blank=True, help_text='Who asked to see it.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='wa_credential_reveals', to=settings.AUTH_USER_MODEL)),
-                ('wa_app', models.ForeignKey(help_text='The app whose credential was shown.', on_delete=django.db.models.deletion.CASCADE, related_name='credential_reveals', to='tenants.tenantwaapp')),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "tenant_name",
+                    models.CharField(
+                        blank=True,
+                        help_text="Whose credential it was, at the time. Kept if the organisation is deleted.",
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "field",
+                    models.CharField(
+                        choices=[("bsp_access_token", "BSP access token"), ("meta_app_secret", "META app secret")],
+                        db_index=True,
+                        max_length=32,
+                    ),
+                ),
+                (
+                    "actor_username",
+                    models.CharField(
+                        help_text="Username of the actor at the time — kept if the account is deleted.", max_length=150
+                    ),
+                ),
+                ("revealed_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                (
+                    "actor",
+                    models.ForeignKey(
+                        blank=True,
+                        help_text="Who asked to see it.",
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="wa_credential_reveals",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "wa_app",
+                    models.ForeignKey(
+                        help_text="The app whose credential was shown.",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="credential_reveals",
+                        to="tenants.tenantwaapp",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'WA credential reveal',
-                'ordering': ['-revealed_at'],
+                "verbose_name": "WA credential reveal",
+                "ordering": ["-revealed_at"],
             },
         ),
     ]
