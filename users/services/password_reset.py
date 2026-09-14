@@ -81,7 +81,7 @@ class PasswordResetService:
                 .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
                 .header {{ background-color: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
                 .content {{ background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }}
-                .button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+                .button {{ display: inline-block; background-color: #4F46E5; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
                 .button:hover {{ background-color: #4338CA; }}
                 .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
                 .warning {{ color: #DC2626; font-size: 14px; margin-top: 20px; padding: 15px; background-color: #FEF2F2; border-radius: 6px; }}
@@ -100,7 +100,7 @@ class PasswordResetService:
                     <p>Click the button below to reset your password:</p>
 
                     <p style="text-align: center;">
-                        <a href="{reset_url}" class="button">Reset Password</a>
+                        <a href="{reset_url}" class="button" style="display: inline-block; background-color: #4F46E5; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;"><span style="color: #ffffff !important; text-decoration: none;">Reset Password</span></a>
                     </p>
 
                     <p>Or copy and paste this link into your browser:</p>

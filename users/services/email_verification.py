@@ -72,7 +72,7 @@ class EmailVerificationService:
                 .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
                 .header {{ background-color: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
                 .content {{ background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }}
-                .button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+                .button {{ display: inline-block; background-color: #4F46E5; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
                 .button:hover {{ background-color: #4338CA; }}
                 .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
                 .warning {{ color: #9CA3AF; font-size: 12px; margin-top: 20px; }}
@@ -88,7 +88,7 @@ class EmailVerificationService:
                     <p>Thank you for registering with {product_name}. To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
 
                     <p style="text-align: center;">
-                        <a href="{verification_url}" class="button" style="display: inline-block; background-color: #4F46E5; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">Verify Email Address</a>
+                        <a href="{verification_url}" class="button" style="display: inline-block; background-color: #4F46E5; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;"><span style="color: #ffffff !important; text-decoration: none;">Verify Email Address</span></a>
                     </p>
 
                     <p>Or copy and paste this link into your browser:</p>
