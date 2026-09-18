@@ -9,6 +9,35 @@ from contacts.models import TenantContact
 logger = logging.getLogger(__name__)
 
 
+def _reactivate_if_archived(contact) -> bool:
+    """Bring an archived contact back when they message in.
+
+    Archiving means "I am not working this contact". An inbound message is the
+    clearest possible signal that they are back, so leaving them archived
+    produces the worst of the three available states: the conversation appears
+    in the team inbox while the person is absent from Contacts, so an agent can
+    read and answer them but cannot find, tag or assign them.
+
+    The alternative — a second contact row — is worse still. The phone number
+    is how this table is keyed, so the history would split in two and, more
+    seriously, ``marketing_opt_out`` lives on the row: a fresh row is a contact
+    who never opted out. Archiving must not become a way to lose a STOP.
+
+    Returns:
+        True if the contact was reactivated, False if it was already active.
+    """
+    if contact is None or contact.is_active:
+        return False
+
+    contact.is_active = True
+    contact.save(update_fields=["is_active", "updated_at"])
+    logger.info(
+        "[resolve_or_create_contact] Reactivated archived contact %s — inbound message received",
+        contact.pk,
+    )
+    return True
+
+
 def resolve_or_create_contact(
     *,
     tenant,
@@ -50,6 +79,8 @@ def resolve_or_create_contact(
             )
         else:
             raise ValueError("Either phone or telegram_chat_id must be provided")
+
+        _reactivate_if_archived(contact)
         return contact
     except Exception:
         logger.warning(

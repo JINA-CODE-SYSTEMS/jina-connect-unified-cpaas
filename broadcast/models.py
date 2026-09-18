@@ -460,9 +460,16 @@ class Broadcast(BaseTenantModelForFilterUser):
         Utility and authentication broadcasts bill every recipient — an
         opt-out does not reach transactional traffic.
         """
+        # ``is_active=True``: an archived contact has been taken off the
+        # tenant's list, and the send suppresses them, so quoting for them
+        # would price traffic that will never leave. Unlike the opt-out this
+        # applies to every category — archiving is the operator saying they do
+        # not deal with this person, not the contact declining one kind of
+        # message.
+        active = self.recipients.filter(is_active=True)
         if self.is_marketing_broadcast:
-            return self.recipients.exclude(marketing_opt_out=True)
-        return self.recipients.all()
+            return active.exclude(marketing_opt_out=True)
+        return active
 
     def calculate_initial_cost(self):
         """

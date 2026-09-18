@@ -86,8 +86,15 @@ class BroadcastService(BaseModel):
         # Get broadcast (don't update status here - will be updated by main task)
         broadcast = self.broadcast
 
-        # Get recipients
-        recipients = list(broadcast.recipients.all())
+        # Get recipients. ``billable_recipients()`` rather than
+        # ``recipients.all()``, so the set that is sent to is the same set that
+        # was priced — archived contacts and marketing opt-outs are excluded by
+        # one definition rather than two that can drift (#262's lesson about a
+        # charge and a refund disagreeing).
+        #
+        # A contact archived *after* this point is caught later, immediately
+        # before the provider call, where the spend actually happens.
+        recipients = list(broadcast.billable_recipients())
 
         if not recipients:
             logger.warning(f"No recipients found for broadcast {self.broadcast_id}")
