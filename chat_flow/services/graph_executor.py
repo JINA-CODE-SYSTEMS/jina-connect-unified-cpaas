@@ -321,6 +321,19 @@ def save_session_to_db(state: FlowState) -> UserChatFlowSession:
         defaults={
             "current_node_id": current_node_id,
             "is_complete": is_complete,
+            # A finished conversation is not an active one. ``is_active`` is a
+            # *lookup* argument above rather than a default, so reaching an end
+            # node used to set ``is_complete`` and ``ended_at`` and leave the
+            # session active for ever — the model's own lifecycle notes say
+            # step 5 is "marked as completed (is_active=False)", and nothing
+            # did it.
+            #
+            # The visible cost was not an untidy table: editing a flow is
+            # refused while a session is active, so a flow that somebody had
+            # run to completion could not be edited again. Setting it here also
+            # matches what the loader already expects, since it looks for a
+            # *newer active* session and treats a complete one as not current.
+            "is_active": not is_complete,
             "context_data": full_state_data,  # Store entire state for full restoration
             "ended_at": timezone.now() if is_complete else None,
             "tenant_id": tenant_id,
