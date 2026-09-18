@@ -540,6 +540,24 @@ BASE_URL = config("BASE_URL", "http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_WEBHOOK_BASE_URL = config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))
 
+# ── Chat flow sessions ───────────────────────────────────────────────────────
+# How long a chat-flow session may sit without advancing before a sweep ends it.
+#
+# Sessions had no expiry at all: they ended only at an end node, on an explicit
+# reset, or when the flow was deactivated — while the model's own docstring
+# said "until end node reached or session expires" and ``ended_at`` documented
+# an "expired" state nothing could produce. One contact who started a flow and
+# never replied therefore held a session open forever, and because editing a
+# flow is refused while any session is active, that single abandoned reply
+# blocked the flow from ever being edited again.
+#
+# 72 hours rather than 24: WhatsApp's own service window is 24 hours, so it is
+# tempting, but a contact who answers on Monday morning after a Friday message
+# is an ordinary customer rather than a stale session. The sweep is deliberately
+# generous because the cost of ending a live conversation is much higher than
+# the cost of leaving a dead one a little longer.
+CHATFLOW_SESSION_IDLE_TIMEOUT_HOURS = config("CHATFLOW_SESSION_IDLE_TIMEOUT_HOURS", 72, cast=int)
+
 # ── Telegram Bot API settings ──
 TELEGRAM_MAX_RETRIES = config("TELEGRAM_MAX_RETRIES", 3, cast=int)
 TELEGRAM_REQUEST_TIMEOUT = config("TELEGRAM_REQUEST_TIMEOUT", 30, cast=int)
@@ -822,6 +840,11 @@ CRONJOBS = [
         "30 6 1 * *",
         "availability.cron.send_monthly_availability_report",
         ">> " + os.path.join(BASE_DIR, "jina_cron_availability_report.log 2>&1"),
+    ),
+    (
+        "23 * * * *",
+        "chat_flow.cron.expire_idle_chatflow_sessions",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_chatflow_session_expiry.log 2>&1"),
     ),
     # Example: Uncomment below to sync gupshup auth templates every 15 minutes
     # ("*/15 * * * *", "gupshup.cron.sync_gupshup_auth_templates", ">> " + os.path.join(BASE_DIR, "gupshup_sync.log 2>&1")),

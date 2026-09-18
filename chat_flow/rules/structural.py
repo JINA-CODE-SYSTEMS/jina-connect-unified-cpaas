@@ -367,3 +367,62 @@ class OnlyConditionNodeCanBranchRule(FlowRule):
             )
 
         return violations
+
+
+@register
+class OneTargetPerButtonRule(FlowRule):
+    """A button may route to exactly one node.
+
+    Two edges leaving the same button handle is not an error the editor or the
+    server ever reported, and at runtime it does not branch — it silently drops
+    one of them. ``graph_executor`` builds routing as
+    ``button_routes[btn_text] = edge.target_node.node_id``, a plain dict
+    assignment, so whichever edge the database happens to return last wins and
+    the other target is never reachable.
+
+    The flow therefore saves, validates, and quietly does something other than
+    what the canvas shows — which is worse than a refusal, because the canvas
+    keeps drawing the branch that will never be taken.
+    """
+
+    rule_id = "STRUCT_011"
+    description = "Each button may route to exactly one node - two edges from one button silently discard one"
+    category = RuleCategory.STRUCTURAL
+
+    def validate(self, flow_data: Dict[str, Any]) -> List[RuleViolation]:
+        violations = []
+
+        # Keyed on (source node, handle) rather than on button text: the handle
+        # is what the canvas actually connects, and two buttons may legitimately
+        # carry the same label on different nodes.
+        targets: Dict[tuple, List[Dict[str, Any]]] = {}
+        for edge in flow_data.get("edges", []):
+            handle = edge.get("sourceHandle") or ""
+            if not handle.startswith("button-"):
+                continue
+            targets.setdefault((edge.get("source"), handle), []).append(edge)
+
+        for (node_id, handle), edges in targets.items():
+            if len(edges) < 2:
+                continue
+
+            # Named rather than counted. An operator looking at a canvas with
+            # two lines leaving one button needs to know which button and where
+            # both lines go, or they cannot tell which one to delete.
+            label = next((e.get("data", {}).get("button_text") for e in edges if e.get("data")), None) or handle
+            destinations = sorted({str(e.get("target")) for e in edges})
+            violations.append(
+                RuleViolation(
+                    rule_id=self.rule_id,
+                    message=(
+                        f"Button '{label}' on node '{node_id}' routes to {len(destinations)} different nodes "
+                        f"({', '.join(destinations)}). A button can only go to one, and the others are "
+                        f"silently ignored when the flow runs - delete all but one."
+                    ),
+                    node_id=node_id,
+                    severity=self.severity,
+                    details={"handle": handle, "targets": destinations},
+                )
+            )
+
+        return violations
