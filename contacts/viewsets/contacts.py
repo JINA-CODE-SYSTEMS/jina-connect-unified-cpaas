@@ -16,7 +16,12 @@ from rest_framework.throttling import UserRateThrottle
 from abstract.viewsets.base import BaseTenantModelViewSet
 from contacts.filters import TenantContactFilter
 from contacts.models import AssigneeTypeChoices, ContactSource, TenantContact
-from contacts.serializers import ContactAssignmentSerializer, ContactCSVUploadSerializer, TenantContactSerializer
+from contacts.serializers import (
+    ContactAssignmentSerializer,
+    ContactBulkArchiveSerializer,
+    ContactCSVUploadSerializer,
+    TenantContactSerializer,
+)
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -64,6 +69,8 @@ class ContactsViewSet(BaseTenantModelViewSet):
         "bulk_import": "contact.import",
         "import_status": "contact.import",
         "export_csv": "contact.export",
+        "bulk_archive": "contact.delete",
+        "bulk_restore": "contact.delete",
         "dashboard": "analytics.view",
         "default": "contact.view",
     }
@@ -83,6 +90,42 @@ class ContactsViewSet(BaseTenantModelViewSet):
             create_contact_added_notification(contact)
         except Exception:
             pass
+
+    # ── Archived contacts ─────────────────────────────────────────────
+
+    #: Query parameter that opts a request back into seeing archived rows.
+    #: Already a declared filter on ``TenantContactFilter``; naming it here is
+    #: what tells ``get_queryset`` to stand aside and let the filter answer.
+    ARCHIVE_PARAM = "is_active"
+
+    def get_unarchived_scope(self):
+        """Every contact this user may touch, archived ones included.
+
+        The tenant and role scoping from the base class, without the archive
+        filter that ``get_queryset`` adds. Restore needs it — a restore that
+        could only see unarchived rows could never find anything to do.
+        """
+        return super().get_queryset()
+
+    def get_queryset(self):
+        """Tenant- and role-scoped contacts, minus the archived ones.
+
+        Archiving is what this platform means by deleting a contact: the row
+        stays, and with it the conversation history, the per-recipient
+        broadcast records that refunds are counted from, and — the one that
+        would be a compliance problem to lose — the contact's own marketing
+        opt-out, which lives on this row and nowhere else.
+
+        Hidden by default rather than filtered on demand, because a list that
+        still showed them would make the archive button look broken. Asking
+        for ``is_active`` explicitly hands the decision back to the filter, so
+        ``?is_active=false`` is the archive view and ``?is_active=true`` is
+        the default stated out loud.
+        """
+        queryset = super().get_queryset()
+        if self.ARCHIVE_PARAM in self.request.query_params:
+            return queryset
+        return queryset.filter(is_active=True)
 
     # ── Role-scoped queryset ──────────────────────────────────────────
 
@@ -517,6 +560,81 @@ class ContactsViewSet(BaseTenantModelViewSet):
             result["errors"].append({"row": 0, "error": f"Unexpected error: {str(e)}"})
 
         return result
+
+    # ==================== Bulk archive / restore ====================
+
+    def _apply_archive(self, request, *, archived: bool):
+        """Flip ``is_active`` on the named contacts and report what happened.
+
+        Args:
+            request: the DRF request, carrying ``ids``.
+            archived: True to archive, False to restore.
+
+        Returns:
+            Response with how many rows changed and which ids did not.
+        """
+        serializer = ContactBulkArchiveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+
+        # Scoped, always. ``get_unarchived_scope`` is the base class's tenant
+        # and role filtering, so an agent reaches only the contacts assigned to
+        # them and nobody reaches another organisation's rows — the ids come
+        # from the client and are not evidence of anything on their own (#346).
+        scope = self.get_unarchived_scope().filter(pk__in=ids)
+
+        # Read before writing, so "not found" means not permitted or not there,
+        # and is distinguishable from "already in that state".
+        found = dict(scope.values_list("pk", "is_active"))
+        missing = [contact_id for contact_id in ids if contact_id not in found]
+        to_change = [contact_id for contact_id, is_active in found.items() if is_active != (not archived)]
+
+        changed = 0
+        if to_change:
+            changed = self.get_unarchived_scope().filter(pk__in=to_change).update(is_active=not archived)
+
+        action_name = "archived" if archived else "restored"
+        logger.info(
+            "[contacts] %s %s of %s requested contact(s) for user %s",
+            action_name,
+            changed,
+            len(ids),
+            request.user.pk,
+        )
+
+        return Response(
+            {
+                action_name: changed,
+                "already_" + action_name: len(found) - len(to_change),
+                "not_found": missing,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"], url_path="bulk-archive")
+    def bulk_archive(self, request):
+        """Archive the named contacts — this platform's "delete".
+
+        POST /contacts/bulk-archive/  {"ids": [1, 2, 3]}
+
+        The row is kept and hidden. Nothing that hangs off it is touched, which
+        is the point: a contact's messages, their WhatsApp conversations, the
+        per-recipient broadcast rows that refunds are counted from, and their
+        marketing opt-out all cascade on a real delete, and the opt-out is
+        recorded nowhere else. Re-importing a number whose opt-out had been
+        deleted with it would opt the person back in silently.
+
+        Reversible through ``bulk-restore``.
+        """
+        return self._apply_archive(request, archived=True)
+
+    @action(detail=False, methods=["post"], url_path="bulk-restore")
+    def bulk_restore(self, request):
+        """Put archived contacts back in the list.
+
+        POST /contacts/bulk-restore/  {"ids": [1, 2, 3]}
+        """
+        return self._apply_archive(request, archived=False)
 
     @action(detail=False, methods=["get"], url_path="export-csv")
     def export_csv(self, request):

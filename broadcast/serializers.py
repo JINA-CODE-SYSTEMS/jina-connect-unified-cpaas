@@ -194,7 +194,13 @@ class BroadcastSerializer(BaseSerializer):
         if getattr(instance, "_select_all", False):
             from contacts.models import TenantContact
 
-            qs = TenantContact.objects.filter(tenant=instance.tenant, phone__isnull=False).exclude(phone="")
+            # ``is_active=True``: archived contacts are the ones an operator
+            # has taken out of their list, and "send to everyone" must mean
+            # everyone they can see. Without this, archiving would hide a
+            # contact from the screen and keep messaging them.
+            qs = TenantContact.objects.filter(tenant=instance.tenant, is_active=True, phone__isnull=False).exclude(
+                phone=""
+            )
             tag_filter = getattr(instance, "_tag_filter", [])
             if tag_filter:
                 qs = qs.filter(tag__in=tag_filter)
