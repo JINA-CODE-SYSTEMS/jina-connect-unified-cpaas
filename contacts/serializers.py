@@ -166,3 +166,27 @@ class ContactBulkCreateSerializer(serializers.Serializer):
         allow_blank=True,
         help_text="Default tag to apply to contacts without a tag",
     )
+
+
+class ContactBulkArchiveSerializer(serializers.Serializer):
+    """The ids a bulk archive or restore applies to.
+
+    ``max_length`` is the pagination class's ``max_page_size``, because the
+    action is deliberately page-scoped: the screen sends the rows it is
+    showing. It is not a performance ceiling — it is what stops "archive
+    everything that matches this filter" from being expressible as one request
+    that nobody reviewed. Clearing a whole filter is a different decision from
+    clearing a page, and it should look different.
+    """
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        min_length=1,
+        max_length=1000,
+        help_text="Contact ids to archive or restore. At most one page (1000) per request.",
+    )
+
+    def validate_ids(self, value):
+        # Deduplicated so the counts reported back mean what they say: sending
+        # the same id twice should not read as two contacts archived.
+        return list(dict.fromkeys(value))
