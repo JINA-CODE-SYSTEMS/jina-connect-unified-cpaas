@@ -14,7 +14,7 @@ from telegram.constants import CALLBACK_DATA_MAX_LENGTH, CALLBACK_DATA_VERSION
 _CALLBACK_RE = re.compile(r"^(?P<version>v\d+):(?P<action>\w+):(?P<id>[^:]+):(?P<nonce>[^:]+)$")
 
 
-def _truncate_callback_data(data: str) -> str:
+def truncate_callback_data(data: str) -> str:
     """Trim callback_data to Telegram's byte limit without splitting UTF-8 codepoints."""
     encoded = data.encode("utf-8")
     if len(encoded) <= CALLBACK_DATA_MAX_LENGTH:
@@ -42,9 +42,9 @@ def build_template_button_keyboard(buttons: list[dict]) -> Optional[dict]:
         elif button_type == "PHONE_NUMBER" and button.get("phone_number"):
             normalized["url"] = f"tel:{button['phone_number']}"
         elif button_type in ("QUICK_REPLY", "COPY_CODE", "OTP"):
-            normalized["callback_data"] = _truncate_callback_data(f"{button_type.lower()}:{text}")
+            normalized["callback_data"] = truncate_callback_data(f"{button_type.lower()}:{text}")
         else:
-            normalized["callback_data"] = _truncate_callback_data(f"action:{text}")
+            normalized["callback_data"] = truncate_callback_data(f"action:{text}")
 
         rows.append([normalized])
 
