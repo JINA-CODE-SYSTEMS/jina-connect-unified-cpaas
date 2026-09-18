@@ -90,23 +90,73 @@ class ChatFlowViewSet(BaseTenantModelViewSet):
         return ChatFlowSerializer
 
     def _check_active_sessions_for_flow_data(self, request):
+        """Refuse a ``flow_data`` edit that would strand somebody mid-conversation.
+
+        Editing a flow runs ``flow.nodes.all().delete()`` and rebuilds every
+        node, while a session records its position as ``current_node_id`` — a
+        string, not a foreign key. A session sitting on a node the edit removes
+        is therefore left pointing at something that no longer exists.
+
+        Two things this deliberately does *not* do, both of which it used to:
+
+        * **It no longer refuses every edit.** The old check blocked on any
+          active session at all, so moving a node in a corner of the canvas was
+          refused because one contact was mid-conversation somewhere else
+          entirely. It now blocks only when a node a session is actually
+          standing on would disappear.
+        * **It no longer counts sessions that stopped advancing.** Sessions had
+          no expiry, so one contact who never replied blocked editing for good.
+          Stale ones are ignored here and swept by
+          ``chat_flow.cron.expire_idle_chatflow_sessions``; ignoring them at the
+          gate as well means an operator is unblocked immediately rather than
+          on the next sweep.
+
+        Returns:
+            A 409 ``Response``, or None if the edit may proceed.
         """
-        If flow_data is being modified, check for active sessions
-        and return a 409 Response if any exist, otherwise return None.
-        """
-        if "flow_data" in request.data:
-            instance = self.get_object()
-            active_count = UserChatFlowSession.objects.filter(flow=instance, is_active=True).count()
-            if active_count > 0:
-                return Response(
-                    {
-                        "error": "flow_has_active_sessions",
-                        "active_session_count": active_count,
-                        "message": f"Cannot edit flow while {active_count} session(s) are active. Deactivate the flow first.",
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
-        return None
+        if "flow_data" not in request.data:
+            return None
+
+        instance = self.get_object()
+
+        from chat_flow.services.session_expiry import idle_cutoff
+
+        live_sessions = UserChatFlowSession.objects.filter(flow=instance, is_active=True, updated_at__gte=idle_cutoff())
+
+        # Which node ids survive the edit. A malformed body is not this
+        # method's business — the serializer reports it properly — so anything
+        # unreadable is treated as "no nodes survive", which is the cautious
+        # reading and leaves the real error to be raised downstream.
+        flow_data = request.data.get("flow_data") or {}
+        incoming_nodes = flow_data.get("nodes") if isinstance(flow_data, dict) else None
+        surviving_ids = (
+            {node.get("id") for node in incoming_nodes if isinstance(node, dict)} if incoming_nodes else set()
+        )
+
+        stranded = [s for s in live_sessions.select_related("contact") if s.current_node_id not in surviving_ids]
+        if not stranded:
+            return None
+
+        return Response(
+            {
+                "error": "flow_has_active_sessions",
+                "active_session_count": len(stranded),
+                "stranded_nodes": sorted({s.current_node_id for s in stranded}),
+                # The endpoint, by name. The message used to say "Deactivate
+                # the flow first" without saying how, and the one control that
+                # does it is an API call the editor does not surface.
+                "resolution": {
+                    "deactivate": f"POST /chat-flow/flows/{instance.pk}/deactivate/",
+                    "reactivate": f"POST /chat-flow/flows/{instance.pk}/activate/",
+                },
+                "message": (
+                    f"{len(stranded)} contact(s) are waiting at a node this edit removes, and would be "
+                    f"stranded mid-conversation. Either keep those nodes, or end the conversations with "
+                    f"POST /chat-flow/flows/{instance.pk}/deactivate/ and re-activate afterwards."
+                ),
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
 
     def update(self, request, *args, **kwargs):
         conflict = self._check_active_sessions_for_flow_data(request)
