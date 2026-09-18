@@ -1855,6 +1855,7 @@ def send_session_message(
         # ── Telegram branch ─────────────────────────────────────────────────
         if platform == "TELEGRAM":
             from telegram.models import TelegramBotApp
+            from telegram.services.keyboard_builder import truncate_callback_data
             from telegram.services.message_sender import TelegramMessageSender
 
             chat_id = contact.telegram_chat_id
@@ -1886,7 +1887,15 @@ def send_session_message(
                         continue
                     label = b.get("title") or b.get("text") or "Option"
                     value = b.get("id") or label
-                    tg_buttons.append([{"text": label, "callback_data": str(value)[:64]}])
+                    # Telegram's 64 is a limit in *bytes*, and this used to cut
+                    # at 64 characters — so any non-ASCII label (a button in
+                    # Hindi, or carrying an emoji) produced callback_data that
+                    # is under the character count and over the byte one.
+                    # ``build_inline_keyboard`` then raises rather than sends,
+                    # and the whole keyboard fails. ``telegram`` already owns
+                    # the correct answer, cutting on a codepoint boundary, so
+                    # it is asked rather than approximated a second time.
+                    tg_buttons.append([{"text": label, "callback_data": truncate_callback_data(str(value))}])
 
                 send_result = sender.send_keyboard(
                     chat_id=str(chat_id),

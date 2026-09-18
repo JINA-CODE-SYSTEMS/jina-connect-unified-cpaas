@@ -17,6 +17,63 @@ from .constants import (
     is_passthrough_node,
 )
 
+# ── What a flow identifier may contain ───────────────────────────────────────
+#
+# Node ids, edge ids and button ids each used to carry their own copy of this
+# rule, and each copy rejected ``" ' \ \n \r \t`` as "special characters that
+# could break JSON".
+#
+# JSON was never the hazard. These identifiers live in a JSONField and are
+# serialized by ``json``, which escapes; nothing here hand-builds JSON or SQL
+# from them, and the one place they reach HTML is ``format_html`` with a
+# placeholder, which escapes too. What the rule did instead was reject
+# identifiers the *frontend derives from a button's own label* — it sends
+# ``btn-{text}`` — so a button reading "Let's have a call" could not be saved.
+# That is a legal WhatsApp label, at 17 of the permitted 20 characters.
+#
+# Control characters are a different matter and stay refused. They are
+# invisible, so an id carrying one compares unequal to the id an operator
+# believes they typed and the mismatch is unreadable on screen; they split the
+# log lines these ids travel through; and a newline or tab inside a
+# ``button-{n}`` handle breaks the parsing that reads the index back out.
+_CONTROL_CHARACTERS = frozenset(chr(code) for code in range(0x20)) | {"\x7f"}
+
+
+def validate_flow_identifier(value: Any, what: str) -> str:
+    """Return *value* stripped, or raise ``ValueError`` naming what is wrong.
+
+    One function rather than four copies: this rule was duplicated across
+    ``NodeButton``, ``EdgeData``, ``ReactFlowNode`` and ``ReactFlowEdge``, and
+    four copies of one question is how the copies come to disagree — a shape
+    this codebase has already had to undo more than once.
+
+    Args:
+        value: the candidate identifier, from the frontend.
+        what: how to name it in an error, e.g. ``"Button ID"``.
+
+    Returns:
+        The identifier with surrounding whitespace removed.
+    """
+    if not value or not isinstance(value, str):
+        raise ValueError(f"{what} must be a non-empty string")
+
+    offender = next((char for char in value if char in _CONTROL_CHARACTERS), None)
+    if offender is not None:
+        # The character and the value, not just the rule. "Node 3 > buttons >
+        # id: Button ID cannot contain quotes, backslashes, or newlines" named
+        # the node but not which of its buttons, and described the rule rather
+        # than the input — leaving a reader no way to tell what to change.
+        raise ValueError(f"{what} cannot contain control characters: found {offender!r} in {value!r}")
+
+    identifier = value.strip()
+    if not identifier:
+        # Checked after stripping, not before. An id of "   " passed the
+        # not-empty test above and was then returned as "", so a button could
+        # be saved with no id at all and simply stop matching its edge.
+        raise ValueError(f"{what} cannot be empty or only whitespace")
+
+    return identifier
+
 
 class ReactFlowPosition(BaseModel):
     """Validates ReactFlow node position coordinates."""
@@ -93,22 +150,19 @@ class NodeButton(BaseModel):
             if not text and title:
                 values["text"] = title
             elif not text and not title:
-                # generate from id when both missing
-                btn_id = values.get("id", "")
-                values["text"] = btn_id.replace("btn-", "") if btn_id else "Button"
+                # Generate from id when both are missing. ``removeprefix``
+                # rather than ``replace``, which took out *every* occurrence:
+                # the template extractor issues ids of the form
+                # ``template-btn-{i}``, and replacing turned that into
+                # "template1" rather than trimming a prefix that is not there.
+                btn_id = values.get("id") or ""
+                values["text"] = btn_id.removeprefix("btn-") if btn_id else "Button"
         return values
 
     @field_validator("id")
     def validate_button_id(cls, v):
         """Ensure button ID is properly formatted."""
-        if not v or not isinstance(v, str):
-            raise ValueError("Button ID must be a non-empty string")
-
-        # Basic format validation - no special characters that could break JSON
-        if any(char in v for char in ['"', "'", "\\", "\n", "\r", "\t"]):
-            raise ValueError("Button ID cannot contain quotes, backslashes, or newlines")
-
-        return v.strip()
+        return validate_flow_identifier(v, "Button ID")
 
     @field_validator("text")
     def validate_button_text(cls, v):
@@ -223,18 +277,13 @@ class ReactFlowNode(BaseModel):
     @field_validator("id")
     def validate_node_id(cls, v):
         """Ensure node ID is properly formatted."""
-        if not v or not isinstance(v, str):
-            raise ValueError("Node ID must be a non-empty string")
-
-        # Basic format validation
-        if any(char in v for char in ['"', "'", "\\", "\n", "\r", "\t"]):
-            raise ValueError("Node ID cannot contain quotes, backslashes, or newlines")
+        node_id = validate_flow_identifier(v, "Node ID")
 
         # Reasonable length limit
-        if len(v) > 255:
+        if len(node_id) > 255:
             raise ValueError("Node ID too long (max 255 characters)")
 
-        return v.strip()
+        return node_id
 
     @field_validator("type")
     def validate_node_type(cls, v):
@@ -261,16 +310,15 @@ class EdgeData(BaseModel):
 
     @field_validator("button_id")
     def validate_button_id(cls, v):
-        """Validate button ID format if provided."""
-        if v is not None:
-            if not isinstance(v, str) or len(v.strip()) == 0:
-                raise ValueError("Button ID must be a non-empty string")
+        """Validate button ID format if provided.
 
-            # Basic format validation
-            if any(char in v for char in ['"', "'", "\\", "\n", "\r", "\t"]):
-                raise ValueError("Button ID cannot contain quotes, backslashes, or newlines")
+        Optional here, unlike on the button itself: an edge may name its
+        button through ``button_text`` or ``sourceHandle`` instead.
+        """
+        if v is None:
+            return None
 
-        return v.strip() if v else v
+        return validate_flow_identifier(v, "Button ID")
 
     @field_validator("button_text")
     def validate_button_text(cls, v):
@@ -315,19 +363,14 @@ class ReactFlowEdge(BaseModel):
     @field_validator("id")
     def validate_edge_id(cls, v):
         """Ensure edge ID is properly formatted."""
-        if not v or not isinstance(v, str):
-            raise ValueError("Edge ID must be a non-empty string")
-
-        # Basic format validation
-        if any(char in v for char in ['"', "'", "\\", "\n", "\r", "\t"]):
-            raise ValueError("Edge ID cannot contain quotes, backslashes, or newlines")
+        edge_id = validate_flow_identifier(v, "Edge ID")
 
         # Reasonable length limit — ReactFlow auto-generates IDs like
         # reactflow__edge-{uuid}{handle}-{uuid}{handle} which can be ~120 chars
-        if len(v) > 255:
+        if len(edge_id) > 255:
             raise ValueError("Edge ID too long (max 255 characters)")
 
-        return v.strip()
+        return edge_id
 
     @field_validator("source", "target")
     def validate_node_references(cls, v):
@@ -448,16 +491,24 @@ class ReactFlowData(BaseModel):
             is_passthrough_edge = source_handle in ("bottom", "default", None) and not has_button_ref
 
             if is_passthrough_edge:
-                # Template has QUICK_REPLY buttons, so edge should use button reference
+                # Template has QUICK_REPLY buttons, so edge should use button reference.
+                #
+                # Named rather than illustrated: this said "(Good, Bad, etc.)",
+                # which are buttons from some other flow entirely, so a reader
+                # looking at a canvas with none of those had to guess whether
+                # the message was even about their node.
+                labels = [btn.text for btn in node_buttons if btn.type == "QUICK_REPLY" and btn.text]
+                named = ", ".join(f"'{label}'" for label in labels)
                 raise ValueError(
-                    "Template has interactive buttons (Good, Bad, etc.). "
-                    "Please connect the edge from a specific button, not from the node directly."
+                    f"Node '{edge.source}' has interactive buttons ({named}), so each reply needs its "
+                    "own route. Connect this edge from one of those buttons rather than from the node "
+                    "itself."
                 )
 
             if not has_button_ref:
                 raise ValueError(
-                    "Edge from template must specify which button triggers it. "
-                    "Please connect the edge from a button handle."
+                    f"Edge '{edge.id}' leaves node '{edge.source}' without saying which button triggers "
+                    "it. Connect it from a button handle."
                 )
 
             # Validate button reference - prioritize button_text over button_id
