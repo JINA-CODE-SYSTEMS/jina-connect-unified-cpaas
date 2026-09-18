@@ -747,6 +747,28 @@ def _is_opted_out(message) -> bool:
     return bool(message.contact and message.contact.marketing_opt_out)
 
 
+def _suppression_reason(message) -> str | None:
+    """Why this message must not be handed to the provider, or None to send.
+
+    Checked here rather than when the rows were created, because a broadcast
+    can sit queued for a long time and the operator's contact list keeps
+    moving underneath it. A contact archived seconds before dispatch is the
+    reported case, and this is the last moment at which that can be honoured:
+    the next statement is the spend.
+
+    Archiving suppresses **every** category, unlike the opt-out. An opt-out is
+    the contact declining one kind of message; archiving is the operator saying
+    they do not deal with this person at all, so a utility template is no more
+    wanted than a marketing one.
+    """
+    contact = message.contact
+    if contact is not None and not contact.is_active:
+        return "Suppressed: contact was archived before this message was sent"
+    if _is_opted_out(message):
+        return "Suppressed: contact opted out of marketing messages"
+    return None
+
+
 def _requeue_deferred(message_ids: List[int], countdown: int) -> int:
     """Put messages waiting on a send window back on the queue, timed to it.
 
@@ -848,14 +870,16 @@ def process_broadcast_messages_batch(self, message_ids: List[int]):
                 # charge estimate already left this contact out, so sending
                 # anyway would bill nobody for a message Meta counts against
                 # the number's quality rating.
-                if _is_opted_out(message):
+                suppression = _suppression_reason(message)
+                if suppression:
                     logger.info(
-                        "Suppressing message %s — contact %s opted out of marketing",
+                        "Suppressing message %s for contact %s — %s",
                         message.id,
                         message.contact_id,
+                        suppression,
                     )
                     message.status = MessageStatusChoices.SUPPRESSED
-                    message.response = "Suppressed: contact opted out of marketing messages"
+                    message.response = suppression
                     message.save(update_fields=["status", "response"])
                     suppressed_count += 1
                     continue
