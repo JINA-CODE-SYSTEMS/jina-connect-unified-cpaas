@@ -18,7 +18,7 @@ class HandoffNodeRequired(NodeRule):
     rule_id = "HANDOFF_001"
     description = "Handoff node must have a label"
     severity = RuleSeverity.ERROR
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -52,7 +52,7 @@ class HandoffNodePriorityValid(NodeRule):
     rule_id = "HANDOFF_002"
     description = "Handoff node priority must be valid"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     VALID_PRIORITIES = ("low", "normal", "high", "urgent")
 
@@ -90,7 +90,7 @@ class HandoffNodeAssignmentValid(NodeRule):
     rule_id = "HANDOFF_003"
     description = "Handoff node assignment must be properly configured"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     VALID_ASSIGNMENT_TYPES = ("auto", "team", "agent", "round_robin", "least_busy")
 
@@ -185,7 +185,7 @@ class HandoffNodeMessageValid(NodeRule):
     rule_id = "HANDOFF_004"
     description = "Handoff message to user should be properly formatted"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -241,7 +241,7 @@ class HandoffNodeInternalNoteValid(NodeRule):
     rule_id = "HANDOFF_005"
     description = "Internal note for agents should be properly formatted"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -287,7 +287,7 @@ class HandoffNodePlacement(NodeRule):
     rule_id = "HANDOFF_006"
     description = "Handoff node should be reachable from the flow"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -324,7 +324,7 @@ class HandoffNodeTagsValid(NodeRule):
     rule_id = "HANDOFF_007"
     description = "Handoff tags must be a list of strings"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -383,7 +383,7 @@ class HandoffNodeMustTerminateToEnd(NodeRule):
     rule_id = "HANDOFF_008"
     description = "Handoff node must terminate to an end node"
     severity = RuleSeverity.ERROR
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.HANDOFF
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None

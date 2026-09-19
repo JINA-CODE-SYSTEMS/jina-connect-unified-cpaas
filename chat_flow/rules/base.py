@@ -20,7 +20,15 @@ class RuleSeverity(str, Enum):
 
 
 class RuleCategory(str, Enum):
-    """Categories for grouping rules."""
+    """Categories for grouping rules.
+
+    A category is how the flow builder decides which rules to show against
+    which node, so a rule filed under a category no node type maps to is
+    invisible in the UI however correct it is. Three of these exist for that
+    reason: the delay, handoff and API rules were filed under STRUCTURAL and
+    WHATSAPP, so the builder showed all three node types the same generic
+    structural list and none of their own constraints.
+    """
 
     STRUCTURAL = "structural"
     SESSION_MESSAGE = "session_message"
@@ -28,6 +36,9 @@ class RuleCategory(str, Enum):
     BUTTON = "button"
     EDGE = "edge"
     WHATSAPP = "whatsapp"
+    DELAY = "delay"
+    HANDOFF = "handoff"
+    API = "api"
 
 
 @dataclass

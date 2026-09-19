@@ -45,7 +45,7 @@ class DelayNodeSingleOutgoingEdgeRule(FlowRule):
 
     rule_id = "DELAY_001"
     description = "Delay nodes can only have ONE outgoing edge (passthrough to single next node)"
-    category = RuleCategory.STRUCTURAL
+    category = RuleCategory.DELAY
 
     def validate(self, flow_data: Dict[str, Any]) -> List[RuleViolation]:
         violations = []
@@ -79,7 +79,7 @@ class DelayConfigurationRule(NodeRule):
 
     rule_id = "DELAY_002"
     description = "Delay nodes should specify delay duration"
-    category = RuleCategory.STRUCTURAL
+    category = RuleCategory.DELAY
     severity = RuleSeverity.WARNING
     applies_to_node_type = "delay"
 
@@ -109,7 +109,7 @@ class DelayMaxDurationRule(NodeRule):
 
     rule_id = "DELAY_003"
     description = "Delay duration should not exceed 24 hours"
-    category = RuleCategory.STRUCTURAL
+    category = RuleCategory.DELAY
     severity = RuleSeverity.WARNING
     applies_to_node_type = "delay"
 

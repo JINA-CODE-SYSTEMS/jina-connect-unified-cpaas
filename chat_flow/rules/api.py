@@ -20,7 +20,7 @@ class APINodeURLRequired(NodeRule):
     rule_id = "API_001"
     description = "API node must have a valid URL"
     severity = RuleSeverity.ERROR
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -78,7 +78,7 @@ class APINodeMethodRequired(NodeRule):
     rule_id = "API_002"
     description = "API node must have a valid HTTP method"
     severity = RuleSeverity.ERROR
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -125,7 +125,7 @@ class APINodeHeadersFormat(NodeRule):
     rule_id = "API_003"
     description = "API node headers must be a valid key-value dictionary"
     severity = RuleSeverity.ERROR
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -190,7 +190,7 @@ class APINodeBodyFormat(NodeRule):
     rule_id = "API_004"
     description = "API node body must be valid JSON or form data"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -243,7 +243,7 @@ class APINodeResponseStatusHandles(NodeRule):
     rule_id = "API_005"
     description = "Edges from API node must use valid response status handles"
     severity = RuleSeverity.ERROR
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -295,7 +295,7 @@ class APINodeSuccessPathRequired(NodeRule):
     rule_id = "API_006"
     description = "API node should have at least one success output path"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -356,7 +356,7 @@ class APINodeTimeoutConfig(NodeRule):
     rule_id = "API_007"
     description = "API node timeout should be within reasonable bounds"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
@@ -419,7 +419,7 @@ class APINodeResponseMapping(NodeRule):
     rule_id = "API_008"
     description = "API node response mapping should have valid variable names"
     severity = RuleSeverity.WARNING
-    category = RuleCategory.WHATSAPP
+    category = RuleCategory.API
 
     def validate_node(
         self, node: Dict[str, Any], flow_data: Dict[str, Any], context: Optional[Dict[str, Any]] = None
