@@ -27,7 +27,7 @@ from ..models import ChatFlow, UserChatFlowSession
 from ..serializers import ApprovedTemplateSerializer, ChatFlowCreateUpdateSerializer, ChatFlowSerializer
 from ..services.flow_processor import ChatFlowProcessor
 from ..services.flow_variables import published_contact_variables, published_session_variables
-from ..services.graph_executor import clear_graph_cache
+from ..services.graph_executor import clear_graph_cache, get_executor
 from ..validators import validate_reactflow_data
 
 logger = logging.getLogger(__name__)
@@ -74,6 +74,7 @@ class ChatFlowViewSet(BaseTenantModelViewSet):
         "validate_flow": "chatflow.view",
         "validate_node": "chatflow.view",
         "deactivate": "chatflow.edit",
+        "test_flow": "chatflow.edit",
         "activate": "chatflow.edit",
         "default": "chatflow.view",
     }
@@ -345,6 +346,100 @@ class ChatFlowViewSet(BaseTenantModelViewSet):
                 "contact": published_contact_variables(),
                 "session": published_session_variables(),
             }
+        )
+
+    @action(detail=True, methods=["post"], url_path="test")
+    def test_flow(self, request, pk=None):
+        """
+        Run this flow for one contact, now, and say what happened.
+
+        POST /chat-flow/flows/{id}/test/   { "contact_id": 42 }
+
+        The Test button used to assign the contact to the flow and let the
+        assignment signal start the session. That path has two doors it cannot
+        get through, and both of them close silently:
+
+        * the signal and its task both skip an **inactive** flow — right for
+          automatic assignment, wrong for an operator asking to try the flow
+          they are building, which is deactivated for the whole time they are
+          editing it;
+        * the signal only fires when the assignment **changes**, so a contact
+          already assigned to this flow could never be tested again. The
+          second press did nothing at all.
+
+        In both cases ``POST /contacts/{id}/assign/`` answered 200 and the
+        modal showed a green "assigned" for a message that was never sent.
+
+        So this starts the session directly — synchronously, so the answer is
+        what the flow actually did rather than what was queued. The contact is
+        assigned with a queryset update, which emits no signals, so nothing
+        starts a second session behind this one; inbound replies route on the
+        session anyway (``wa.tasks``), so the conversation continues whether
+        or not the flow is active.
+
+        Response (200):
+            {
+                "status": "started" | "failed",
+                "flow_id": 1, "flow_active": false, "contact_id": 42,
+                "current_node_id": "...", "awaiting_input": true,
+                "is_complete": false, "messages_sent": 1, "error": null
+            }
+        """
+        flow = self.get_object()
+
+        contact_id = request.data.get("contact_id")
+        if not contact_id:
+            return Response(
+                {"status": "failed", "error": "contact_id is required to test a flow."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        contact = TenantContact.objects.filter(id=contact_id, tenant=flow.tenant).first()
+        if contact is None:
+            return Response(
+                {"status": "failed", "error": f"No contact {contact_id} in this organisation."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Assign without signals: the assignment signal would queue a second
+        # session start for a contact who is not already assigned here, and
+        # this method starts the session itself.
+        TenantContact.objects.filter(pk=contact.pk).update(
+            assigned_to_type=AssigneeTypeChoices.CHATFLOW, assigned_to_id=flow.id
+        )
+
+        # Always test what is saved right now, not a graph compiled earlier.
+        clear_graph_cache(flow.id)
+
+        try:
+            state = get_executor(flow).start_session(contact_id=contact.id, context={})
+        except Exception as exc:  # noqa: BLE001 — the operator needs to see this, not a 500 page
+            logger.exception("Test run of flow %s for contact %s failed", flow.id, contact.id)
+            return Response(
+                {
+                    "status": "failed",
+                    "error": str(exc),
+                    "flow_id": flow.id,
+                    "flow_active": flow.is_active,
+                    "contact_id": contact.id,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        error = state.get("error")
+        return Response(
+            {
+                "status": "failed" if error else "started",
+                "error": error,
+                "flow_id": flow.id,
+                "flow_active": flow.is_active,
+                "contact_id": contact.id,
+                "current_node_id": state.get("current_node_id"),
+                "awaiting_input": state.get("awaiting_input", False),
+                "is_complete": state.get("is_complete", False),
+                "messages_sent": len(state.get("messages_sent") or []),
+            },
+            status=status.HTTP_200_OK,
         )
 
     @action(detail=False, methods=["post"], url_path="validate")
