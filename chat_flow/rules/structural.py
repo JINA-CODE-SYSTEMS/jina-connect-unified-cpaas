@@ -426,3 +426,109 @@ class OneTargetPerButtonRule(FlowRule):
             )
 
         return violations
+
+
+#: Node types that end the conversation themselves, so they need no successor.
+#:
+#: ``end`` is terminal by definition. ``handoff`` earns its place: it reassigns
+#: the contact to an agent or to the unassigned queue, so the contact is no
+#: longer held by this flow — its own docstring notes that a following end
+#: node's unassignment is a no-op by then. Every other type leaves the contact
+#: assigned to the flow, so stopping there strands them.
+TERMINATING_NODE_TYPES = frozenset({"end", "handoff"})
+
+
+@register
+class EveryPathMustLeadSomewhereRule(FlowRule):
+    """A node that is not a terminus must have somewhere to go.
+
+    Nothing checked this. ``STRUCT_005`` asks only that an end node *exists*
+    somewhere in the flow, not that anything reaches one, so a session message
+    reading "Auto-routes to next node" could be saved with nothing to route to
+    — a promise the canvas makes and the validator never tested.
+
+    The cost is not cosmetic, and it is silent. Reaching an end node runs the
+    end handler: the session is marked complete and the contact is unassigned
+    from the flow. Running out of edges instead returns LangGraph's ``END``
+    straight from the router, which does neither — it logs one warning nobody
+    reads, the session stays active and incomplete, and **the contact is left
+    assigned to a flow that has finished**, which changes how their later
+    messages are routed.
+    """
+
+    rule_id = "STRUCT_012"
+    description = "Every node that is not a terminus must have an outgoing edge"
+    category = RuleCategory.STRUCTURAL
+
+    def validate(self, flow_data: Dict[str, Any]) -> List[RuleViolation]:
+        violations = []
+
+        sources = {edge.get("source") for edge in flow_data.get("edges", [])}
+
+        for node in flow_data.get("nodes", []):
+            node_id = node.get("id")
+            node_type = (node.get("data", {}).get("nodeType") or node.get("type") or "").lower()
+
+            if node_type in TERMINATING_NODE_TYPES or node_id in sources:
+                continue
+
+            label = node.get("data", {}).get("label") or node_type or node_id
+            violations.append(
+                RuleViolation(
+                    rule_id=self.rule_id,
+                    message=(
+                        f"'{label}' has no outgoing connection, so the flow stops there without "
+                        f"reaching an End node - the contact stays assigned to this flow after it "
+                        f"has finished. Connect it to an End node, or to whatever comes next."
+                    ),
+                    node_id=node_id,
+                    severity=self.severity,
+                    details={"node_type": node_type},
+                )
+            )
+
+        return violations
+
+
+@register
+class OneStartNodeRule(FlowRule):
+    """A flow has exactly one entry point.
+
+    ``STRUCT_004`` requires at least one start node and nothing forbade a
+    second. The node palette caps start at one instance, so this could not be
+    drawn — but a flow arriving by API or import could carry two, and which of
+    them ran would be whichever the graph builder happened to reach first.
+
+    A constraint enforced on one side of the API and not the other is the same
+    shape as the rule categories the builder could not match: the client is the
+    only thing holding it, and anything that is not the client bypasses it.
+    """
+
+    rule_id = "STRUCT_013"
+    description = "A flow must have exactly one start node"
+    category = RuleCategory.STRUCTURAL
+
+    def validate(self, flow_data: Dict[str, Any]) -> List[RuleViolation]:
+        start_ids = [
+            node.get("id")
+            for node in flow_data.get("nodes", [])
+            if (node.get("data", {}).get("nodeType") or node.get("type") or "").lower() == "start"
+        ]
+
+        # The absence of a start node is STRUCT_004's to report; saying it
+        # twice would make one defect read as two.
+        if len(start_ids) < 2:
+            return []
+
+        return [
+            RuleViolation(
+                rule_id=self.rule_id,
+                message=(
+                    f"This flow has {len(start_ids)} start nodes ({', '.join(str(i) for i in start_ids)}). "
+                    f"A flow has one entry point - which of these ran would be arbitrary."
+                ),
+                node_id=start_ids[1],
+                severity=self.severity,
+                details={"start_node_ids": start_ids},
+            )
+        ]
