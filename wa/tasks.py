@@ -761,22 +761,34 @@ def _ingest_inbound_message(instance, extracted_data: dict, pk: str) -> None:
     except Exception as exc:  # noqa: BLE001 — never break inbound
         logger.warning("[wa.tasks] opt-out keyword handling failed for msg %s: %s", message.pk, exc)
 
+    # ── The 24-hour service window, before anything answers ─
+    # This message reopens the window, and everything that
+    # replies to it — the chat flow below, a bot, an agent —
+    # is refused if the window still looks shut. It used to
+    # be updated further down, inside the CTWA block, so a
+    # contact replying the next day had the flow's answer
+    # rejected against the window their reply had already
+    # replaced. Still additive: a failure here must not cost
+    # us the message.
+    conversation = None
+    try:
+        from wa.services.conversations import resolve_or_create as resolve_conversation
+
+        conversation = resolve_conversation(wa_app=instance.wa_app, contact=contact)
+    except Exception as exc:  # noqa: BLE001 — never break inbound
+        logger.warning("[wa.tasks] could not open the service window for msg %s: %s", message.pk, exc)
+
     # Route to ChatFlow if contact is assigned to a ChatFlow
     _handle_chatflow_routing(contact, instance, content)
 
     # ── CTWA wiring (#189 + #192 + #194 + #195) ────────────
-    # Resolve-or-create the WaConversation that holds 24h
-    # service-window state; parse the CTWA referral via the
-    # BSP adapter; if present, create a CtwaLead and stamp
-    # the campaign tag on this message. All wrapped in
-    # try/except — every CTWA step is additive and must
-    # never break inbound ingestion.
+    # Parse the CTWA referral via the BSP adapter; if present,
+    # create a CtwaLead and stamp the campaign tag on this
+    # message. All wrapped in try/except — every CTWA step is
+    # additive and must never break inbound ingestion.
     referral_extra: dict = {}
     try:
         from wa.adapters import get_bsp_adapter
-        from wa.services.conversations import resolve_or_create as resolve_conversation
-
-        conversation = resolve_conversation(wa_app=instance.wa_app, contact=contact)
 
         referral = None
         try:
@@ -799,7 +811,9 @@ def _ingest_inbound_message(instance, extracted_data: dict, pk: str) -> None:
 
             from ctwa.ingestion import handle_inbound_referral
 
-            lead = handle_inbound_referral(conversation=conversation, referral=referral)
+            # ``conversation`` is None only if the window update above failed,
+            # which is logged there; a lead has nowhere to hang without it.
+            lead = handle_inbound_referral(conversation=conversation, referral=referral) if conversation else None
             if lead is not None:
                 referral_extra["ctwa_lead_id"] = str(lead.id)
                 referral_extra["campaign_id"] = str(lead.campaign_id) if lead.campaign_id else ""
