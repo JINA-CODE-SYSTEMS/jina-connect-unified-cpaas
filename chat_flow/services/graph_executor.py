@@ -37,8 +37,10 @@ from langgraph.graph import END, StateGraph
 
 from tenants.branding import product_name as branding_product_name
 
+from ..api_request_body import build_request_body
 from ..constants import canonical_session_message_type, session_message_awaits_reply
 from ..models import ChatFlow, ChatFlowEdge, ChatFlowNode, UserChatFlowSession
+from .flow_variables import build_placeholder_vars, resolve_variable
 
 logger = logging.getLogger(__name__)
 
@@ -1075,25 +1077,6 @@ def create_api_call_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
 
         return re.sub(r"\{\{\s*(.+?)\s*\}\}", _replacer, text)
 
-    def _build_vars(state: FlowState) -> dict:
-        """Merge flow context + contact fields for placeholder substitution."""
-        from contacts.models import TenantContact
-
-        context = dict(state.get("context", {}))
-        contact_id = state.get("contact_id")
-        if contact_id:
-            try:
-                contact = TenantContact.objects.get(id=contact_id)
-                context.setdefault("first_name", contact.first_name or "")
-                context.setdefault("last_name", contact.last_name or "")
-                context.setdefault("full_name", contact.full_name or "")
-                context.setdefault("contact_name", contact.full_name or "")
-                context.setdefault("phone", str(contact.phone) if contact.phone else "")
-                context.setdefault("email", getattr(contact, "email", "") or "")
-            except TenantContact.DoesNotExist:
-                pass
-        return context
-
     def handler(state: FlowState) -> FlowState:
         """Execute API call node — make HTTP request, store response, route by status code."""
         # ── Resume skip: fast-forward without re-calling ──
@@ -1119,7 +1102,7 @@ def create_api_call_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
         configured_codes = cfg["api_response_codes"]
         response_variable_mappings = cfg["response_variable_mappings"]
 
-        all_vars = _build_vars(state)
+        all_vars = build_placeholder_vars(state)
 
         # ── Substitute placeholders in URL, headers, params, body ──
         url = _substitute_vars(api_url, all_vars)
@@ -1137,21 +1120,25 @@ def create_api_call_node_handler(node: ChatFlowNode, edges: List[ChatFlowEdge]):
             "params": params,
             "timeout": api_timeout,
         }
+        # A body the operator declared JSON and wrote as something else used to
+        # be downgraded to raw text and sent anyway, so the endpoint answered
+        # 400 and the flow blamed the endpoint. Now the request is not made.
+        body_error = None
         if api_method in ("POST", "PUT", "PATCH") and body_str:
-            if api_body_type == "json":
-                try:
-                    req_kwargs["json"] = json.loads(body_str)
-                except (json.JSONDecodeError, TypeError):
-                    # Fall back to raw text if JSON parse fails
-                    req_kwargs["data"] = body_str
-                    logger.warning(f"API node '{node_id}': body is not valid JSON, sending as raw text")
+            built = build_request_body(api_body_type, body_str)
+            if built.error:
+                body_error = f"API node '{node_id}': {built.error}"
+                logger.error(body_error)
             else:
-                req_kwargs["data"] = body_str
+                req_kwargs.update(built.kwargs)
+                for header, value in built.headers.items():
+                    if not any(existing.lower() == header.lower() for existing in headers):
+                        headers[header] = value
 
         # ── Execute with retries ──
         response = None
-        last_error = None
-        attempts = 1 + max(0, api_retry_count)
+        last_error = body_error
+        attempts = 0 if body_error else 1 + max(0, api_retry_count)
         for attempt in range(1, attempts + 1):
             try:
                 response = _requests.request(**req_kwargs)
@@ -1410,40 +1397,13 @@ def create_condition_node_handler(node: ChatFlowNode):
             condition_groups = [{"logic": flat_logic, "rules": flat_conditions}]
 
     def _resolve_variable(state: FlowState, variable: str) -> str:
-        """Resolve a variable name to its runtime value."""
-        from contacts.models import TenantContact
+        """Resolve a variable name to its runtime value.
 
-        # Check user's last message first
-        if variable == "last_message":
-            return str(state.get("user_input") or "")
-
-        # Check context dict (may have been set by previous nodes)
-        context = state.get("context", {})
-        if variable in context:
-            return str(context[variable])
-
-        # Resolve from contact model
-        contact_id = state.get("contact_id")
-        if contact_id:
-            try:
-                contact = TenantContact.objects.get(id=contact_id)
-                field_map = {
-                    "contact_name": lambda c: c.full_name,
-                    "first_name": lambda c: c.first_name or "",
-                    "last_name": lambda c: c.last_name or "",
-                    "phone": lambda c: str(c.phone) if c.phone else "",
-                    "email": lambda c: getattr(c, "email", "") or "",
-                    "tag": lambda c: c.tag or "",
-                    "status": lambda c: c.status or "",
-                    "assigned_team": lambda c: str(c.assigned_to_id) if c.assigned_to_type == "TEAM" else "",
-                }
-                resolver = field_map.get(variable)
-                if resolver:
-                    return resolver(contact)
-            except TenantContact.DoesNotExist:
-                logger.warning(f"Condition node '{node_id}': contact {contact_id} not found")
-
-        return ""
+        Conditions and API bodies used to keep separate field maps that
+        disagreed about which variables exist; both now read the one table in
+        ``flow_variables``.
+        """
+        return resolve_variable(state, variable)
 
     def _evaluate_condition(actual: str, operator: str, expected: str) -> bool:
         """Evaluate a single condition rule."""

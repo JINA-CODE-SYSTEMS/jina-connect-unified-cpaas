@@ -26,6 +26,7 @@ from wa.models import StatusChoices, WATemplate
 from ..models import ChatFlow, UserChatFlowSession
 from ..serializers import ApprovedTemplateSerializer, ChatFlowCreateUpdateSerializer, ChatFlowSerializer
 from ..services.flow_processor import ChatFlowProcessor
+from ..services.flow_variables import published_contact_variables, published_session_variables
 from ..services.graph_executor import clear_graph_cache
 from ..validators import validate_reactflow_data
 
@@ -318,6 +319,33 @@ class ChatFlowViewSet(BaseTenantModelViewSet):
         """
         rules_docs = ChatFlowProcessor.get_flow_validation_rules()
         return Response(rules_docs)
+
+    @action(detail=False, methods=["get"], url_path="variables")
+    def variables(self, request):
+        """
+        List the ``{{placeholders}}`` a flow can substitute.
+
+        The API node's body hint says "Use {{variable}} to insert contact
+        attributes" without saying which, because the set lived inside the
+        executor. It is now a table the executor and this endpoint share, so
+        the editor can show an operator what they are allowed to type.
+
+        API nodes also add their own: every ``variable_name`` in an earlier
+        node's response mapping is available downstream. Those are specific to
+        one flow, so the editor derives them from the canvas.
+
+        Response format:
+            {
+                "contact": [{"key": "first_name", "description": "..."}, ...],
+                "session": [{"key": "last_message", "description": "..."}]
+            }
+        """
+        return Response(
+            {
+                "contact": published_contact_variables(),
+                "session": published_session_variables(),
+            }
+        )
 
     @action(detail=False, methods=["post"], url_path="validate")
     def validate_flow(self, request):

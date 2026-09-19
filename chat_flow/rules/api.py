@@ -8,6 +8,7 @@ API nodes make HTTP requests and route based on response status.
 import re
 from typing import Any, Dict, List, Optional
 
+from ..api_request_body import describe_json_body, normalise_body_type
 from ..constants import API_RESPONSE_HANDLES, VALID_HTTP_METHODS
 from .base import NodeRule, RuleCategory, RuleSeverity, RuleViolation
 from .registry import register
@@ -232,6 +233,24 @@ class APINodeBodyFormat(NodeRule):
                     details={"field": "body", "type": type(body).__name__},
                 )
             )
+            return violations
+
+        # "Body must be valid JSON" was never tested: a string always passed
+        # the isinstance check above. Parse it, with {{placeholders}} stood in
+        # for, because a body the executor cannot parse is no longer sent.
+        body_type = normalise_body_type(node_data.get("api_body_type"))
+        if body_type == "json" and isinstance(body, str):
+            problem = describe_json_body(body)
+            if problem:
+                violations.append(
+                    RuleViolation(
+                        rule_id=self.rule_id,
+                        message=f"Body is set to JSON but is not valid JSON, so the request will not be sent: {problem}",
+                        severity=RuleSeverity.ERROR,
+                        node_id=node.get("id"),
+                        details={"field": "api_body", "body_type": body_type, "parse_error": problem},
+                    )
+                )
 
         return violations
 
@@ -430,6 +449,15 @@ class APINodeResponseMapping(NodeRule):
             return violations
 
         node_data = node.get("data", {})
+
+        # The editor saves ``response_variables`` — a list of
+        # {json_path, variable_name} — and the executor reads it. This rule
+        # used to read ``response_mapping``, a key nothing writes, so every
+        # mapping in every flow went unvalidated.
+        response_variables = node_data.get("response_variables")
+        if isinstance(response_variables, list):
+            return self._validate_response_variables(node, response_variables)
+
         response_mapping = node_data.get("response_mapping")
 
         # Response mapping is optional
@@ -476,6 +504,66 @@ class APINodeResponseMapping(NodeRule):
                             "variable": var_name,
                             "path_type": type(json_path).__name__,
                         },
+                    )
+                )
+
+        return violations
+
+    def _validate_response_variables(self, node: Dict[str, Any], mappings: List[Any]) -> List[RuleViolation]:
+        """Validate the list form: [{"json_path": "data.id", "variable_name": "order_id"}]."""
+        violations: List[RuleViolation] = []
+        variable_pattern = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+        for index, mapping in enumerate(mappings):
+            if not isinstance(mapping, dict):
+                violations.append(
+                    RuleViolation(
+                        rule_id=self.rule_id,
+                        message=f"Response variable #{index + 1} must be an object with a path and a variable name",
+                        severity=RuleSeverity.ERROR,
+                        node_id=node.get("id"),
+                        details={"field": "response_variables", "index": index},
+                    )
+                )
+                continue
+
+            json_path = mapping.get("json_path") or ""
+            var_name = (mapping.get("variable_name") or "").strip()
+
+            if not var_name:
+                # The executor drops these without a word, so the operator
+                # sees a path they filled in and a variable that never exists.
+                violations.append(
+                    RuleViolation(
+                        rule_id=self.rule_id,
+                        message=f"Response path '{json_path}' has no variable name, so nothing is stored from it",
+                        severity=RuleSeverity.WARNING,
+                        node_id=node.get("id"),
+                        details={"field": "response_variables", "index": index, "json_path": json_path},
+                    )
+                )
+                continue
+
+            if not variable_pattern.match(var_name):
+                violations.append(
+                    RuleViolation(
+                        rule_id=self.rule_id,
+                        message=f"Invalid variable name '{var_name}'. Must start with a letter or underscore and "
+                        f"contain only letters, numbers and underscores.",
+                        severity=RuleSeverity.WARNING,
+                        node_id=node.get("id"),
+                        details={"field": "response_variables", "index": index, "variable": var_name},
+                    )
+                )
+
+            if not isinstance(json_path, str):
+                violations.append(
+                    RuleViolation(
+                        rule_id=self.rule_id,
+                        message=f"JSON path for variable '{var_name}' must be a string (e.g. 'data.id')",
+                        severity=RuleSeverity.WARNING,
+                        node_id=node.get("id"),
+                        details={"field": "response_variables", "index": index, "variable": var_name},
                     )
                 )
 
