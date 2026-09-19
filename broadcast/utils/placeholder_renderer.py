@@ -19,12 +19,22 @@ def render_placeholders(text: str, data: Dict[str, str]) -> str:
     """
     Replace {{ key }} placeholders in text with values from data dict.
 
+    Substitution only — this deliberately knows nothing about what a
+    placeholder *ought* to resolve to. It used to be asked that question for
+    broadcast template bubbles, answered it differently from the send, and left
+    a positional ``{{1}}`` showing in the inbox on a message the customer had
+    received with their name in it (#389). Callers on that path now pass in the
+    values the send resolved (``BroadcastMessage.sent_placeholder_values``)
+    rather than expecting this function to work them out.
+
     Args:
         text: Template string with {{ placeholder }} markers.
-        data: Merged dict of placeholder_data + reserved_vars.
+        data: What each placeholder resolves to.
 
     Returns:
-        Rendered string. Unmatched placeholders are left as-is.
+        Rendered string. A placeholder with no entry in *data* is left as-is,
+        which is the honest answer here: nothing told this function what it
+        should say.
     """
     if not text:
         return text or ""

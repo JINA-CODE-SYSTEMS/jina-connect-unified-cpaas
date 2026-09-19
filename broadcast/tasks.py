@@ -160,6 +160,21 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
         # {"type": "text|image|video|document|audio", "body": {"text": "..."}, ...}
         rendered_body = broadcast_message.rendered_content
 
+        # For a template send, the body the agent reads is the body the
+        # customer received: the template text filled in with the values that
+        # went out as the provider's parameters. ``rendered_content`` resolved
+        # the same placeholders by its own rule, which agreed with the send for
+        # {{first_name}} and disagreed for {{1}} — the agent saw raw braces on a
+        # message that had arrived perfectly well (#389). It stays as the
+        # rendering for platforms that send free text rather than a template.
+        if template and broadcast.platform == BroadcastPlatformChoices.WHATSAPP:
+            rendered_body = _render_template_field(
+                template.content or "",
+                broadcast.placeholder_data,
+                broadcast_message._get_contact_reserved_vars(),
+                sent_values=broadcast_message.sent_placeholder_values("content"),
+            )
+
         # Determine content type from template
         # Map TemplateTypeChoices to team_inbox content types
         content_type = "text"  # default
@@ -224,27 +239,37 @@ def _create_team_inbox_message_from_broadcast(broadcast_message) -> dict:
                 broadcast.placeholder_data,
                 broadcast_message._get_contact_reserved_vars(),
                 media_overrides=broadcast.media_overrides,
+                sent_values=broadcast_message.sent_placeholder_values,
             )
 
         # Add header if template has one
         if template and template.header:
             # Render header with placeholder substitution
             header_text = _render_template_field(
-                template.header, broadcast.placeholder_data, broadcast_message._get_contact_reserved_vars()
+                template.header,
+                broadcast.placeholder_data,
+                broadcast_message._get_contact_reserved_vars(),
+                sent_values=broadcast_message.sent_placeholder_values("header"),
             )
             content["header"] = {"text": header_text}
 
         # Add footer if template has one
         if template and template.footer:
             footer_text = _render_template_field(
-                template.footer, broadcast.placeholder_data, broadcast_message._get_contact_reserved_vars()
+                template.footer,
+                broadcast.placeholder_data,
+                broadcast_message._get_contact_reserved_vars(),
+                sent_values=broadcast_message.sent_placeholder_values("footer"),
             )
             content["footer"] = {"text": footer_text}
 
         # Add buttons if template has them
         if template and template.buttons:
             content["buttons"] = _convert_template_buttons_to_inbox_format(
-                template.buttons, broadcast.placeholder_data, broadcast_message._get_contact_reserved_vars()
+                template.buttons,
+                broadcast.placeholder_data,
+                broadcast_message._get_contact_reserved_vars(),
+                sent_values=broadcast_message.sent_placeholder_values,
             )
 
         # Add template info for reference
@@ -375,7 +400,11 @@ def _record_broadcast_message_failure(broadcast_message) -> dict:
 
 
 def _convert_template_buttons_to_inbox_format(
-    template_buttons: list, placeholder_data: dict, reserved_vars: dict
+    template_buttons: list,
+    placeholder_data: dict,
+    reserved_vars: dict,
+    sent_values=None,
+    slot_prefix: str = "button",
 ) -> list:
     """
     Convert WATemplate buttons to team_inbox format.
@@ -394,6 +423,13 @@ def _convert_template_buttons_to_inbox_format(
         template_buttons: List of buttons from WATemplate
         placeholder_data: Broadcast placeholder data
         reserved_vars: Contact-specific reserved variables
+        sent_values: ``BroadcastMessage.sent_placeholder_values``, or None when
+            there is no send to read from. A URL button's suffix is resolved at
+            send time — to a tracked short code, when tracking is on — so the
+            template's raw ``{{1}}`` is not the link the customer was given
+            (#389). Asking the send means the agent sees the same URL.
+        slot_prefix: which family of slots to read, "button" for the
+            template's own buttons and "card:<i>:button" for a card's.
 
     Returns:
         List of buttons in team_inbox format
@@ -404,8 +440,9 @@ def _convert_template_buttons_to_inbox_format(
     # Merge data for placeholder substitution (reserved vars take precedence)
     final_data = {**placeholder_data, **reserved_vars}
 
-    def _render(text: str) -> str:
-        return render_placeholders(text, final_data)
+    def _render(text: str, index: int) -> str:
+        sent = sent_values(f"{slot_prefix}:{index}") if sent_values else {}
+        return render_placeholders(text, {**final_data, **sent})
 
     # Type mapping from Gupshup to team_inbox
     type_map = {
@@ -415,7 +452,7 @@ def _convert_template_buttons_to_inbox_format(
     }
 
     converted_buttons = []
-    for btn in template_buttons:
+    for index, btn in enumerate(template_buttons):
         btn_type = btn.get("type", "").upper()
         inbox_type = type_map.get(btn_type)
 
@@ -427,7 +464,7 @@ def _convert_template_buttons_to_inbox_format(
 
         # Add type-specific fields
         if inbox_type == "url" and btn.get("url"):
-            inbox_btn["url"] = _render(btn["url"])
+            inbox_btn["url"] = _render(btn["url"], index)
         elif inbox_type == "call" and btn.get("phone_number"):
             inbox_btn["phone"] = btn["phone_number"]
 
@@ -441,6 +478,7 @@ def _convert_template_cards_to_inbox_format(
     placeholder_data: dict,
     reserved_vars: dict,
     media_overrides: dict = None,
+    sent_values=None,
 ) -> list:
     """
     Convert WATemplate cards (carousel) to team_inbox format.
@@ -457,6 +495,9 @@ def _convert_template_cards_to_inbox_format(
         reserved_vars: Contact-specific reserved variables
         media_overrides: Broadcast.media_overrides dict (optional),
             e.g. {"cards": {"0": <TenantMedia id>, "1": ...}}
+        sent_values: ``BroadcastMessage.sent_placeholder_values``, so each
+            card's body and buttons read back what that card actually sent
+            rather than resolving its placeholders a second way (#389).
 
     Returns:
         List of cards in team_inbox format
@@ -468,8 +509,9 @@ def _convert_template_cards_to_inbox_format(
     # Merge data for placeholder substitution (reserved vars take precedence)
     final_data = {**placeholder_data, **reserved_vars}
 
-    def _render(text: str) -> str:
-        return render_placeholders(text, final_data)
+    def _render(text: str, slot: str) -> str:
+        sent = sent_values(slot) if sent_values else {}
+        return render_placeholders(text, {**final_data, **sent})
 
     def _detect_media_type(media_name: str) -> str:
         """Detect if media is video or image from filename."""
@@ -517,13 +559,17 @@ def _convert_template_cards_to_inbox_format(
         # Add card body
         card_body = card.get("body", "")
         if card_body:
-            inbox_card["body"] = {"text": _render(card_body)}
+            inbox_card["body"] = {"text": _render(card_body, f"card:{i}:body")}
 
         # Add card buttons
         card_buttons = card.get("buttons", [])
         if card_buttons:
             inbox_card["buttons"] = _convert_template_buttons_to_inbox_format(
-                card_buttons, placeholder_data, reserved_vars
+                card_buttons,
+                placeholder_data,
+                reserved_vars,
+                sent_values=sent_values,
+                slot_prefix=f"card:{i}:button",
             )
 
         converted_cards.append(inbox_card)
@@ -531,14 +577,22 @@ def _convert_template_cards_to_inbox_format(
     return converted_cards
 
 
-def _render_template_field(field_content: str, placeholder_data: dict, reserved_vars: dict) -> str:
+def _render_template_field(
+    field_content: str, placeholder_data: dict, reserved_vars: dict, sent_values: dict = None
+) -> str:
     """
-    Render a template field (header/footer) with placeholder substitution.
+    Render a template field (body/header/footer) with placeholder substitution.
 
     Args:
         field_content: The template field text with placeholders like {{ name }} or {{name}}
         placeholder_data: Broadcast placeholder data (dynamic, user-provided)
         reserved_vars: Contact-specific reserved variables (take precedence)
+        sent_values: What the send resolved each placeholder to, from
+            ``BroadcastMessage.sent_placeholder_values``. These win over
+            everything else because they are what the customer's phone
+            rendered — the inbox's job here is to report that, not to form a
+            second opinion about it (#389). Placeholders the send had no
+            parameter for are not in here and keep the older rendering.
 
     Returns:
         Rendered string with placeholders replaced
@@ -547,7 +601,7 @@ def _render_template_field(field_content: str, placeholder_data: dict, reserved_
         return ""
 
     # Reserved vars take precedence - contact-specific data should not be overridden
-    final_data = {**placeholder_data, **reserved_vars}
+    final_data = {**placeholder_data, **reserved_vars, **(sent_values or {})}
     return render_placeholders(field_content, final_data)
 
 
