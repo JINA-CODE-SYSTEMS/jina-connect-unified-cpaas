@@ -829,6 +829,108 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
                 "Payload generation not implemented for platform {}".format(self.broadcast.platform)
             )
 
+    def _resolve_placeholder_value(self, placeholder_name, all_data):
+        """What this send puts in the slot named *placeholder_name*.
+
+        The single rule. It used to live inline in the parameter loop below
+        while the inbox answered the same question its own way, and the two
+        answers drifted: a positional ``{{1}}`` went out as the contact's name
+        and came back to the agent as the literal ``{{1}}`` (#389). Everything
+        that needs to know what a placeholder became now asks here.
+
+        Args:
+            placeholder_name: the name inside the braces — ``"1"`` for a
+                positional template, ``"first_name"`` for a named one.
+            all_data: reserved vars merged under the broadcast's
+                ``placeholder_data``.
+
+        Returns:
+            str: never empty and never containing braces — WhatsApp rejects a
+            parameter with curly braces in it (error #132012).
+        """
+        value = all_data.get(placeholder_name, "")
+        if value:
+            return value
+
+        if placeholder_name.isdigit():
+            # A positional template says nothing about what {{1}} means, and
+            # in practice it is the greeting, so the contact's name is the
+            # best guess available. The rest get a dash rather than a blank,
+            # which would read as a rendering failure on the customer's phone.
+            if placeholder_name == "1":
+                return all_data.get("name", "") or all_data.get("first_name", "-")
+            return "-"
+
+        # A named placeholder carries its own meaning, so a humanised form of
+        # the name beats both a blank and the raw braces.
+        return placeholder_name.replace("_", " ").title()
+
+    def _record_sent_value(self, slot, placeholder_name, value):
+        """Note that *slot*'s ``{{placeholder_name}}`` went out as *value*."""
+        if not hasattr(self, "_sent_placeholder_values"):
+            self._sent_placeholder_values = {}
+        self._sent_placeholder_values.setdefault(slot, {})[placeholder_name] = str(value)
+
+    def sent_placeholder_values(self, slot):
+        """The values this message actually sent for *slot*'s placeholders.
+
+        This is what the inbox renders from, so that the bubble an agent reads
+        is the message the customer received rather than a second opinion
+        about what it should have said (#389).
+
+        Slots are named for the piece of the template they fill: ``"header"``,
+        ``"content"``, ``"footer"``, ``"button:<i>"``, ``"card:<i>:body"`` and
+        ``"card:<i>:button:<j>"``.
+
+        Two ways the answer arrives, in order:
+
+        1. From the send itself. ``_build_template_components`` records every
+           value as it builds the parameter carrying it, and the inbox row is
+           written from the same in-memory instance moments later, so this is
+           literally what went on the wire — tracked URL short codes included,
+           which nothing else could reconstruct.
+        2. By resolving the text slots again through
+           ``_resolve_placeholder_value``. Same rule, no second opinion, and
+           no side effects — unlike re-running the full component build, which
+           would mint a fresh tracked URL per button. This covers a row written
+           without a send in front of it, such as a failure recorded before the
+           provider was ever called.
+
+        Returns:
+            dict: ``{placeholder_name: value}``, empty when nothing is known —
+            callers then fall back to their existing rendering.
+        """
+        recorded = getattr(self, "_sent_placeholder_values", None) or {}
+        if slot in recorded:
+            return recorded[slot]
+
+        if slot in ("header", "content", "footer"):
+            return self._resolve_text_slot_values(slot)
+
+        # Buttons and cards can only be replayed from the send: a tracked URL
+        # button's parameter is a short code minted at send time, and guessing
+        # at it would be exactly the second rule this fix removes.
+        return {}
+
+    def _resolve_text_slot_values(self, field):
+        """Resolve *field*'s placeholders without building any components.
+
+        Deliberately free of the side effects ``_build_template_components``
+        carries (persisting a re-extracted mapping, creating tracked URLs), so
+        it is safe to call from a read path.
+        """
+        template_number = self.broadcast.template_number
+        template = getattr(template_number, "gupshup_template", None) if template_number else None
+        if template is None:
+            return {}
+
+        mapping = (template.placeholder_mapping or {}).get(field) or {}
+        if not mapping:
+            return {}
+
+        all_data = {**self._get_contact_reserved_vars(), **(self.broadcast.placeholder_data or {})}
+        return {name: str(self._resolve_placeholder_value(name, all_data)) for name in mapping.values()}
+
     def _build_template_components(self):
         """
         Build the components array for WhatsApp template message.
@@ -857,6 +959,11 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
 
         components = []
         placeholder_data = self.broadcast.placeholder_data
+
+        # Start this send's record of what each placeholder resolved to. The
+        # inbox reads it back rather than resolving anything itself — see
+        # ``sent_placeholder_values``.
+        self._sent_placeholder_values = {}
 
         # Get reserved variables to fill missing placeholders
         reserved_vars = self._get_contact_reserved_vars()
@@ -910,21 +1017,8 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
                 # {"1": "1", "2": "2"} — position maps to itself.
                 for number in sorted(mapping.keys(), key=int):
                     placeholder_name = mapping[number]
-                    value = all_data.get(placeholder_name, "")
-                    # Never send literal {{name}} — WhatsApp rejects curly
-                    # braces in parameter values with error #132012.
-                    if not value:
-                        if placeholder_name.isdigit():
-                            # Numbered placeholder (e.g. {{1}}) — use contact
-                            # name as a sensible default for the first param,
-                            # empty dash for the rest
-                            if placeholder_name == "1":
-                                value = all_data.get("name", "") or all_data.get("first_name", "-")
-                            else:
-                                value = "-"
-                        else:
-                            # Named placeholder — use human-readable form
-                            value = placeholder_name.replace("_", " ").title()
+                    value = self._resolve_placeholder_value(placeholder_name, all_data)
+                    self._record_sent_value(field, placeholder_name, value)
 
                     param = {"type": "text", "text": str(value)}
                     # META Cloud API requires parameter_name for NAMED-format templates.
@@ -981,7 +1075,7 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
 
         return components
 
-    def _build_button_components(self, button_mappings, template_buttons, all_data):
+    def _build_button_components(self, button_mappings, template_buttons, all_data, slot_prefix="button"):
         """
         Build button components from placeholder mappings.
 
@@ -993,6 +1087,9 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
             button_mappings: List of button mapping dicts with button_index and url_mapping
             template_buttons: List of button definitions from template
             all_data: Combined placeholder and reserved variable data
+            slot_prefix: names the slot each button's values are recorded under
+                for ``sent_placeholder_values`` — "button" for the template's
+                own buttons, "card:<i>:button" for a carousel card's.
 
         Returns:
             list: List of button component dictionaries
@@ -1032,17 +1129,25 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
             # Build parameters for URL buttons
             parameters = []
 
+            slot = f"{slot_prefix}:{button_index}"
+
             if button_type == "URL" and button_index in tracked_code_map:
                 # ── Tracking-enabled URL button ──
                 # Replace ALL suffix parameters with the single short code.
                 # Template URL: https://our-server/r/{{1}} → param = short_code
                 short_code = tracked_code_map[button_index]
                 parameters.append({"type": "text", "text": short_code})
+                # Every suffix placeholder in this URL became the one short
+                # code, so the inbox can show the link the customer was
+                # actually given rather than the template's raw {{1}}.
+                for placeholder_name in url_mapping.values():
+                    self._record_sent_value(slot, placeholder_name, short_code)
             else:
                 # ── Standard parameter resolution ──
                 for number in sorted(url_mapping.keys(), key=int):
                     placeholder_name = url_mapping[number]
                     value = all_data.get(placeholder_name, f"{{{{{placeholder_name}}}}}")
+                    self._record_sent_value(slot, placeholder_name, value)
 
                     parameters.append({"type": "text", "text": str(value)})
 
@@ -1281,6 +1386,7 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
                 for number in sorted(body_mapping.keys(), key=int):
                     placeholder_name = body_mapping[number]
                     value = all_data.get(placeholder_name, f"{{{{{placeholder_name}}}}}")
+                    self._record_sent_value(f"card:{card_index}:body", placeholder_name, value)
 
                     body_parameters.append({"type": "text", "text": str(value)})
 
@@ -1290,7 +1396,9 @@ class BroadcastMessage(BaseTenantModelForFilterUser):
             # ── Card BUTTONS (URL placeholders) ─────────────────────
             if "buttons" in card_mapping:
                 card_buttons = template_card.get("buttons", [])
-                button_components = self._build_button_components(card_mapping["buttons"], card_buttons, all_data)
+                button_components = self._build_button_components(
+                    card_mapping["buttons"], card_buttons, all_data, slot_prefix=f"card:{card_index}:button"
+                )
                 card_component["components"].extend(button_components)
 
             # Always add card — even if only header (media is required)
