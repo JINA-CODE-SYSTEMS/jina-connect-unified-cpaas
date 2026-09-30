@@ -162,6 +162,15 @@ class TenantRolePermission(BasePermission):
 # ---------------------------------------------------------------------------
 
 
+def is_platform_operator(user) -> bool:
+    """One answer to "is this caller the platform?", for gates outside DRF.
+
+    Kept beside :class:`IsPlatformOperator` so the two cannot drift: the voice
+    gates ask the same question inline and were asking it of ``is_staff``.
+    """
+    return bool(user is not None and user.is_authenticated and (user.is_superuser or user.is_staff))
+
+
 class IsPlatformOperator(BasePermission):
     """The host dashboard's gate: **either** platform flag, not ``is_staff`` alone.
 
@@ -188,8 +197,7 @@ class IsPlatformOperator(BasePermission):
     message = "Only platform operators can perform this action."
 
     def has_permission(self, request, view):
-        user = getattr(request, "user", None)
-        return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff))
+        return is_platform_operator(getattr(request, "user", None))
 
 
 # ---------------------------------------------------------------------------
