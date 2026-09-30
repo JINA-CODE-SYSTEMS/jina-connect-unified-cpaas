@@ -11,12 +11,12 @@ Provides endpoints to manage branding:
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from typing_extensions import override
 
 from tenants.models import BrandingSettings
-from tenants.permission_classes import TenantRolePermission
+from tenants.permission_classes import IsPlatformOperator, TenantRolePermission
 from tenants.serializers import BrandingSettingsSerializer
 
 
@@ -35,7 +35,7 @@ class BrandingSettingsViewSet(viewsets.ViewSet):
     - DELETE /branding/secondary-logo/ - Remove secondary logo
     """
 
-    permission_classes = [IsAdminUser, TenantRolePermission]
+    permission_classes = [IsPlatformOperator, TenantRolePermission]
     # JSON is accepted so text-only fields (product_name) can be set without multipart.
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     required_permissions = {

@@ -3,13 +3,14 @@ from django.db.models import Count
 from djmoney.money import Money
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from abstract.exceptions import WalletCreditError
 from abstract.viewsets.base import BaseTenantModelViewSet
 from tenants.filters import TenantFilter
 from tenants.models import RolePermission, Tenant, TenantRole, TenantUser
+from tenants.permission_classes import IsPlatformOperator
 from tenants.permissions import ALL_PERMISSIONS, read_only_permission_map
 from tenants.serializers import (
     IMPERSONATED_ROLE,
@@ -117,7 +118,11 @@ class TenantViewSet(BaseTenantModelViewSet):
             # permissions. Crediting in particular: a tenant must never be
             # able to credit itself, which is what
             # jain-t/jina-connect#613 was about.
-            self.permission_classes = [IsAdminUser]
+            #
+            # Not DRF's IsAdminUser: that reads ``is_staff`` alone, so an
+            # operator holding ``is_superuser`` was shown the host dashboard
+            # and refused by it (jain-t/jina-connect-web#691).
+            self.permission_classes = [IsPlatformOperator]
         elif self.action in [
             "register",
             "verify_email",
