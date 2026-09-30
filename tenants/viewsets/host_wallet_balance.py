@@ -4,11 +4,11 @@ from django.db.models import Count
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from tenants.models import Tenant
-from tenants.permission_classes import TenantRolePermission
+from tenants.permission_classes import IsPlatformOperator, TenantRolePermission
 from tenants.serializers import HostWalletSerializer
 
 
@@ -20,7 +20,7 @@ class HostWalletViewSet(viewsets.ViewSet):
     - GET /host-wallet/dashboard/ → Unified Host Dashboard stats with % change
     """
 
-    permission_classes = [IsAdminUser, TenantRolePermission]
+    permission_classes = [IsPlatformOperator, TenantRolePermission]
     required_permissions = {
         "get_balance": "billing.view",
         "dashboard": "billing.view",

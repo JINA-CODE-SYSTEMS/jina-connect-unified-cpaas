@@ -158,6 +158,41 @@ class TenantRolePermission(BasePermission):
 
 
 # ---------------------------------------------------------------------------
+# The platform itself
+# ---------------------------------------------------------------------------
+
+
+class IsPlatformOperator(BasePermission):
+    """The host dashboard's gate: **either** platform flag, not ``is_staff`` alone.
+
+    Django's two flags are independent — ``is_superuser`` does not set
+    ``is_staff`` — and DRF's ``IsAdminUser`` reads only the second. Everything
+    else here that asks "is this caller the platform?" reads the first: the
+    superuser bypass in :class:`TenantRolePermission` above,
+    ``acting_as_platform_operator``, the impersonation guard, the token claim,
+    and the frontend middleware that sends ``is_superuser`` accounts to /host
+    and everyone else away from it.
+
+    So an account granted ``is_superuser`` alone was shown the entire host
+    dashboard and refused by every write in it — reported as "You do not have
+    permission to perform this action." on Add organisation
+    (jain-t/jina-connect-web#691). ``createsuperuser`` sets both flags, which
+    is why this held while the only operators were made on the command line.
+
+    Nothing is exposed by widening it: a superuser already bypasses RBAC
+    outright, reads every organisation, and can impersonate any of them. The
+    same reading was already adopted a few lines from the old gate, in
+    ``TenantViewSet.get_serializer_class``, for the same reason.
+    """
+
+    message = "Only platform operators can perform this action."
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff))
+
+
+# ---------------------------------------------------------------------------
 # Priority-based shortcut classes
 # ---------------------------------------------------------------------------
 
