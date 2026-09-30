@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from rest_framework.permissions import BasePermission, IsAuthenticated  # noqa: F401
 
+from tenants.permission_classes import is_platform_operator
+
 
 class IsVoiceEnabledForTenant(BasePermission):
     """Block all voice endpoints unless ``TenantVoiceApp.is_enabled``.
@@ -67,15 +69,21 @@ class IsVoiceAdmin(BasePermission):
 
     A user passes if either:
 
-      * ``request.user.is_staff`` (superuser bypass), or
+      * they are a platform operator (``is_superuser`` or ``is_staff``), or
       * any of the user's active tenant roles grants
         ``voice.provider.edit`` (the canonical voice-admin RBAC key
         seeded by tenants migration 0019).
 
-    Falling back to staff keeps the gate working when a tenant's role
-    rows haven't been re-seeded — voice.* keys are auto-granted to
-    OWNER/ADMIN on tenant creation via the ``Tenant.post_save`` signal,
-    and the data migration back-fills existing tenants.
+    The platform bypass keeps the gate working when a tenant's role rows
+    haven't been re-seeded — voice.* keys are auto-granted to OWNER/ADMIN on
+    tenant creation via the ``Tenant.post_save`` signal, and the data
+    migration back-fills existing tenants.
+
+    It used to read ``is_staff`` alone while calling itself the superuser
+    bypass, which excluded the one caller it exists for: a platform operator
+    holds no ``TenantUser`` row anywhere, so the role lookup below can only
+    fail for them. Same defect as the host panel's, found sweeping for the
+    rest of it — see :class:`tenants.permission_classes.IsPlatformOperator`.
     """
 
     message = "Voice provider configuration is admin-only."
@@ -84,7 +92,7 @@ class IsVoiceAdmin(BasePermission):
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
             return False
-        if user.is_staff:
+        if is_platform_operator(user):
             return True
         return _user_has_voice_perm(user, "voice.provider.edit")
 
@@ -107,7 +115,7 @@ class HasVoicePermission(BasePermission):
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
             return False
-        if user.is_staff:
+        if is_platform_operator(user):
             return True
 
         per_action = getattr(view, "voice_required_permissions", None)
