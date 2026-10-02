@@ -40,7 +40,9 @@ CONTACT_VARIABLES: Tuple[ContactVariable, ...] = (
     ContactVariable("last_name", "The contact's last name", lambda c: c.last_name or ""),
     ContactVariable("full_name", "First and last name together", lambda c: c.full_name or ""),
     ContactVariable("contact_name", "Same as full_name, kept for older flows", lambda c: c.full_name or ""),
-    ContactVariable("phone", "The contact's phone number, with country code", lambda c: str(c.phone) if c.phone else ""),
+    ContactVariable(
+        "phone", "The contact's phone number, with country code", lambda c: str(c.phone) if c.phone else ""
+    ),
     ContactVariable("email", "The contact's email address, if one is stored", lambda c: getattr(c, "email", "") or ""),
     ContactVariable("tag", "The tag on the contact record", lambda c: c.tag or ""),
     ContactVariable("status", "The contact's status", lambda c: c.status or ""),
