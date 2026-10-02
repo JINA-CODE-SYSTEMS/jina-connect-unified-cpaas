@@ -168,6 +168,7 @@ INSTALLED_APPS = [
     "attribution",  # #197 — Meta Conversions API push (CAPI)
     "crm",  # #198 — HubSpot / Salesforce / generic-webhook connectors
     "availability",  # Cl. 5.4 — SLA availability record and monthly report
+    "support",  # BugDrop reports mirrored from GitHub for platform admins
     # ──────────────────────────────────────────────────────────────────
     "rest_framework",
     "rest_framework.authtoken",
@@ -540,6 +541,25 @@ BASE_URL = config("BASE_URL", "http://localhost:8000")
 FRONTEND_URL = config("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_WEBHOOK_BASE_URL = config("DEFAULT_WEBHOOK_BASE_URL", config("SITE_URL", "http://localhost:8000"))
 
+# ── Support tickets (BugDrop → GitHub → platform admins) ─────────────────────
+# Off until the repository, token and webhook secret are all set. See
+# support/models.py for the workflow. The repository BugDrop files into
+# (owner/repo), and a token with Issues read/write on it and nothing more.
+SUPPORT_GITHUB_REPO = config("SUPPORT_GITHUB_REPO", "")
+SUPPORT_GITHUB_TOKEN = config("SUPPORT_GITHUB_TOKEN", "")
+# The secret set on the repository's webhook (Settings → Webhooks), pointed at
+# <api>/support/github/webhook/ with the "Issues" and "Issue comments" events.
+SUPPORT_GITHUB_WEBHOOK_SECRET = config("SUPPORT_GITHUB_WEBHOOK_SECRET", "")
+# Comma-separated hostnames whose reports belong to this deployment. Several
+# deployments can share one repository; empty means FRONTEND_URL's host.
+SUPPORT_REPORT_HOSTS = config("SUPPORT_REPORT_HOSTS", "")
+# "github-login:Name,other-login:Name" — the name a customer sees for each
+# developer. Logins not listed get a stable name from a built-in list.
+SUPPORT_AGENT_NAMES = config("SUPPORT_AGENT_NAMES", "")
+SUPPORT_RESOLVED_LABEL = config("SUPPORT_RESOLVED_LABEL", "support:resolved")
+SUPPORT_REPLY_PREFIX = config("SUPPORT_REPLY_PREFIX", "/reply")
+SUPPORT_AUTO_CLOSE_HOURS = config("SUPPORT_AUTO_CLOSE_HOURS", 24, cast=int)
+
 # ── Chat flow sessions ───────────────────────────────────────────────────────
 # How long a chat-flow session may sit without advancing before a sweep ends it.
 #
@@ -845,6 +865,14 @@ CRONJOBS = [
         "23 * * * *",
         "chat_flow.cron.expire_idle_chatflow_sessions",
         ">> " + os.path.join(BASE_DIR, "jina_cron_chatflow_session_expiry.log 2>&1"),
+    ),
+    # Close support tickets marked resolved that the customer has not answered
+    # within SUPPORT_AUTO_CLOSE_HOURS. Every 15 minutes, so "24 hours" is never
+    # much more than that. A no-op until support is configured.
+    (
+        "*/15 * * * *",
+        "support.cron.auto_close_resolved_tickets",
+        ">> " + os.path.join(BASE_DIR, "jina_cron_support_auto_close.log 2>&1"),
     ),
     # Example: Uncomment below to sync gupshup auth templates every 15 minutes
     # ("*/15 * * * *", "gupshup.cron.sync_gupshup_auth_templates", ">> " + os.path.join(BASE_DIR, "gupshup_sync.log 2>&1")),

@@ -158,6 +158,7 @@ urlpatterns = [
     path("sms/", include(("sms.urls", "sms"), namespace="sms")),
     path("rcs/", include(("rcs.urls", "rcs"), namespace="rcs")),
     path("voice/v1/", include(("voice.urls", "voice"), namespace="voice")),
+    path("support/", include(("support.urls", "support"), namespace="support")),
     # =========================================================================
     # MOBILE API ENDPOINTS
     # Same functionality as web APIs, separated for mobile client tracking.
