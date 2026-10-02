@@ -390,7 +390,9 @@ def client_with_tenant(db):
     tenant = Tenant.objects.create(name=f"Org {next(_seq)}")
     n = next(_seq)
     user = get_user_model().objects.create_user(
-        username=f"owner{n}", email=f"owner{n}@example.test", password="pw"  # noqa: S106
+        username=f"owner{n}",
+        email=f"owner{n}@example.test",
+        password="pw",  # noqa: S106
     )
     role, _ = TenantRole.objects.get_or_create(tenant=tenant, slug="owner", defaults={"name": "Owner", "priority": 100})
     TenantUser.objects.create(user=user, tenant=tenant, role=role, is_active=True)
