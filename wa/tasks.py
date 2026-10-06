@@ -18,6 +18,7 @@ Sample Gupshup subscription response:
 }
 """
 
+import json
 import logging
 
 from celery import shared_task
@@ -3344,8 +3345,10 @@ def process_message_status_webhook(pk: str):
                         errors_data = status_data.get("errors", [])
                         if errors_data:
                             if is_broadcast:
-                                # Store error in response field for BroadcastMessage
-                                msg_obj.response = str(errors_data)
+                                # Store error in response field for BroadcastMessage.
+                                # JSON, not str(): the page parses it, and a
+                                # Python repr is not something it can read.
+                                msg_obj.response = json.dumps(errors_data)
                                 update_fields.append("response")
                             else:
                                 msg_obj.error_message = str(errors_data)

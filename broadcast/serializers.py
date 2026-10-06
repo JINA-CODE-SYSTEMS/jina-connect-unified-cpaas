@@ -279,7 +279,18 @@ class BroadcastMessageSerializer(BaseSerializer):
 
     contact_name = serializers.CharField(read_only=True, source="contact.name")
     contact_phone = serializers.CharField(read_only=True, source="contact.phone")
+    # What the Error column on the broadcast page shows. ``response`` also
+    # holds the provider's success payload, so only a failed row has one.
+    error_message = serializers.SerializerMethodField()
 
     class Meta:
         model = BroadcastMessage
         fields = "__all__"
+
+    def get_error_message(self, obj):
+        from broadcast.models import MessageStatusChoices
+        from broadcast.utils.send_errors import describe_send_error
+
+        if obj.status not in (MessageStatusChoices.FAILED, MessageStatusChoices.BLOCKED):
+            return None
+        return describe_send_error(obj.response)
