@@ -390,6 +390,40 @@ class WATemplate(BaseTemplateMessages):
         """
         return {tm.card_index: tm for tm in self.card_media.all() if tm.card_index is not None}
 
+    def link_header_media(self) -> bool:
+        """
+        Point ``tenant_media`` at the uploaded file whose handle this template carries.
+
+        The web app uploads the header file first (a ``TenantMedia``, then a
+        Meta upload that records ``wa_handle_id``) and creates the template
+        with only that handle and the file's signed URL. The URL goes into
+        ``example_media_url`` and lasts seven days. With nothing linking the
+        file, a broadcast sent after that week falls back to the dead URL, and
+        Meta fails every message with 131053 ("Downloading media from weblink
+        failed with http code 400"). Linked, the send signs a fresh URL.
+
+        Returns True when the link changed.
+        """
+        if not self.media_handle or not self.wa_app_id:
+            return False
+
+        from django.db.models import Q
+
+        from tenants.models import TenantMedia
+
+        tm = (
+            TenantMedia.objects.filter(tenant_id=self.wa_app.tenant_id, card_index__isnull=True)
+            # Uploads store {"handleId": ...}; template sync stores the bare string.
+            .filter(Q(wa_handle_id__handleId=self.media_handle) | Q(wa_handle_id=self.media_handle))
+            .order_by("-created_at")
+            .first()
+        )
+        if not tm or tm.pk == self.tenant_media_id:
+            return False
+        self.tenant_media = tm
+        self.save(update_fields=["tenant_media"])
+        return True
+
     # =========================================================================
     # BSP Payload Builders
     #
