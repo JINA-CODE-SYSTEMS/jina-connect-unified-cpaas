@@ -269,6 +269,11 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
                     if tm:
                         template.card_media.add(tm)
 
+        # Step 1c — the same for a single header file. Without it the template
+        # keeps only the file's seven-day signed URL, and broadcasts sent after
+        # that week fail (see ``WATemplate.link_header_media``).
+        template.link_header_media()
+
         # Step 2 — submit to BSP via adapter (META Direct / Gupshup / …).
         try:
             adapter = get_bsp_adapter(template.wa_app)
@@ -348,6 +353,10 @@ class WATemplateV2ViewSet(BaseTenantModelViewSet):
             serializer.save(needs_sync=True)
         else:
             serializer.save()
+
+        # A new header file arrives as a new handle; follow it to the file.
+        if "media_handle" in request.data and serializer.instance.link_header_media():
+            serializer = self.get_serializer(serializer.instance)
 
         return Response(serializer.data)
 
