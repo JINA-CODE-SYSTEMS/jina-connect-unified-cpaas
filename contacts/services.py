@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from django.db.models import BooleanField, Case, Exists, OuterRef, Value, When
+
 from contacts.models import TenantContact
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,38 @@ def _reactivate_if_archived(contact) -> bool:
     return True
 
 
+def _pick_existing(matches):
+    """The one contact an inbound message belongs to, when there may be several.
+
+    Nothing stops two rows sharing a phone number, and once there are two,
+    ``get_or_create`` raises ``MultipleObjectsReturned`` on every message. The
+    fallback below used to answer that by creating a *third* row — so each
+    inbound message added another duplicate, and none of them was the contact
+    a running chat flow was waiting on. A button tap landed on a fresh row with
+    no session and the flow never heard it (jina-connect-web#696).
+
+    So when there are several, pick the one the conversation is already
+    attached to: an open chat flow session first, then a chat flow assignment,
+    then an active contact over an archived one, then the oldest.
+    """
+    from chat_flow.models import UserChatFlowSession
+    from contacts.models import AssigneeTypeChoices
+
+    open_session = UserChatFlowSession.objects.filter(contact=OuterRef("pk"), is_active=True, is_complete=False)
+    return (
+        matches.annotate(
+            _in_flow=Exists(open_session),
+            _flow_assigned=Case(
+                When(assigned_to_type=AssigneeTypeChoices.CHATFLOW, then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+        )
+        .order_by("-_in_flow", "-_flow_assigned", "-is_active", "created_at", "pk")
+        .first()
+    )
+
+
 def resolve_or_create_contact(
     *,
     tenant,
@@ -56,7 +90,7 @@ def resolve_or_create_contact(
         source: ContactSource value (e.g. ``"TELEGRAM"``, ``"SMS"``).
         phone: Phone number for phone-based channels.
         telegram_chat_id: Telegram chat ID for Telegram channel.
-        defaults: Extra defaults passed to ``get_or_create``.
+        defaults: Extra fields for a contact that has to be created.
 
     Returns:
         TenantContact instance (existing or newly created).
@@ -64,50 +98,37 @@ def resolve_or_create_contact(
     defaults = defaults or {}
     defaults.setdefault("source", source)
 
+    if telegram_chat_id is not None:
+        lookup = {"telegram_chat_id": telegram_chat_id}
+    elif phone:
+        lookup = {"phone": phone}
+    else:
+        lookup = {}
+
     try:
-        if telegram_chat_id is not None:
-            contact, _ = TenantContact.objects.get_or_create(
-                tenant=tenant,
-                telegram_chat_id=telegram_chat_id,
-                defaults=defaults,
-            )
-        elif phone:
-            contact, _ = TenantContact.objects.get_or_create(
-                tenant=tenant,
-                phone=phone,
-                defaults=defaults,
-            )
-        else:
+        if not lookup:
             raise ValueError("Either phone or telegram_chat_id must be provided")
+
+        contact = _pick_existing(TenantContact.objects.filter(tenant=tenant, **lookup))
+        if contact is None:
+            contact = TenantContact.objects.create(tenant=tenant, **lookup, **defaults)
 
         _reactivate_if_archived(contact)
         return contact
     except Exception:
         logger.warning(
-            "[resolve_or_create_contact] Primary lookup failed for tenant=%s source=%s phone=%s tg_chat=%s — creating fallback",
+            "[resolve_or_create_contact] Primary lookup failed for tenant=%s source=%s phone=%s tg_chat=%s — falling back",
             tenant.pk,
             source,
             phone or "",
             telegram_chat_id or "",
             exc_info=True,
         )
-        # Fallback: create a minimal contact so the message is not lost
-        try:
-            kwargs = {"tenant": tenant, "source": source}
-            if phone:
-                kwargs["phone"] = phone
-            if telegram_chat_id is not None:
-                kwargs["telegram_chat_id"] = telegram_chat_id
-            return TenantContact.objects.create(**kwargs)
-        except Exception:
-            # Last resort — try to find any existing contact with this identifier
-            logger.exception("[resolve_or_create_contact] Fallback creation also failed")
-            if telegram_chat_id is not None:
-                existing = TenantContact.objects.filter(tenant=tenant, telegram_chat_id=telegram_chat_id).first()
-            elif phone:
-                existing = TenantContact.objects.filter(tenant=tenant, phone=phone).first()
-            else:
-                existing = None
+        # Fallback: keep the message. Reuse a row that already has this
+        # identifier before making one — creating here is how one duplicate
+        # used to become seven.
+        if lookup:
+            existing = TenantContact.objects.filter(tenant=tenant, **lookup).order_by("created_at", "pk").first()
             if existing:
                 return existing
-            raise
+        return TenantContact.objects.create(tenant=tenant, source=source, **lookup)
